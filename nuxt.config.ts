@@ -10,8 +10,10 @@ const siteHost = (() => {
     return 'localhost'
   }
 })()
-const ipxHttpDomains = process.env.NUXT_IPX_HTTP_DOMAINS
-  || [siteHost, 'localhost', '127.0.0.1'].filter(Boolean).join(',')
+const ipxHttpDomains = (process.env.NUXT_IPX_HTTP_DOMAINS
+  ? process.env.NUXT_IPX_HTTP_DOMAINS.split(',').map(domain => domain.trim()).filter(Boolean)
+  : [siteHost, 'localhost', '127.0.0.1'].filter(Boolean))
+const ipxAssetsAlias = process.env.NUXT_IPX_ALIAS_ASSETS || `${siteURL}/assets`
 
 export default defineNuxtConfig({
   modules: ['@nuxt/eslint', '@nuxt/ui', '@nuxt/image'],
@@ -30,6 +32,10 @@ export default defineNuxtConfig({
 
   image: {
     provider: imageProvider,
+    domains: ipxHttpDomains,
+    alias: {
+      '/assets': ipxAssetsAlias
+    },
     presets: {
       avatar: {
         modifiers: {
@@ -71,15 +77,7 @@ export default defineNuxtConfig({
   runtimeConfig: {
     authSecret: process.env.HALOPRESS_AUTH_SECRET || 'dev-secret-change-me',
     adminEmail: process.env.HALOPRESS_ADMIN_EMAIL || 'admin@local',
-    adminPassword: process.env.HALOPRESS_ADMIN_PASSWORD || 'admin',
-    ipx: {
-      alias: {
-        assets: process.env.NUXT_IPX_ALIAS_ASSETS || `${siteURL}/assets`
-      },
-      http: {
-        domains: ipxHttpDomains
-      }
-    }
+    adminPassword: process.env.HALOPRESS_ADMIN_PASSWORD || 'admin'
   },
 
   eslint: {
