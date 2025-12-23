@@ -1,0 +1,15 @@
+name = "halopress"
+main = ".output/server/index.mjs"
+compatibility_date = "2025-01-15"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+# HALOPRESS_AUTH_SECRET = "change-me"
+# HALOPRESS_ADMIN_EMAIL = "admin@yourdomain"
+# HALOPRESS_ADMIN_PASSWORD = "change-me"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "halopress"
+database_id = "REPLACE_ME"
+migrations_dir = "server/db/migrations"
