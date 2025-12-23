@@ -2,6 +2,16 @@
 const imageProvider = process.env.NUXT_IMAGE_PROVIDER
   || (process.env.CF_PAGES || process.env.CF_PAGES_URL ? 'cloudflare' : 'ipx')
 const cloudflareBaseURL = process.env.NUXT_IMAGE_CLOUDFLARE_BASE_URL || process.env.CF_PAGES_URL
+const siteURL = process.env.NUXT_PUBLIC_SITE_URL || process.env.CF_PAGES_URL || 'http://localhost:3000'
+const siteHost = (() => {
+  try {
+    return new URL(siteURL).hostname
+  } catch {
+    return 'localhost'
+  }
+})()
+const ipxHttpDomains = process.env.NUXT_IPX_HTTP_DOMAINS
+  || [siteHost, 'localhost', '127.0.0.1'].filter(Boolean).join(',')
 
 export default defineNuxtConfig({
   modules: ['@nuxt/eslint', '@nuxt/ui', '@nuxt/image'],
@@ -61,7 +71,15 @@ export default defineNuxtConfig({
   runtimeConfig: {
     authSecret: process.env.HALOPRESS_AUTH_SECRET || 'dev-secret-change-me',
     adminEmail: process.env.HALOPRESS_ADMIN_EMAIL || 'admin@local',
-    adminPassword: process.env.HALOPRESS_ADMIN_PASSWORD || 'admin'
+    adminPassword: process.env.HALOPRESS_ADMIN_PASSWORD || 'admin',
+    ipx: {
+      alias: {
+        assets: process.env.NUXT_IPX_ALIAS_ASSETS || `${siteURL}/assets`
+      },
+      http: {
+        domains: ipxHttpDomains
+      }
+    }
   },
 
   eslint: {
