@@ -8,6 +8,13 @@
       "when": 1766465308420,
       "tag": "0000_init_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1766469455368,
+      "tag": "0001_add_content_search_eav",
+      "breakpoints": true
     }
   ]
 }

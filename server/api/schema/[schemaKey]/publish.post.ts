@@ -4,6 +4,7 @@ import { getDb } from '../../../db/db'
 import { compileSchemaAst } from '../../../cms/compiler'
 import { getActiveSchema, getDraft } from '../../../cms/repo'
 import { getKindChanges, migrateSchemaContent } from '../../../cms/migrate'
+import { syncContentFields, syncSearchIndexForSchema } from '../../../cms/search-index'
 import { schema as schemaTable, schemaActive as schemaActiveTable } from '../../../db/schema'
 import { requireAdmin } from '../../../utils/auth'
 import { badRequest, notFound } from '../../../utils/http'
@@ -82,5 +83,13 @@ export default defineEventHandler(async (event) => {
     migrated = result.updated
   }
 
-  return { ok: true, schemaKey, version: nextVersion, migrated }
+  await syncContentFields({ db, schemaKey, registry: compiled.registry })
+  const searchSync = await syncSearchIndexForSchema({
+    db,
+    schemaKey,
+    previousRegistry: active?.registry ?? null,
+    nextRegistry: compiled.registry
+  })
+
+  return { ok: true, schemaKey, version: nextVersion, migrated, searchIndexed: searchSync.indexed }
 })

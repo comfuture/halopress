@@ -26,8 +26,11 @@
 - [x] CRUD APIs (`/api/content/:schemaKey/**`)
 - [x] Simple relation sync (`server/cms/ref-sync.ts`) (MVP: top-level only)
 - [x] Schema-driven editor (Nuxt UI + `u-editor`)
+- [x] Searchable EAV tables (`content_*_data`) + `content_fields` metadata
+- [x] Search/filter/sort toggles in schema editor field dialog
+- [x] Content write indexing + publish-time reindex for search toggles
+- [x] Search API (`/api/search`) with EXISTS-based filters + range support
 - [ ] Nested object/array fields (post-MVP)
-- [ ] `content_field_kv` exact/range filters (optional)
 
 ## 5. Assets (local / R2)
 - [x] Upload API (multipart → local filesystem, or R2 when bound)

@@ -1,4 +1,4 @@
-import { index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { index, integer, primaryKey, real, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
 export const user = sqliteTable('user', {
   id: text('id').notNull(),
@@ -71,6 +71,47 @@ export const content = sqliteTable('content', {
   byStatus: index('idx_content_status').on(t.schemaKey, t.status, t.updatedAt)
 }))
 
+export const contentFields = sqliteTable('content_fields', {
+  schemaKey: text('schema_key').notNull(),
+  fieldId: text('field_id').notNull(),
+  fieldKey: text('field_key').notNull(),
+  kind: text('kind').notNull(),
+  searchMode: text('search_mode').notNull().default('off'),
+  filterable: integer('filterable', { mode: 'boolean' }).notNull().default(false),
+  sortable: integer('sortable', { mode: 'boolean' }).notNull().default(false)
+}, t => ({
+  pk: primaryKey({ columns: [t.schemaKey, t.fieldId] }),
+  bySchema: index('idx_content_fields_schema').on(t.schemaKey),
+  byFieldKey: index('idx_content_fields_key').on(t.schemaKey, t.fieldKey)
+}))
+
+export const contentStringData = sqliteTable('content_string_data', {
+  contentId: text('content_id').notNull(),
+  fieldId: text('field_id').notNull(),
+  value: text('value').notNull()
+}, t => ({
+  pk: primaryKey({ columns: [t.contentId, t.fieldId] }),
+  idxFilter: index('idx_filter_content_string_data').on(t.fieldId, t.value, t.contentId)
+}))
+
+export const contentNumberData = sqliteTable('content_number_data', {
+  contentId: text('content_id').notNull(),
+  fieldId: text('field_id').notNull(),
+  value: real('value').notNull()
+}, t => ({
+  pk: primaryKey({ columns: [t.contentId, t.fieldId] }),
+  idxFilter: index('idx_filter_content_number_data').on(t.fieldId, t.value, t.contentId)
+}))
+
+export const contentDateData = sqliteTable('content_date_data', {
+  contentId: text('content_id').notNull(),
+  fieldId: text('field_id').notNull(),
+  value: integer('value', { mode: 'timestamp' }).notNull()
+}, t => ({
+  pk: primaryKey({ columns: [t.contentId, t.fieldId] }),
+  idxFilter: index('idx_filter_content_date_data').on(t.fieldId, t.value, t.contentId)
+}))
+
 export const contentRef = sqliteTable('content_ref', {
   contentId: text('content_id').notNull(),
   fieldPath: text('field_path').notNull(),
@@ -127,4 +168,3 @@ export const assetVariant = sqliteTable('asset_variant', {
 }, t => ({
   pk: primaryKey({ columns: [t.assetId, t.variantKey] })
 }))
-

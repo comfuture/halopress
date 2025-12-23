@@ -7,6 +7,7 @@ import { badRequest, notFound } from '../../../utils/http'
 import { content as contentTable } from '../../../db/schema'
 import { getActiveSchema } from '../../../cms/repo'
 import { syncContentRefs } from '../../../cms/ref-sync'
+import { upsertContentSearchData } from '../../../cms/search-index'
 import { replaceBase64ImagesInExtra } from '../../../utils/asset-data-url'
 
 export default defineEventHandler(async (event) => {
@@ -46,6 +47,7 @@ export default defineEventHandler(async (event) => {
     .where(eq(contentTable.id, id))
 
   await syncContentRefs({ db, contentId: id, registry: active.registry, extra })
+  await upsertContentSearchData({ db, contentId: id, registry: active.registry, extra })
 
   return { ok: true }
 })

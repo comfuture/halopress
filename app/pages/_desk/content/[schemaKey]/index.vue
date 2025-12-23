@@ -11,16 +11,17 @@ const schemaKey = computed(() => String(route.params.schemaKey))
 const status = ref<string>('all')
 
 const { data: schema } = await useFetch<any>(() => `/api/schema/${schemaKey.value}/active`)
-const { data: list } = await useFetch<{ items: Array<{ id: string; title?: string; status: string; updatedAt: string }> }>(() => `/api/content/${schemaKey.value}`, {
+const { data: list } = await useFetch<{ items: Array<{ id: string; title?: string; status: string; updatedAt: string; assetId?: string | null }> }>(() => `/api/content/${schemaKey.value}`, {
   query: computed(() => ({
     limit: 50,
     status: status.value === 'all' ? undefined : status.value
   }))
 })
 
-type ContentRow = { id: string; title?: string; status: string; updatedAt: string }
+type ContentRow = { id: string; title?: string; status: string; updatedAt: string; assetId?: string | null }
 
 const UBadge = resolveComponent('UBadge')
+const UAvatar = resolveComponent('UAvatar')
 const NuxtLink = resolveComponent('NuxtLink')
 
 const columns = computed<TableColumn<ContentRow>[]>(() => ([
@@ -29,10 +30,22 @@ const columns = computed<TableColumn<ContentRow>[]>(() => ([
     header: 'Title',
     cell: ({ row }) => {
       const title = row.original.title || row.original.id
-      return h(NuxtLink, {
-        to: `/_desk/content/${schemaKey.value}/${row.original.id}`,
-        class: 'text-highlighted hover:underline font-medium'
-      }, () => title)
+      const assetId = row.original.assetId
+      return h('div', { class: 'flex items-center gap-3 min-w-0' }, [
+        assetId
+          ? h(UAvatar, {
+            size: 'lg',
+            src: `/assets/${assetId}/raw`,
+            icon: 'i-lucide-image',
+            loading: 'lazy',
+            class: 'shrink-0'
+          })
+          : null,
+        h(NuxtLink, {
+          to: `/_desk/content/${schemaKey.value}/${row.original.id}`,
+          class: 'text-highlighted hover:underline font-medium truncate'
+        }, () => title)
+      ])
     }
   },
   {

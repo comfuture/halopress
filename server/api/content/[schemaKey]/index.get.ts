@@ -1,4 +1,4 @@
-import { and, desc, eq, lt } from 'drizzle-orm'
+import { and, desc, eq, lt, sql } from 'drizzle-orm'
 import { getQuery } from 'h3'
 
 import { getDb } from '../../../db/db'
@@ -20,6 +20,8 @@ export default defineEventHandler(async (event) => {
   if (status) whereParts.push(eq(contentTable.status, status))
   if (cursor) whereParts.push(lt(contentTable.updatedAt, cursor))
 
+  const assetIdSubquery = sql<string | null>`(select ${contentRefTable.targetId} from ${contentRefTable} where ${contentRefTable.contentId} = ${contentTable.id} and ${contentRefTable.targetKind} = 'asset' limit 1)`
+
   const base = db
     .select({
       id: contentTable.id,
@@ -28,7 +30,8 @@ export default defineEventHandler(async (event) => {
       title: contentTable.title,
       status: contentTable.status,
       createdAt: contentTable.createdAt,
-      updatedAt: contentTable.updatedAt
+      updatedAt: contentTable.updatedAt,
+      assetId: assetIdSubquery
     })
     .from(contentTable)
 

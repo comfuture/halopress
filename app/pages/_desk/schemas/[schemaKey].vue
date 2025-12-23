@@ -177,6 +177,7 @@ const fieldDraft = reactive<any>({
   description: '',
   required: false,
   enumValues: [] as any[],
+  search: { mode: 'off', filterable: false, sortable: false },
   relTarget: 'system:User',
   relCardinality: 'one'
 })
@@ -189,6 +190,7 @@ const editDraft = reactive<any>({
   description: '',
   required: false,
   enumValues: [] as any[],
+  search: { mode: 'off', filterable: false, sortable: false },
   relTarget: 'system:User',
   relCardinality: 'one'
 })
@@ -271,6 +273,83 @@ function getFieldKindIcon(kind: string) {
   return fieldKindIcon[kind] ?? 'i-lucide-square-library'
 }
 
+const searchModeOptionsByKind: Record<string, Array<{ label: string; value: string }>> = {
+  string: [
+    { label: 'Off', value: 'off' },
+    { label: 'Exact', value: 'exact' },
+    { label: 'Exact set', value: 'exact_set' }
+  ],
+  text: [
+    { label: 'Off', value: 'off' },
+    { label: 'Exact', value: 'exact' },
+    { label: 'Exact set', value: 'exact_set' }
+  ],
+  richtext: [
+    { label: 'Off', value: 'off' },
+    { label: 'Exact', value: 'exact' },
+    { label: 'Exact set', value: 'exact_set' }
+  ],
+  url: [
+    { label: 'Off', value: 'off' },
+    { label: 'Exact', value: 'exact' },
+    { label: 'Exact set', value: 'exact_set' }
+  ],
+  enum: [
+    { label: 'Off', value: 'off' },
+    { label: 'Exact', value: 'exact' },
+    { label: 'Exact set', value: 'exact_set' }
+  ],
+  boolean: [
+    { label: 'Off', value: 'off' },
+    { label: 'Exact', value: 'exact' },
+    { label: 'Exact set', value: 'exact_set' }
+  ],
+  number: [
+    { label: 'Off', value: 'off' },
+    { label: 'Exact', value: 'exact' },
+    { label: 'Range', value: 'range' }
+  ],
+  integer: [
+    { label: 'Off', value: 'off' },
+    { label: 'Exact', value: 'exact' },
+    { label: 'Range', value: 'range' }
+  ],
+  date: [
+    { label: 'Off', value: 'off' },
+    { label: 'Exact', value: 'exact' },
+    { label: 'Range', value: 'range' }
+  ],
+  datetime: [
+    { label: 'Off', value: 'off' },
+    { label: 'Exact', value: 'exact' },
+    { label: 'Range', value: 'range' }
+  ]
+}
+
+const filterableKinds = new Set(['string', 'text', 'richtext', 'url', 'enum', 'boolean', 'number', 'integer', 'date', 'datetime'])
+const sortableKinds = new Set(['string', 'url', 'enum', 'boolean', 'number', 'integer', 'date', 'datetime'])
+
+function getSearchModeOptions(kind: string) {
+  return searchModeOptionsByKind[kind] ?? [{ label: 'Off', value: 'off' }]
+}
+
+function defaultSearchMode(kind: string) {
+  if (kind === 'number' || kind === 'integer' || kind === 'date' || kind === 'datetime') return 'range'
+  return 'exact'
+}
+
+function normalizeSearchDraft(draft: any) {
+  if (!draft.search) draft.search = { mode: 'off', filterable: false, sortable: false }
+  const allowed = getSearchModeOptions(draft.kind).map(o => o.value)
+  if (!allowed.includes(draft.search.mode)) draft.search.mode = 'off'
+  if (!filterableKinds.has(draft.kind)) draft.search.filterable = false
+  if (!sortableKinds.has(draft.kind)) draft.search.sortable = false
+  if (draft.search.mode === 'off') {
+    draft.search.filterable = false
+    draft.search.sortable = false
+  }
+}
+
 function formatKindLabel(kind: string, cardinality?: string) {
   if (kind === 'reference') return `reference (${cardinality || 'one'})`
   return kind
@@ -318,9 +397,11 @@ function openNewField() {
     description: '',
     required: false,
     enumValues: [],
+    search: { mode: 'off', filterable: false, sortable: false },
     relTarget: 'system:User',
     relCardinality: 'one'
   })
+  normalizeSearchDraft(fieldDraft)
   addFieldModalOpen.value = true
 }
 
@@ -335,9 +416,11 @@ function startEditField(index: number) {
     description: cloned.description ?? '',
     required: !!cloned.required,
     enumValues: cloned.enumValues ?? [],
+    search: cloned.search ?? { mode: 'off', filterable: false, sortable: false },
     relTarget: cloned.rel?.target ?? 'system:User',
     relCardinality: cloned.rel?.cardinality ?? 'one'
   })
+  normalizeSearchDraft(editDraft)
   editingIndex.value = index
   editFieldModalOpen.value = true
 }
@@ -380,6 +463,13 @@ function normalizeFieldDraft(draft: any) {
     delete next.relCardinality
   }
 
+  if (next.search) {
+    normalizeSearchDraft(next)
+    if (next.search.mode === 'off' && !next.search.filterable && !next.search.sortable) {
+      delete next.search
+    }
+  }
+
   if (next.kind === 'asset') {
     next.rel = { kind: 'asset_ref', target: 'system:Asset', cardinality: 'one', editMode: 'pick' }
     delete next.relTarget
@@ -398,6 +488,45 @@ function normalizeFieldDraft(draft: any) {
 
   return next
 }
+
+watch(() => fieldDraft.kind, () => normalizeSearchDraft(fieldDraft))
+watch(() => editDraft.kind, () => normalizeSearchDraft(editDraft))
+
+watch(() => fieldDraft.search?.mode, (mode) => {
+  if (!fieldDraft.search) return
+  if (mode === 'off') {
+    fieldDraft.search.filterable = false
+    fieldDraft.search.sortable = false
+  }
+})
+
+watch(() => editDraft.search?.mode, (mode) => {
+  if (!editDraft.search) return
+  if (mode === 'off') {
+    editDraft.search.filterable = false
+    editDraft.search.sortable = false
+  }
+})
+
+watch(() => fieldDraft.search?.filterable, (val) => {
+  if (!fieldDraft.search) return
+  if (val && fieldDraft.search.mode === 'off') fieldDraft.search.mode = defaultSearchMode(fieldDraft.kind)
+})
+
+watch(() => fieldDraft.search?.sortable, (val) => {
+  if (!fieldDraft.search) return
+  if (val && fieldDraft.search.mode === 'off') fieldDraft.search.mode = defaultSearchMode(fieldDraft.kind)
+})
+
+watch(() => editDraft.search?.filterable, (val) => {
+  if (!editDraft.search) return
+  if (val && editDraft.search.mode === 'off') editDraft.search.mode = defaultSearchMode(editDraft.kind)
+})
+
+watch(() => editDraft.search?.sortable, (val) => {
+  if (!editDraft.search) return
+  if (val && editDraft.search.mode === 'off') editDraft.search.mode = defaultSearchMode(editDraft.kind)
+})
 
 async function addField() {
   if (!(await validateForm(addFieldFormRef.value))) return
@@ -670,6 +799,27 @@ async function confirmPublish() {
               </UFormField>
             </div>
 
+            <div class="space-y-2">
+              <div class="text-sm font-medium">Search / Filter / Sort</div>
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <UFormField label="Search mode">
+                  <USelect v-model="fieldDraft.search.mode" :items="getSearchModeOptions(fieldDraft.kind)" class="w-full" />
+                </UFormField>
+                <UFormField label="Filterable">
+                  <USwitch
+                    v-model="fieldDraft.search.filterable"
+                    :disabled="!filterableKinds.has(fieldDraft.kind) || fieldDraft.search.mode === 'off'"
+                  />
+                </UFormField>
+                <UFormField label="Sortable">
+                  <USwitch
+                    v-model="fieldDraft.search.sortable"
+                    :disabled="!sortableKinds.has(fieldDraft.kind) || fieldDraft.search.mode === 'off'"
+                  />
+                </UFormField>
+              </div>
+            </div>
+
             <div v-if="fieldDraft.kind === 'enum'" class="space-y-2">
               <div class="flex items-center justify-between">
                 <span class="text-sm font-medium">Enum values</span>
@@ -773,6 +923,27 @@ async function confirmPublish() {
               <UFormField label="Required">
                 <USwitch v-model="editDraft.required" />
               </UFormField>
+            </div>
+
+            <div class="space-y-2">
+              <div class="text-sm font-medium">Search / Filter / Sort</div>
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <UFormField label="Search mode">
+                  <USelect v-model="editDraft.search.mode" :items="getSearchModeOptions(editDraft.kind)" class="w-full" />
+                </UFormField>
+                <UFormField label="Filterable">
+                  <USwitch
+                    v-model="editDraft.search.filterable"
+                    :disabled="!filterableKinds.has(editDraft.kind) || editDraft.search.mode === 'off'"
+                  />
+                </UFormField>
+                <UFormField label="Sortable">
+                  <USwitch
+                    v-model="editDraft.search.sortable"
+                    :disabled="!sortableKinds.has(editDraft.kind) || editDraft.search.mode === 'off'"
+                  />
+                </UFormField>
+              </div>
             </div>
 
             <div v-if="editDraft.kind === 'enum'" class="space-y-2">
