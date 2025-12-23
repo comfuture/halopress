@@ -23,6 +23,7 @@
   "dependencies": {
     "@iconify-json/lucide": "^1.2.74",
     "@iconify-json/simple-icons": "^1.2.59",
+    "@nuxt/image": "2.0.0",
     "@nuxt/ui": "^4.3.0",
     "@tiptap/extension-collaboration": "3.13.0",
     "@tiptap/extension-drag-handle": "3.13.0",

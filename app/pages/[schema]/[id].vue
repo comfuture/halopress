@@ -40,11 +40,12 @@ const { data: doc } = await useFetch<any>(() => `/api/content/${schemaKey.value}
           </div>
 
           <div v-else-if="field.kind === 'asset' && doc.extra[field.key]">
-            <img
+            <NuxtImg
               class="max-w-full rounded-md border border-muted"
               :src="`/assets/${doc.extra[field.key]}/raw`"
               alt=""
-            >
+              preset="content"
+            />
           </div>
 
           <div v-else>

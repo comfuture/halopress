@@ -15,6 +15,13 @@
       "when": 1766469455368,
       "tag": "0001_add_content_search_eav",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1766474177988,
+      "tag": "0002_drop_asset_variant_table",
+      "breakpoints": true
     }
   ]
 }

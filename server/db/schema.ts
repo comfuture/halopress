@@ -155,16 +155,3 @@ export const asset = sqliteTable('asset', {
   pk: primaryKey({ columns: [t.id] }),
   byCreatedAt: index('idx_asset_created_at').on(t.createdAt)
 }))
-
-export const assetVariant = sqliteTable('asset_variant', {
-  assetId: text('asset_id').notNull(),
-  variantKey: text('variant_key').notNull(),
-  objectKey: text('object_key').notNull(),
-  mimeType: text('mime_type').notNull(),
-  sizeBytes: integer('size_bytes').notNull(),
-  width: integer('width'),
-  height: integer('height'),
-  createdAt: integer('created_at', { mode: 'timestamp' }).notNull()
-}, t => ({
-  pk: primaryKey({ columns: [t.assetId, t.variantKey] })
-}))

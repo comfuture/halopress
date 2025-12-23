@@ -84,12 +84,13 @@ function handleDeleted() {
           </template>
 
           <div class="rounded-md border border-default bg-elevated/30 p-4">
-            <img
+            <NuxtImg
               v-if="isImage"
               :src="previewUrl"
               class="w-full max-h-[420px] object-contain"
               alt=""
-            >
+              preset="content"
+            />
             <div v-else class="flex flex-col items-center justify-center gap-3 h-48 text-muted">
               <UIcon name="i-lucide-file" size="48" />
               <span class="text-sm">No preview available</span>

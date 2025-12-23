@@ -104,7 +104,12 @@ function clear() {
     </div>
 
     <div v-if="previewUrl" class="rounded-md border border-muted overflow-hidden">
-      <img :src="previewUrl" alt="" class="w-full max-h-64 object-cover">
+      <NuxtImg
+        :src="previewUrl"
+        alt=""
+        preset="content"
+        class="w-full max-h-64 object-cover"
+      />
     </div>
 
     <UFileUpload
@@ -153,7 +158,13 @@ function clear() {
                 :class="item.active ? 'ring-2 ring-primary/50' : ''"
               >
                 <div class="w-full aspect-[4/3] max-h-24 overflow-hidden rounded-sm bg-elevated/50 flex items-center justify-center">
-                  <img v-if="item.imageUrl" :src="item.imageUrl" alt="" class="h-full w-full object-cover">
+                  <NuxtImg
+                    v-if="item.imageUrl"
+                    :src="item.imageUrl"
+                    alt=""
+                    preset="card"
+                    class="h-full w-full object-cover"
+                  />
                   <UIcon v-else name="i-lucide-file" size="24" class="text-muted" />
                 </div>
                 <div class="p-2 text-xs">

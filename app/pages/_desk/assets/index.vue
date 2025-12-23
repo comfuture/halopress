@@ -83,8 +83,13 @@ watch(files, async (selected) => {
           :ui="{ root: 'overflow-hidden', body: 'p-0 sm:p-0', footer: 'p-3 sm:p-4' }">
           <template #default>
             <NuxtLink :to="`/_desk/assets/${a.id}`">
-              <img v-if="a.kind === 'image'" :src="`/assets/${a.id}/raw`" class="w-full aspect-[4/3] object-cover"
-                alt="">
+              <NuxtImg
+                v-if="a.kind === 'image'"
+                :src="`/assets/${a.id}/raw`"
+                alt=""
+                preset="card"
+                class="w-full aspect-[4/3] object-cover"
+              />
               <div v-else class="w-full aspect-[4/3] flex items-center justify-center bg-elevated/50">
                 <UIcon name="i-lucide-file" size="40" class="text-muted" />
               </div>

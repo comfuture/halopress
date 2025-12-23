@@ -35,6 +35,10 @@
 ## 5. Assets (local / R2)
 - [x] Upload API (multipart → local filesystem, or R2 when bound)
 - [x] Asset serving endpoint (`/assets/:assetId/raw`)
+- [x] Add Nuxt Image module + presets (avatar/card/content) for thumbnails
+- [x] Replace asset preview `<img>` tags with `<NuxtImg>` (preset-driven)
+- [x] Use IPX locally and Cloudflare provider when deployed (env/detect)
+- [x] Remove unused `asset_variant` table with migration
 - [ ] Direct-to-R2 presigned uploads (post-MVP)
 - [ ] Variants/thumb pipeline (Cloudflare Images) (post-MVP)
 

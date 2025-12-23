@@ -2,7 +2,7 @@ import { and, eq, inArray } from 'drizzle-orm'
 import { readBody } from 'h3'
 
 import { getDb } from '../../../db/db'
-import { asset as assetTable, assetVariant, content as contentTable, contentRef, contentRefList } from '../../../db/schema'
+import { asset as assetTable, content as contentTable, contentRef, contentRefList } from '../../../db/schema'
 import { deleteObject } from '../../../storage/assets'
 import { requireAdmin } from '../../../utils/auth'
 import { badRequest, notFound } from '../../../utils/http'
@@ -163,7 +163,6 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  await db.delete(assetVariant).where(eq(assetVariant.assetId, assetId))
   await db.delete(assetTable).where(eq(assetTable.id, assetId))
   await deleteObject(event, current[0].objectKey)
 

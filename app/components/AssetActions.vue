@@ -234,7 +234,13 @@ watch(replaceOpen, (open) => {
               <template #item="{ item }">
                 <div class="w-full rounded-md border border-default bg-default/60 p-2 hover:bg-elevated/40 transition">
                   <div class="aspect-[4/3] overflow-hidden rounded-sm bg-elevated/50 flex items-center justify-center">
-                    <img v-if="item.imageUrl" :src="item.imageUrl" alt="" class="h-full w-full object-cover">
+                    <NuxtImg
+                      v-if="item.imageUrl"
+                      :src="item.imageUrl"
+                      alt=""
+                      preset="card"
+                      class="h-full w-full object-cover"
+                    />
                     <UIcon v-else :name="item.icon || 'i-lucide-file'" size="28" class="text-muted" />
                   </div>
                   <div class="mt-2 text-xs">
