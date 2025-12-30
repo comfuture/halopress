@@ -13,6 +13,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push --force",
     "db:studio": "drizzle-kit studio",
+    "db:backfill:content-items": "tsx scripts/backfill-content-items.ts",
     "db:drop": "drizzle-kit drop",
     "db:d1:list": "npx wrangler d1 migrations list",
     "db:d1:apply": "npx wrangler d1 migrations apply",
@@ -39,7 +40,8 @@
     "nuxt": "^4.2.2",
     "sortablejs": "^1.15.6",
     "ulid": "^3.0.2",
-    "zod": "^4.2.1"
+    "zod": "^4.2.1",
+    "zod-from-json-schema": "^0.5.2"
   },
   "devDependencies": {
     "@libsql/client": "^0.15.15",
@@ -48,6 +50,7 @@
     "@types/sortablejs": "^1.15.9",
     "drizzle-kit": "^0.31.8",
     "eslint": "^9.39.1",
+    "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vue-tsc": "^3.1.5"
   },
