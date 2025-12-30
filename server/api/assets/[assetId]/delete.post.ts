@@ -8,6 +8,7 @@ import { requireAdmin } from '../../../utils/auth'
 import { badRequest, notFound } from '../../../utils/http'
 import { getActiveSchema } from '../../../cms/repo'
 import { upsertContentItemSnapshot } from '../../../cms/content-items'
+import { queueWidgetCacheInvalidation } from '../../../utils/widget-cache'
 
 function replaceAssetRefs(value: unknown, fromId: string, toId?: string | null): { value: unknown; changed: boolean } {
   const rawUrl = `/assets/${fromId}/raw`
@@ -143,6 +144,7 @@ export default defineEventHandler(async (event) => {
       .where(eq(contentRefList.assetId, assetId))
   }
 
+  const changedSchemas = new Set<string>()
   if (contentIds.length) {
     const contents = await db
       .select({
@@ -164,6 +166,7 @@ export default defineEventHandler(async (event) => {
         const extra = JSON.parse(row.extraJson)
         const result = replaceAssetRefs(extra, assetId, hasReplacement ? replacementId : null)
         if (result.changed) {
+          changedSchemas.add(row.schemaKey)
           const nextUpdatedAt = new Date()
           await db
             .update(contentTable)
@@ -192,6 +195,10 @@ export default defineEventHandler(async (event) => {
         // ignore invalid JSON
       }
     }
+  }
+
+  for (const schemaKey of changedSchemas) {
+    queueWidgetCacheInvalidation(event, `schema:${schemaKey}`)
   }
 
   await db.delete(assetTable).where(eq(assetTable.id, assetId))
