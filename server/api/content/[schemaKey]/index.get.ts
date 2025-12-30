@@ -1,14 +1,15 @@
-import { and, desc, eq, lt, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, lt, sql } from 'drizzle-orm'
 import { getQuery } from 'h3'
 
 import { getDb } from '../../../db/db'
-import { content as contentTable, contentRef as contentRefTable } from '../../../db/schema'
+import { content as contentTable, contentItems as contentItemsTable, contentRef as contentRefTable } from '../../../db/schema'
 
 export default defineEventHandler(async (event) => {
   const schemaKey = event.context.params?.schemaKey as string
   const q = getQuery(event)
-  const limit = Math.min(Number(q.limit ?? 20) || 20, 50)
-  const cursor = q.cursor ? new Date(Number(q.cursor)) : null
+  const pageSize = Math.min(Number(q.pageSize ?? q.limit ?? 20) || 20, 50)
+  const cursor = typeof q.cursor === 'string' && q.cursor.length ? q.cursor : null
+  const order = q.order === 'asc' ? 'asc' : 'desc'
   const status = typeof q.status === 'string' ? q.status : null
 
   const refField = typeof q.refField === 'string' ? q.refField : null
@@ -18,7 +19,11 @@ export default defineEventHandler(async (event) => {
 
   const whereParts = [eq(contentTable.schemaKey, schemaKey)] as any[]
   if (status) whereParts.push(eq(contentTable.status, status))
-  if (cursor) whereParts.push(lt(contentTable.updatedAt, cursor))
+  if (cursor) {
+    whereParts.push(order === 'asc'
+      ? gt(contentTable.id, cursor)
+      : lt(contentTable.id, cursor))
+  }
 
   const assetIdSubquery = sql<string | null>`(select ${contentRefTable.targetId} from ${contentRefTable} where ${contentRefTable.contentId} = ${contentTable.id} and ${contentRefTable.targetKind} = 'asset' limit 1)`
 
@@ -28,17 +33,22 @@ export default defineEventHandler(async (event) => {
       schemaKey: contentTable.schemaKey,
       schemaVersion: contentTable.schemaVersion,
       title: contentTable.title,
+      description: contentItemsTable.description,
+      image: contentItemsTable.image,
       status: contentTable.status,
       createdAt: contentTable.createdAt,
       updatedAt: contentTable.updatedAt,
       assetId: assetIdSubquery
     })
     .from(contentTable)
+    .leftJoin(contentItemsTable, eq(contentItemsTable.contentId, contentTable.id))
+
+  const fetchSize = pageSize + 1
 
   let query = base
     .where(and(...whereParts))
-    .orderBy(desc(contentTable.updatedAt))
-    .limit(limit)
+    .orderBy(order === 'asc' ? asc(contentTable.id) : desc(contentTable.id))
+    .limit(fetchSize)
 
   if (refField && refId) {
     query = base
@@ -48,12 +58,14 @@ export default defineEventHandler(async (event) => {
         eq(contentRefTable.targetId, refId)
       ))
       .where(and(...whereParts))
-      .orderBy(desc(contentTable.updatedAt))
-      .limit(limit)
+      .orderBy(order === 'asc' ? asc(contentTable.id) : desc(contentTable.id))
+      .limit(fetchSize)
   }
 
-  const items = await query
+  const rows = await query
+  const hasMore = rows.length > pageSize
+  const items = hasMore ? rows.slice(0, pageSize) : rows
 
-  const nextCursor = items.length ? String(new Date(items[items.length - 1]!.updatedAt).getTime()) : null
+  const nextCursor = hasMore ? String(items[items.length - 1]!.id) : null
   return { items, nextCursor }
 })

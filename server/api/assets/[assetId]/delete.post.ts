@@ -6,6 +6,8 @@ import { asset as assetTable, content as contentTable, contentRef, contentRefLis
 import { deleteObject } from '../../../storage/assets'
 import { requireAdmin } from '../../../utils/auth'
 import { badRequest, notFound } from '../../../utils/http'
+import { getActiveSchema } from '../../../cms/repo'
+import { upsertContentItemSnapshot } from '../../../cms/content-items'
 
 function replaceAssetRefs(value: unknown, fromId: string, toId?: string | null): { value: unknown; changed: boolean } {
   const rawUrl = `/assets/${fromId}/raw`
@@ -143,19 +145,48 @@ export default defineEventHandler(async (event) => {
 
   if (contentIds.length) {
     const contents = await db
-      .select({ id: contentTable.id, extraJson: contentTable.extraJson })
+      .select({
+        id: contentTable.id,
+        schemaKey: contentTable.schemaKey,
+        schemaVersion: contentTable.schemaVersion,
+        title: contentTable.title,
+        status: contentTable.status,
+        createdAt: contentTable.createdAt,
+        updatedAt: contentTable.updatedAt,
+        extraJson: contentTable.extraJson
+      })
       .from(contentTable)
       .where(inArray(contentTable.id, contentIds))
 
+    const registryCache = new Map<string, any>()
     for (const row of contents) {
       try {
         const extra = JSON.parse(row.extraJson)
         const result = replaceAssetRefs(extra, assetId, hasReplacement ? replacementId : null)
         if (result.changed) {
+          const nextUpdatedAt = new Date()
           await db
             .update(contentTable)
-            .set({ extraJson: JSON.stringify(result.value), updatedAt: new Date() })
+            .set({ extraJson: JSON.stringify(result.value), updatedAt: nextUpdatedAt })
             .where(eq(contentTable.id, row.id))
+
+          if (!registryCache.has(row.schemaKey)) {
+            const active = await getActiveSchema(db, row.schemaKey)
+            registryCache.set(row.schemaKey, active?.registry ?? null)
+          }
+
+          await upsertContentItemSnapshot({
+            db,
+            registry: registryCache.get(row.schemaKey) ?? null,
+            extra: result.value as Record<string, unknown>,
+            contentId: row.id,
+            schemaKey: row.schemaKey,
+            schemaVersion: row.schemaVersion,
+            title: row.title ?? null,
+            status: row.status,
+            createdAt: row.createdAt,
+            updatedAt: nextUpdatedAt
+          })
         }
       } catch {
         // ignore invalid JSON
