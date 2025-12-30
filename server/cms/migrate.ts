@@ -3,6 +3,7 @@ import type { Db } from '../db/db'
 import { content as contentTable } from '../db/schema'
 import type { FieldKind, FieldNode, SchemaAst, SchemaRegistry } from './types'
 import { syncContentRefs } from './ref-sync'
+import { upsertContentItemSnapshot } from './content-items'
 
 export type KindChange = {
   fieldId: string
@@ -182,7 +183,13 @@ export async function migrateSchemaContent(args: {
   if (!changes.length) return { updated: 0 }
 
   const rows = await db
-    .select({ id: contentTable.id, extraJson: contentTable.extraJson })
+    .select({
+      id: contentTable.id,
+      title: contentTable.title,
+      status: contentTable.status,
+      createdAt: contentTable.createdAt,
+      extraJson: contentTable.extraJson
+    })
     .from(contentTable)
     .where(eq(contentTable.schemaKey, schemaKey))
 
@@ -238,6 +245,18 @@ export async function migrateSchemaContent(args: {
       .where(eq(contentTable.id, row.id))
 
     await syncContentRefs({ db, contentId: row.id, registry, extra })
+    await upsertContentItemSnapshot({
+      db,
+      registry,
+      extra,
+      contentId: row.id,
+      schemaKey,
+      schemaVersion: nextVersion,
+      title: row.title ?? null,
+      status: row.status,
+      createdAt: row.createdAt,
+      updatedAt: now
+    })
     updated += 1
   }
 
