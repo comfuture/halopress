@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { Content } from '@tiptap/core'
 const route = useRoute()
 const schemaKey = computed(() => String(route.params.schema))
 const id = computed(() => String(route.params.id))
@@ -50,26 +51,43 @@ function patchRichText(docJson: any, usedIds: Map<string, number>, toc: TocLink[
   return patchNode(docJson)
 }
 
+type ExtraRecord = Record<string, unknown>
+
+function asExtraRecord(value: unknown): ExtraRecord | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  return value as ExtraRecord
+}
+
 const richtextMeta = computed(() => {
-  const extra = doc.value?.extra ?? null
-  if (!extra || typeof extra !== 'object') {
-    return { extra: extra ?? null, toc: [] as TocLink[] }
+  const rawExtra = doc.value?.extra ?? null
+  const extra = asExtraRecord(rawExtra)
+  if (!extra) {
+    return { extra: rawExtra ?? null, toc: [] as TocLink[] }
   }
 
   const usedIds = new Map<string, number>()
   const toc: TocLink[] = []
-  const patchedExtra = { ...extra }
+  const patchedExtra: ExtraRecord = { ...extra }
 
   for (const field of fields.value) {
     if (field.kind !== 'richtext') continue
-    if (!extra[field.key]) continue
-    patchedExtra[field.key] = patchRichText(extra[field.key], usedIds, toc)
+    const value = extra[field.key]
+    if (!value) continue
+    patchedExtra[field.key] = patchRichText(value, usedIds, toc)
   }
 
   return { extra: patchedExtra, toc }
 })
 
-const renderedExtra = computed(() => richtextMeta.value.extra ?? null)
+const renderedExtra = computed<ExtraRecord | null>(() => {
+  const extra = richtextMeta.value.extra
+  return asExtraRecord(extra)
+})
+
+function asEditorContent(value: unknown): Content | undefined {
+  if (!value) return undefined
+  return value as Content
+}
 const tocLinks = computed(() => richtextMeta.value.toc)
 </script>
 
@@ -106,7 +124,7 @@ const tocLinks = computed(() => richtextMeta.value.toc)
                     <div v-if="field.kind === 'richtext'">
                       <ClientOnly>
                         <UEditor
-                          :model-value="renderedExtra[field.key]"
+                          :model-value="asEditorContent(renderedExtra[field.key])"
                           content-type="json"
                           :editable="false"
                           class="w-full min-h-24"

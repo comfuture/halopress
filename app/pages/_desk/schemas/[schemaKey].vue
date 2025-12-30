@@ -9,6 +9,44 @@ definePageMeta({
   layout: 'desk'
 })
 
+type FieldKind =
+  | 'string'
+  | 'text'
+  | 'number'
+  | 'integer'
+  | 'boolean'
+  | 'date'
+  | 'datetime'
+  | 'url'
+  | 'enum'
+  | 'richtext'
+  | 'reference'
+  | 'asset'
+
+type FieldNode = {
+  id: string
+  key: string
+  kind: FieldKind
+  title?: string
+  description?: string
+  required?: boolean
+  enumValues?: { label: string; value: string }[]
+  search?: {
+    mode?: 'off' | 'exact' | 'range' | 'exact_set'
+    filterable?: boolean
+    sortable?: boolean
+  }
+  rel?: {
+    kind: 'ref' | 'ref_list' | 'poly_ref' | 'asset_ref'
+    target: string
+    cardinality: 'one' | 'many'
+  }
+}
+
+type SchemaAst = {
+  fields: FieldNode[]
+}
+
 function stableStringify(value: any): string {
   const seen = new WeakSet()
   const normalize = (v: any): any => {
@@ -62,7 +100,7 @@ const state = reactive({
   schemaKey: isNew.value ? '' : routeKey.value,
   title: '',
   description: '',
-  fields: [] as any[]
+  fields: [] as FieldNode[]
 })
 
 const breadcrumbItems = computed<BreadcrumbItem[]>(() => ([
@@ -355,13 +393,25 @@ function formatKindLabel(kind: string, cardinality?: string) {
   return kind
 }
 
+type KindChange = {
+  id: string
+  key: string
+  title: string
+  fromKind: FieldNode['kind']
+  toKind: FieldNode['kind']
+  fromCardinality: string
+  toCardinality: string
+  fromLabel: string
+  toLabel: string
+}
+
 const kindChanges = computed(() => {
-  const prevAst = active.value?.ast
+  const prevAst = active.value?.ast as SchemaAst | undefined
   if (!prevAst) return []
-  const prevById = new Map(prevAst.fields.map((field: any) => [field.id, field]))
+  const prevById = new Map<string, FieldNode>(prevAst.fields.map(field => [field.id, field]))
 
   return state.fields
-    .map((field: any) => {
+    .map((field): KindChange | null => {
       const prev = prevById.get(field.id)
       if (!prev) return null
       const prevCardinality = prev.rel?.cardinality ?? 'one'
@@ -380,7 +430,7 @@ const kindChanges = computed(() => {
         toLabel: formatKindLabel(field.kind, nextCardinality)
       }
     })
-    .filter(Boolean)
+    .filter((change): change is KindChange => Boolean(change))
 })
 
 const contentSchemaOptions = computed(() => (activeSchemas.value?.items ?? []).map((s: any) => ({

@@ -77,12 +77,13 @@ onMounted(() => {
   const onVisible = () => {
     if (!document.hidden) refresh()
   }
+  const onOnline = () => refresh()
   window.addEventListener('visibilitychange', onVisible)
-  window.addEventListener('online', refresh)
+  window.addEventListener('online', onOnline)
   onBeforeUnmount(() => {
     window.clearInterval(interval)
     window.removeEventListener('visibilitychange', onVisible)
-    window.removeEventListener('online', refresh)
+    window.removeEventListener('online', onOnline)
   })
 })
 </script>
@@ -111,7 +112,7 @@ onMounted(() => {
       </template>
 
       <template v-else-if="error">
-        <slot v-if="$slots.error" name="error" :error="error" v-bind="slotProps" />
+        <slot v-if="$slots.error" name="error" v-bind="slotProps" />
         <UAlert
           v-else
           title="Unable to load"

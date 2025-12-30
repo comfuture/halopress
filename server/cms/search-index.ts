@@ -78,7 +78,7 @@ const ServerImageUpload = Node.create({
 const richtextExtensions = [
   StarterKit.configure({
     horizontalRule: false,
-    headings: { levels: [1, 2, 3, 4] },
+    heading: { levels: [1, 2, 3, 4] },
     link: { openOnClick: false }
   }),
   HorizontalRule,

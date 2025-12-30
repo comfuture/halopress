@@ -15,6 +15,8 @@ type FilterInput = {
   max?: unknown
 }
 
+type ContentFieldRow = typeof contentFieldsTable.$inferSelect
+
 function parseFilters(raw: unknown) {
   if (!raw) return []
   if (typeof raw === 'string') {
@@ -69,7 +71,7 @@ export default defineEventHandler(async (event) => {
   const fieldRows = await db
     .select()
     .from(contentFieldsTable)
-    .where(eq(contentFieldsTable.schemaKey, schemaKey))
+    .where(eq(contentFieldsTable.schemaKey, schemaKey)) as ContentFieldRow[]
 
   const fieldByKey = new Map(fieldRows.map(row => [row.fieldKey, row]))
 

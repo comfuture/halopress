@@ -127,7 +127,6 @@ function clear() {
       <UModal
         v-model:open="paletteOpen"
         title="Select existing asset"
-        :content="{ 'aria-describedby': undefined }"
         :ui="{
           content: 'bg-default flex flex-col focus:outline-none w-[min(720px,96vw)]',
           header: 'hidden',

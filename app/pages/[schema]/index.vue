@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { ButtonProps } from '@nuxt/ui'
 const route = useRoute()
 const router = useRouter()
 const schemaKey = computed(() => String(route.params.schema))
@@ -39,7 +40,7 @@ const heroDescription = computed(() => {
 const heroLinks = [
   { label: 'Back to Schemas', to: '/', variant: 'outline' },
   { label: 'Open Desk', to: '/_desk', color: 'primary' }
-]
+] satisfies ButtonProps[]
 
 function normalizeQuery(overrides: Record<string, string | number | undefined | null>) {
   const next = { ...route.query, ...overrides } as Record<string, any>

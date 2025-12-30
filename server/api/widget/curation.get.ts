@@ -11,6 +11,18 @@ import {
 import { badRequest } from '../../utils/http'
 import { applyWidgetCacheHeaders, resolveWidgetCacheKey, withWidgetCache } from '../../utils/widget-cache'
 
+type ContentItem = {
+  id: string
+  schemaKey: string
+  schemaVersion: number
+  title: string | null
+  description: string | null
+  image: string | null
+  status: string
+  createdAt: Date
+  updatedAt: Date
+}
+
 const POLICY = {
   softTtl: 300,
   hardTtl: 7200,
@@ -64,9 +76,11 @@ export default defineEventHandler(async (event) => {
           eq(contentRefList.itemKind, 'content')
         ))
         .orderBy(asc(contentRefList.position))
-        .limit(limit)
+        .limit(limit) as Array<{ itemId: string | null; position: number | null }>
 
-      const orderedIds = listRows.map(row => row.itemId).filter(Boolean) as string[]
+      const orderedIds = listRows
+        .map(row => row.itemId)
+        .filter((id): id is string => Boolean(id))
       if (!orderedIds.length) return []
 
       const whereParts = [
@@ -88,10 +102,12 @@ export default defineEventHandler(async (event) => {
           updatedAt: contentItemsTable.updatedAt
         })
         .from(contentItemsTable)
-        .where(and(...whereParts))
+        .where(and(...whereParts)) as ContentItem[]
 
       const byId = new Map(items.map(item => [item.id, item]))
-      return orderedIds.map(id => byId.get(id)).filter(Boolean)
+      return orderedIds
+        .map(id => byId.get(id))
+        .filter((item): item is ContentItem => Boolean(item))
     }
 
     if (!values.length) throw badRequest('values required')
@@ -113,9 +129,9 @@ export default defineEventHandler(async (event) => {
       .where(and(
         eq(contentStringData.fieldId, field.fieldId),
         inArray(contentStringData.value, values)
-      ))
+      )) as Array<{ contentId: string }>
 
-    const contentIds = Array.from(new Set(ids.map((row: any) => row.contentId)))
+    const contentIds = Array.from(new Set(ids.map(row => row.contentId)))
     if (!contentIds.length) return []
 
     const whereParts = [
@@ -139,7 +155,7 @@ export default defineEventHandler(async (event) => {
       .from(contentItemsTable)
       .where(and(...whereParts))
       .orderBy(desc(contentItemsTable.updatedAt), desc(contentItemsTable.contentId))
-      .limit(limit)
+      .limit(limit) as ContentItem[]
 
     return items
   })

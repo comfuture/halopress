@@ -9,11 +9,12 @@ definePageMeta({
 const route = useRoute()
 const schemaKey = computed(() => String(route.params.schemaKey))
 const status = ref<string>('all')
+const statusFilter = computed(() => (status.value === 'all' ? null : status.value))
 
 const { data: schema } = await useFetch<any>(() => `/api/schema/${schemaKey.value}/active`)
 const { items } = await useHalopressQuery(schemaKey, {
   pageSize: 50,
-  status: computed(() => (status.value === 'all' ? undefined : status.value))
+  status: statusFilter
 })
 
 type ContentRow = { id: string; title: string | null; description: string | null; image: string | null; status: string; updatedAt: string }
