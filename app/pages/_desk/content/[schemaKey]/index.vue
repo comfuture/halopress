@@ -11,14 +11,12 @@ const schemaKey = computed(() => String(route.params.schemaKey))
 const status = ref<string>('all')
 
 const { data: schema } = await useFetch<any>(() => `/api/schema/${schemaKey.value}/active`)
-const { data: list } = await useFetch<{ items: Array<{ id: string; title?: string; status: string; updatedAt: string; assetId?: string | null }> }>(() => `/api/content/${schemaKey.value}`, {
-  query: computed(() => ({
-    limit: 50,
-    status: status.value === 'all' ? undefined : status.value
-  }))
+const { items } = await useHalopressQuery(schemaKey, {
+  pageSize: 50,
+  status: computed(() => (status.value === 'all' ? undefined : status.value))
 })
 
-type ContentRow = { id: string; title?: string; status: string; updatedAt: string; assetId?: string | null }
+type ContentRow = { id: string; title: string | null; description: string | null; image: string | null; status: string; updatedAt: string }
 
 const UBadge = resolveComponent('UBadge')
 const UAvatar = resolveComponent('UAvatar')
@@ -30,21 +28,25 @@ const columns = computed<TableColumn<ContentRow>[]>(() => ([
     header: 'Title',
     cell: ({ row }) => {
       const title = row.original.title || row.original.id
-      const assetId = row.original.assetId
       return h('div', { class: 'flex items-center gap-3 min-w-0' }, [
-        assetId
+        row.original.image
           ? h(UAvatar, {
             size: 'lg',
-            src: `/assets/${assetId}/raw`,
+            src: row.original.image,
             icon: 'i-lucide-image',
             loading: 'lazy',
             class: 'shrink-0'
           })
           : null,
-        h(NuxtLink, {
-          to: `/_desk/content/${schemaKey.value}/${row.original.id}`,
-          class: 'text-highlighted hover:underline font-medium truncate'
-        }, () => title)
+        h('div', { class: 'min-w-0' }, [
+          h(NuxtLink, {
+            to: `/_desk/content/${schemaKey.value}/${row.original.id}`,
+            class: 'text-highlighted hover:underline font-medium truncate'
+          }, () => title),
+          row.original.description
+            ? h('p', { class: 'text-sm text-muted truncate' }, row.original.description)
+            : null
+        ])
       ])
     }
   },
@@ -106,7 +108,7 @@ const columns = computed<TableColumn<ContentRow>[]>(() => ([
       </div>
 
       <UTable
-        :data="list?.items || []"
+        :data="items || []"
         :columns="columns"
         class="w-full"
       />
