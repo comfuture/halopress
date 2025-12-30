@@ -58,7 +58,10 @@ export async function useHalopressContent(schemaOrPath: MaybeRef<string>, option
     if (!schema.value?.jsonSchema) return null
     try {
       return convertJsonSchemaToZod(schema.value.jsonSchema)
-    } catch {
+    } catch (err) {
+      if (import.meta.dev) {
+        console.warn(`[halopress] Failed to convert jsonSchema for ${schemaKey.value}`, err)
+      }
       return null
     }
   })
@@ -72,6 +75,9 @@ export async function useHalopressContent(schemaOrPath: MaybeRef<string>, option
     const result = zodSchema.safeParse(base.extra)
     if (result.success) {
       return { ...base, extra: result.data }
+    }
+    if (import.meta.dev) {
+      console.warn(`[halopress] Content extra failed schema validation for ${schemaKey.value}/${contentId.value}`, result.error)
     }
     return base
   })
