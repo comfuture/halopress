@@ -24,8 +24,9 @@ export default defineEventHandler(async (event) => {
 
   if (!row) throw notFound('Content not found')
 
+  let session = null as Awaited<ReturnType<typeof getAuthSession>> | null
   if (row.status !== 'published') {
-    const session = await getAuthSession(event)
+    session = await getAuthSession(event)
     if (!session) throw unauthorized()
   }
 
@@ -63,13 +64,20 @@ export default defineEventHandler(async (event) => {
 
   let surroundings: { prev: any; next: any } | undefined
   if (includeSurroundings) {
-    const status = typeof q.status === 'string' && q.status.length ? q.status : row.status
+    const requestedStatus = typeof q.status === 'string' && q.status.length ? q.status : row.status
+    let status = requestedStatus
+    if (requestedStatus !== 'published') {
+      if (!session) session = await getAuthSession(event)
+      if (!session) status = 'published'
+    }
     const baseUpdatedAt = item.updatedAt
     const baseId = item.contentId ?? item.id ?? row.id
     const whereParts = [
-      eq(contentItemsTable.schemaKey, schemaKey),
-      eq(contentItemsTable.status, status)
+      eq(contentItemsTable.schemaKey, schemaKey)
     ] as any[]
+    if (status !== 'all') {
+      whereParts.push(eq(contentItemsTable.status, status))
+    }
 
     const prevCondition = order === 'asc'
       ? or(
