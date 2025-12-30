@@ -8,7 +8,9 @@ import { content as contentTable } from '../../../db/schema'
 import { getActiveSchema } from '../../../cms/repo'
 import { syncContentRefs } from '../../../cms/ref-sync'
 import { upsertContentSearchData } from '../../../cms/search-index'
+import { upsertContentItemSnapshot } from '../../../cms/content-items'
 import { replaceBase64ImagesInExtra } from '../../../utils/asset-data-url'
+import { queueWidgetCacheInvalidation } from '../../../utils/widget-cache'
 
 export default defineEventHandler(async (event) => {
   const session = await requireAdmin(event)
@@ -26,22 +28,38 @@ export default defineEventHandler(async (event) => {
   const extra = body?.extra ?? {}
   if (typeof extra !== 'object' || Array.isArray(extra) || !extra) throw badRequest('Invalid extra')
 
-  await replaceBase64ImagesInExtra({ event, db, createdBy: session.sub, extra })
+  await db.transaction(async (tx: any) => {
+    await replaceBase64ImagesInExtra({ event, db: tx, createdBy: session.sub, extra })
 
-  await db.insert(contentTable).values({
-    id,
-    schemaKey,
-    schemaVersion: active.version,
-    title,
-    status,
-    extraJson: JSON.stringify(extra),
-    createdBy: session.sub,
-    createdAt: now,
-    updatedAt: now
+    await tx.insert(contentTable).values({
+      id,
+      schemaKey,
+      schemaVersion: active.version,
+      title,
+      status,
+      extraJson: JSON.stringify(extra),
+      createdBy: session.sub,
+      createdAt: now,
+      updatedAt: now
+    })
+
+    await syncContentRefs({ db: tx, contentId: id, registry: active.registry, extra })
+    await upsertContentSearchData({ db: tx, contentId: id, registry: active.registry, extra })
+    await upsertContentItemSnapshot({
+      db: tx,
+      registry: active.registry,
+      extra,
+      contentId: id,
+      schemaKey,
+      schemaVersion: active.version,
+      title,
+      status,
+      createdAt: now,
+      updatedAt: now
+    })
   })
 
-  await syncContentRefs({ db, contentId: id, registry: active.registry, extra })
-  await upsertContentSearchData({ db, contentId: id, registry: active.registry, extra })
+  queueWidgetCacheInvalidation(event, `schema:${schemaKey}`)
 
   return { ok: true, id }
 })
