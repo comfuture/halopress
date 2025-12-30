@@ -22,6 +22,13 @@
       "when": 1766474177988,
       "tag": "0002_drop_asset_variant_table",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1766993727200,
+      "tag": "0003_add_content_items_snapshot",
+      "breakpoints": true
     }
   ]
 }

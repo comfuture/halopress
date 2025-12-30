@@ -71,6 +71,22 @@ export const content = sqliteTable('content', {
   byStatus: index('idx_content_status').on(t.schemaKey, t.status, t.updatedAt)
 }))
 
+export const contentItems = sqliteTable('content_items', {
+  contentId: text('content_id').notNull(),
+  schemaKey: text('schema_key').notNull(),
+  schemaVersion: integer('schema_version').notNull(),
+  title: text('title'),
+  description: text('description'),
+  image: text('image'),
+  status: text('status').notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull()
+}, t => ({
+  pk: primaryKey({ columns: [t.contentId] }),
+  bySchemaUpdated: index('idx_content_items_schema_updated').on(t.schemaKey, t.updatedAt),
+  byStatus: index('idx_content_items_status').on(t.schemaKey, t.status, t.updatedAt)
+}))
+
 export const contentFields = sqliteTable('content_fields', {
   schemaKey: text('schema_key').notNull(),
   fieldId: text('field_id').notNull(),
