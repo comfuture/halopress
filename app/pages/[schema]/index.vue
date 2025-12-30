@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ButtonProps } from '@nuxt/ui'
+
 const route = useRoute()
 const router = useRouter()
 const schemaKey = computed(() => String(route.params.schema))
