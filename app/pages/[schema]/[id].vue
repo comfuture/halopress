@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Content } from '@tiptap/core'
+
 const route = useRoute()
 const schemaKey = computed(() => String(route.params.schema))
 const id = computed(() => String(route.params.id))

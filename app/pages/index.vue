@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ButtonProps } from '@nuxt/ui'
+
 const { data } = await useFetch<{ items: Array<{ schemaKey: string; title?: string; activeVersion: number }> }>('/api/schema/list')
 const schemas = computed(() => data.value?.items ?? [])
 
