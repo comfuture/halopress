@@ -209,15 +209,16 @@ const suggestionItems = [[{
   icon: 'i-lucide-separator-horizontal'
 }]] satisfies EditorSuggestionMenuItem<typeof customHandlers>[][]
 
-const selectedNode = ref<{ node: JSONContent | null, pos: number }>()
+const selectedNode = ref<{ node: JSONContent | null, pos: number } | null>(null)
 
 const getDragHandleItems = (editor: Editor): DropdownMenuItem[][] => {
   if (!selectedNode.value?.node?.type) {
     return []
   }
 
-  const nodeType = selectedNode.value.node.type
-  const label = nodeType ? nodeType[0].toUpperCase() + nodeType.slice(1) : 'Block'
+  const nodeType = selectedNode.value?.node?.type
+  if (!nodeType) return []
+  const label = nodeType.slice(0, 1).toUpperCase() + nodeType.slice(1)
 
   return mapEditorItems(editor, [[
     {

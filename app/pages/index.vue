@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { ButtonProps } from '@nuxt/ui'
 const { data } = await useFetch<{ items: Array<{ schemaKey: string; title?: string; activeVersion: number }> }>('/api/schema/list')
 const schemas = computed(() => data.value?.items ?? [])
 
@@ -13,7 +14,7 @@ const schemaLinks = computed(() =>
 const heroLinks = [
   { label: 'Open Desk', to: '/_desk', color: 'primary' },
   { label: 'View Collections', to: '/#collections', variant: 'outline' }
-]
+] satisfies ButtonProps[]
 
 const highlightFeatures = [
   {

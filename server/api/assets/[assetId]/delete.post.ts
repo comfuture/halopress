@@ -23,7 +23,7 @@ function replaceAssetRefs(value: unknown, fromId: string, toId?: string | null):
         changed = true
       }
       if (next.includes(rawUrl)) {
-        const replaced = next.split(rawUrl).join(nextUrl)
+        const replaced = next.split(rawUrl).join(nextUrl ?? '')
         if (replaced !== next) {
           next = replaced
           changed = true
@@ -119,8 +119,8 @@ export default defineEventHandler(async (event) => {
     .where(eq(contentRefList.assetId, assetId))
 
   const contentIds = Array.from(new Set([
-    ...refs.map(ref => ref.contentId),
-    ...listRefs.map(ref => ref.contentId)
+    ...refs.map((ref: { contentId: string }) => ref.contentId),
+    ...listRefs.map((ref: { contentId: string }) => ref.contentId)
   ]))
 
   if (hasReplacement) {

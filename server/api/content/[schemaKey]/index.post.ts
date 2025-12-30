@@ -20,6 +20,7 @@ export default defineEventHandler(async (event) => {
   const db = await getDb(event)
   const active = await getActiveSchema(db, schemaKey)
   if (!active?.registry) throw notFound('Active schema not found')
+  const registry = active.registry
 
   const id = newId()
   const now = new Date()
@@ -43,11 +44,11 @@ export default defineEventHandler(async (event) => {
       updatedAt: now
     })
 
-    await syncContentRefs({ db: tx, contentId: id, registry: active.registry, extra })
-    await upsertContentSearchData({ db: tx, contentId: id, registry: active.registry, extra })
+    await syncContentRefs({ db: tx, contentId: id, registry, extra })
+    await upsertContentSearchData({ db: tx, contentId: id, registry, extra })
     await upsertContentItemSnapshot({
       db: tx,
-      registry: active.registry,
+      registry,
       extra,
       contentId: id,
       schemaKey,

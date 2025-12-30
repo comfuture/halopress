@@ -21,6 +21,7 @@ export default defineEventHandler(async (event) => {
   const db = await getDb(event)
   const active = await getActiveSchema(db, schemaKey)
   if (!active?.registry) throw notFound('Active schema not found')
+  const registry = active.registry
 
   const existing = await db
     .select()
@@ -49,11 +50,11 @@ export default defineEventHandler(async (event) => {
       })
       .where(eq(contentTable.id, id))
 
-    await syncContentRefs({ db: tx, contentId: id, registry: active.registry, extra })
-    await upsertContentSearchData({ db: tx, contentId: id, registry: active.registry, extra })
+    await syncContentRefs({ db: tx, contentId: id, registry, extra })
+    await upsertContentSearchData({ db: tx, contentId: id, registry, extra })
     await upsertContentItemSnapshot({
       db: tx,
-      registry: active.registry,
+      registry,
       extra,
       contentId: id,
       schemaKey,

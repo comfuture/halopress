@@ -30,7 +30,7 @@ const deleteOpen = ref(false)
 const replacementOpen = ref(false)
 const replacing = ref(false)
 const deleting = ref(false)
-const replaceFiles = ref<File[] | null>(null)
+const replaceFile = ref<File | null>(null)
 const replacementId = ref<string | null>(null)
 
 const availableAssets = computed(() => (props.assets || []).filter(a => a.id !== props.asset.id))
@@ -97,7 +97,7 @@ const menuItems = computed<DropdownMenuItem[][]>(() => [
 ])
 
 async function handleReplace() {
-  const file = replaceFiles.value?.[0]
+  const file = replaceFile.value
   if (!file || replacing.value) return
 
   replacing.value = true
@@ -107,7 +107,7 @@ async function handleReplace() {
     await $fetch(`/api/assets/${props.asset.id}/replace`, { method: 'POST', body: form })
     toast.add({ title: 'Asset replaced', description: props.asset.id })
     replaceOpen.value = false
-    replaceFiles.value = null
+    replaceFile.value = null
     emit('updated')
   } catch (err: any) {
     toast.add({ title: 'Replace failed', description: err?.statusMessage || 'Error', color: 'error' })
@@ -153,7 +153,7 @@ watch(deleteOpen, (open) => {
 })
 
 watch(replaceOpen, (open) => {
-  if (!open) replaceFiles.value = null
+  if (!open) replaceFile.value = null
 })
 </script>
 
@@ -181,7 +181,7 @@ watch(replaceOpen, (open) => {
     <template #body>
       <div class="flex flex-col gap-4">
         <UFileUpload
-          v-model="replaceFiles"
+          v-model="replaceFile"
           accept="image/*"
           :multiple="false"
           label="Upload new file"
@@ -197,7 +197,7 @@ watch(replaceOpen, (open) => {
       <UButton color="neutral" variant="outline" :disabled="replacing" @click="replaceOpen = false">
         Cancel
       </UButton>
-      <UButton color="primary" :loading="replacing" :disabled="!replaceFiles?.length" @click="handleReplace">
+      <UButton color="primary" :loading="replacing" :disabled="!replaceFile" @click="handleReplace">
         Replace
       </UButton>
     </template>

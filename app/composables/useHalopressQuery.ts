@@ -17,7 +17,7 @@ export type HalopressQueryOptions = {
   cursor?: MaybeRef<string | number | null>
   pageSize?: MaybeRef<number>
   order?: MaybeRef<'asc' | 'desc'>
-  status?: MaybeRef<string>
+  status?: MaybeRef<string | null>
 }
 
 type HalopressQueryResponse = {
