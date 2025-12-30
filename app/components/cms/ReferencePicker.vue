@@ -19,7 +19,7 @@ watch(() => props.modelValue, (v) => {
 const fetchUrl = computed(() => props.targetSchemaKey ? `/api/content/${props.targetSchemaKey}` : '/api/content/__none__')
 const { data: list, refresh } = await useFetch<{ items: any[] }>(fetchUrl, {
   immediate: false,
-  query: { limit: 50 }
+  query: { pageSize: 50 }
 })
 
 watch(() => props.targetSchemaKey, async (v) => {
