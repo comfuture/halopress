@@ -118,7 +118,6 @@ async function publish() {
 
 const removing = ref(false)
 async function remove() {
-  const title = doc.value?.title || doc.value?.id || id.value
   const ok = await confirm({
     title: 'Delete content',
     body: 'This will soft delete the content and it will no longer appear in the list.',

@@ -439,7 +439,6 @@ function removeField(index: number) {
 async function confirmRemoveField(index: number) {
   const field = state.fields[index]
   if (!field) return
-  const label = field.title || field.key || 'this field'
   const ok = await confirm({
     title: 'Remove field',
     body: 'This change only affects the draft until you publish.',
