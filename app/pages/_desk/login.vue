@@ -42,7 +42,7 @@ async function submit() {
               Desk Login
             </h1>
             <p class="text-sm text-muted">
-              Use `HALOPRESS_ADMIN_EMAIL` / `HALOPRESS_ADMIN_PASSWORD`.
+              Use the admin account created in `/_install` or `HALOPRESS_ADMIN_EMAIL` / `HALOPRESS_ADMIN_PASSWORD`.
             </p>
           </div>
         </template>

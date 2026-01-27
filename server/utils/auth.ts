@@ -2,16 +2,20 @@ import { SignJWT, jwtVerify } from 'jose'
 import type { H3Event } from 'h3'
 import { getCookie, setCookie } from 'h3'
 import { useRuntimeConfig } from '#imports'
+import { eq } from 'drizzle-orm'
 
 import { unauthorized } from './http'
 import { getTenantKey } from './tenant'
+import { getDb } from '../db/db'
+import { user as userTable } from '../db/schema'
+import { verifyPassword } from './password'
 
 const SESSION_COOKIE = 'hp_session'
 
 export type SessionPayload = {
   sub: string
   email: string
-  role: 'admin'
+  role: 'admin' | 'user' | 'anonymous'
   tenantKey: string
 }
 
@@ -83,4 +87,32 @@ export function isAdminLoginAllowed(email: string, password: string) {
   const adminEmail = (config.adminEmail as string | undefined) ?? ''
   const adminPassword = (config.adminPassword as string | undefined) ?? ''
   return email === adminEmail && password === adminPassword
+}
+
+export async function getAdminUserByEmail(event: H3Event, email: string) {
+  const db = await getDb(event)
+  try {
+    const rows = await db
+      .select({
+        id: userTable.id,
+        email: userTable.email,
+        roleKey: userTable.roleKey,
+        passwordHash: userTable.passwordHash,
+        passwordSalt: userTable.passwordSalt
+      })
+      .from(userTable)
+      .where(eq(userTable.email, email))
+      .limit(1)
+    const user = rows?.[0]
+    if (!user || user.roleKey !== 'admin') return null
+    return user
+  } catch {
+    return null
+  }
+}
+
+export async function isAdminLoginAllowedDb(event: H3Event, email: string, password: string) {
+  const user = await getAdminUserByEmail(event, email)
+  if (!user?.passwordHash || !user?.passwordSalt) return false
+  return await verifyPassword(password, user.passwordHash, user.passwordSalt)
 }
