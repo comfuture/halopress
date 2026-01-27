@@ -9,6 +9,7 @@ import { schema as schemaTable, schemaActive as schemaActiveTable } from '../../
 import { requireAdmin } from '../../../utils/auth'
 import { badRequest, notFound } from '../../../utils/http'
 import { schemaAstSchema } from '../../../cms/zod'
+import { ensureAnonymousSchemaRole } from '../../../utils/install'
 
 export default defineEventHandler(async (event) => {
   const session = await requireAdmin(event)
@@ -70,6 +71,8 @@ export default defineEventHandler(async (event) => {
         updatedAt: now
       }
     })
+
+  await ensureAnonymousSchemaRole(db, schemaKey)
 
   let migrated = 0
   if (body?.migrate && kindChanges.length) {

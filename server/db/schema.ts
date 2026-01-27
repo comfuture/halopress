@@ -1,22 +1,24 @@
 import { index, integer, primaryKey, real, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
+export const userRole = sqliteTable('user_role', {
+  roleKey: text('role_key').notNull(),
+  title: text('title')
+}, t => ({
+  pk: primaryKey({ columns: [t.roleKey] })
+}))
+
 export const user = sqliteTable('user', {
   id: text('id').notNull(),
   email: text('email').notNull(),
   name: text('name'),
+  roleKey: text('role_key').notNull().default('user').references(() => userRole.roleKey),
+  passwordHash: text('password_hash'),
+  passwordSalt: text('password_salt'),
   status: text('status').notNull().default('active'),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull()
 }, t => ({
   pk: primaryKey({ columns: [t.id] }),
   byEmail: index('idx_user_email').on(t.email)
-}))
-
-export const member = sqliteTable('member', {
-  userId: text('user_id').notNull(),
-  role: text('role').notNull(),
-  createdAt: integer('created_at', { mode: 'timestamp' }).notNull()
-}, t => ({
-  pk: primaryKey({ columns: [t.userId] })
 }))
 
 export const schema = sqliteTable('schema', {
@@ -42,6 +44,18 @@ export const schemaActive = sqliteTable('schema_active', {
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull()
 }, t => ({
   pk: primaryKey({ columns: [t.schemaKey] })
+}))
+
+export const schemaRole = sqliteTable('schema_role', {
+  schemaKey: text('schema_key').notNull(),
+  roleKey: text('role_key').notNull().references(() => userRole.roleKey),
+  canRead: integer('can_read', { mode: 'boolean' }).notNull().default(false),
+  canWrite: integer('can_write', { mode: 'boolean' }).notNull().default(false),
+  canAdmin: integer('can_admin', { mode: 'boolean' }).notNull().default(false)
+}, t => ({
+  pk: primaryKey({ columns: [t.schemaKey, t.roleKey] }),
+  bySchema: index('idx_schema_role_schema').on(t.schemaKey),
+  byRole: index('idx_schema_role_role').on(t.roleKey)
 }))
 
 export const schemaDraft = sqliteTable('schema_draft', {
