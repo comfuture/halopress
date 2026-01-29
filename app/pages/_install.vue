@@ -264,8 +264,8 @@ async function completeSetup() {
                 </h2>
                 <p class="text-sm text-muted">
                   Confirm the setup choices below. When you complete setup we will run migrations,
-                  seed core roles, create the admin account, and optionally generate the sample schema
-                  and Welcome guide.
+                  create the admin account, insert the default roles, and optionally generate the sample
+                  schema and Welcome guide.
                 </p>
               </div>
 
