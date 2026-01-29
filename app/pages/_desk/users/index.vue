@@ -3,7 +3,8 @@ import { h, resolveComponent } from 'vue'
 import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
 
 definePageMeta({
-  layout: 'desk'
+  layout: 'desk',
+  key: (route) => route.fullPath
 })
 
 type UserRow = {
@@ -27,15 +28,18 @@ type PendingState = {
 
 const toast = useToast()
 const { confirm } = useConfirmDialog()
+const route = useRoute()
+const router = useRouter()
 
-const search = ref('')
-const statusFilter = ref('all')
-const roleFilter = ref('all')
+const search = ref(typeof route.query.q === 'string' ? route.query.q : '')
+const statusFilter = ref(typeof route.query.status === 'string' ? route.query.status : 'all')
+const roleFilter = ref(typeof route.query.role === 'string' ? route.query.role : 'all')
 
 const query = computed(() => ({
   limit: 200,
-  status: statusFilter.value === 'all' ? undefined : statusFilter.value,
-  roleKey: roleFilter.value === 'all' ? undefined : roleFilter.value
+  q: typeof route.query.q === 'string' && route.query.q.trim().length ? route.query.q.trim() : undefined,
+  status: typeof route.query.status === 'string' && route.query.status !== 'all' ? route.query.status : undefined,
+  role: typeof route.query.role === 'string' && route.query.role !== 'all' ? route.query.role : undefined
 }))
 
 const { data, pending, refresh } = await useFetch<{ items: UserRow[] }>('/api/users/list', {
@@ -78,18 +82,16 @@ function getPending(id: string) {
   return pendingState[id]
 }
 
-const filteredRows = computed(() => {
-  const rows = data.value?.items || []
-  const term = search.value.trim().toLowerCase()
-  if (!term) return rows
-  return rows.filter(row => {
-    const haystack = [row.name, row.email, row.id]
-      .filter(Boolean)
-      .join(' ')
-      .toLowerCase()
-    return haystack.includes(term)
+async function applySearch() {
+  await router.push({
+    path: route.path,
+    query: {
+      q: search.value.trim(),
+      role: roleFilter.value,
+      status: statusFilter.value
+    }
   })
-})
+}
 
 const editOpen = ref(false)
 const editRow = ref<UserRow | null>(null)
@@ -239,7 +241,7 @@ const columns = computed<TableColumn<UserRow>[]>(() => ([
         <template #actions>
           <div class="flex items-center gap-2">
             <UBadge variant="soft" color="neutral">
-              {{ filteredRows.length }} users
+              {{ data?.items?.length || 0 }} users
             </UBadge>
             <UButton
               color="neutral"
@@ -262,6 +264,7 @@ const columns = computed<TableColumn<UserRow>[]>(() => ([
               placeholder="Search users..."
               icon="i-lucide-search"
               class="w-64"
+              @keydown.enter.prevent="applySearch"
             />
             <USelect
               v-model="statusFilter"
@@ -273,6 +276,9 @@ const columns = computed<TableColumn<UserRow>[]>(() => ([
               :items="filterRoleOptions"
               class="w-40"
             />
+            <UButton color="primary" @click="applySearch">
+              Search
+            </UButton>
           </div>
         </template>
         <template #right>
@@ -283,7 +289,7 @@ const columns = computed<TableColumn<UserRow>[]>(() => ([
 
     <template #body>
       <UTable
-        :data="filteredRows"
+        :data="data?.items || []"
         :columns="columns"
         :loading="pending"
         empty="No users found."
