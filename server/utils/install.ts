@@ -97,9 +97,7 @@ export async function runMigrations(db: any) {
       await db.run(sql.raw(statement))
     }
     await db.run(
-      sql.raw(
-        `INSERT INTO __drizzle_migrations ("hash", "created_at") VALUES ('${migration.hash}', '${migration.when}')`
-      )
+      sql`INSERT INTO __drizzle_migrations ("hash", "created_at") VALUES (${migration.hash}, ${migration.when})`
     )
     lastTimestamp = migration.when
   }
