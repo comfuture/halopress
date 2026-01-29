@@ -13,6 +13,7 @@ const activeContentBase = computed(() => {
 })
 
 const isSchemasRoute = computed(() => route.path === '/_desk/schemas' || route.path.startsWith('/_desk/schemas/'))
+const isUsersRoute = computed(() => route.path === '/_desk/users' || route.path.startsWith('/_desk/users/'))
 
 const isContentRoute = computed(() => activeContentBase.value !== null)
 const isAssetsRoute = computed(() => route.path === '/_desk/assets' || route.path.startsWith('/_desk/assets/'))
@@ -32,6 +33,12 @@ const navItems = computed(() => ([
     label: 'Dashboard',
     to: '/_desk',
     icon: 'i-lucide-home'
+  },
+  {
+    label: 'Users',
+    to: '/_desk/users',
+    icon: 'i-lucide-users',
+    active: isUsersRoute.value
   },
   {
     label: 'Schemas',

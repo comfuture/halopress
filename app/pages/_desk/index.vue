@@ -4,9 +4,12 @@ definePageMeta({
 })
 
 const { data: schemas, refresh } = await useFetch<{ items: Array<{ schemaKey: string; title?: string; activeVersion: number }> }>('/api/schema/list')
+const { data: userStats } = await useFetch<{ total: number }>('/api/users/stats')
 const toast = useToast()
 
-const hasSchemas = computed(() => (schemas.value?.items?.length ?? 0) > 0)
+const schemaCount = computed(() => schemas.value?.items?.length ?? 0)
+const userCount = computed(() => userStats.value?.total ?? 0)
+const hasSchemas = computed(() => schemaCount.value > 0)
 
 async function bootstrap() {
   try {
@@ -27,7 +30,37 @@ async function bootstrap() {
     </template>
 
     <template #body>
-      <UAlert v-if="!hasSchemas" title="No active schemas"
+      <UPageGrid class="mb-6">
+        <UCard class="transition hover:bg-elevated/40">
+          <NuxtLink to="/_desk/users" class="block">
+            <div class="flex items-center justify-between text-sm text-muted">
+              <span>Users</span>
+              <UIcon name="i-lucide-users" class="text-muted" />
+            </div>
+            <div class="mt-3 text-3xl font-semibold">
+              {{ userCount }}
+            </div>
+            <p class="mt-1 text-xs text-muted">Active users</p>
+          </NuxtLink>
+        </UCard>
+
+        <UCard class="transition hover:bg-elevated/40">
+          <NuxtLink to="/_desk/schemas" class="block">
+            <div class="flex items-center justify-between">
+              <span class="text-sm text-muted">Schemas</span>
+              <UBadge variant="soft" color="neutral">
+                {{ schemaCount }}
+              </UBadge>
+            </div>
+            <div class="mt-3 text-3xl font-semibold">
+              {{ schemaCount }}
+            </div>
+            <p class="mt-1 text-xs text-muted">Registered schemas</p>
+          </NuxtLink>
+        </UCard>
+      </UPageGrid>
+
+      <UAlert v-if="!hasSchemas" title="No schemas yet"
         description="Create your first schema or bootstrap a default Article schema." icon="i-lucide-sparkles"
         variant="subtle">
         <template #actions>
@@ -39,32 +72,6 @@ async function bootstrap() {
           </UButton>
         </template>
       </UAlert>
-
-      <UCard v-else>
-        <template #header>
-          <div class="flex items-center justify-between">
-            <span class="font-medium">Active Schemas</span>
-            <UButton to="/_desk/schemas/new" icon="i-lucide-plus" size="sm">
-              New
-            </UButton>
-          </div>
-        </template>
-        <UPageGrid>
-          <UPageCard v-for="s in (schemas?.items || [])" :key="s.schemaKey" :title="s.title || s.schemaKey"
-            :description="`active v${s.activeVersion}`" :to="`/_desk/content/${s.schemaKey}`" icon="i-lucide-files">
-            <template #footer>
-              <div class="flex gap-2">
-                <UButton size="xs" color="neutral" variant="outline" :to="`/_desk/schemas/${s.schemaKey}`">
-                  Edit schema
-                </UButton>
-                <UButton size="xs" color="neutral" variant="outline" :to="`/${s.schemaKey}/`">
-                  View
-                </UButton>
-              </div>
-            </template>
-          </UPageCard>
-        </UPageGrid>
-      </UCard>
     </template>
   </UDashboardPanel>
 </template>
