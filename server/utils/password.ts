@@ -1,3 +1,5 @@
+import type { webcrypto } from 'node:crypto'
+
 const HASH_ITERATIONS = 120000
 const HASH_LENGTH = 32
 
@@ -25,8 +27,10 @@ function secureEqual(a: string, b: string) {
   return diff === 0
 }
 
-async function getCrypto() {
-  if (globalThis.crypto?.subtle) return globalThis.crypto
+type WebCrypto = webcrypto.Crypto
+
+async function getCrypto(): Promise<WebCrypto> {
+  if (globalThis.crypto?.subtle) return globalThis.crypto as unknown as WebCrypto
   const { webcrypto } = await import('node:crypto')
   return webcrypto
 }

@@ -186,8 +186,22 @@ export async function ensureBootstrapSchema(db: any, createdBy: string) {
     body: {
       type: 'doc',
       content: [
-        { type: 'heading', attrs: { level: 1 }, content: [{ type: 'text', text: 'Hello Halopress' }] },
-        { type: 'paragraph', content: [{ type: 'text', text: 'This is your first article.' }] }
+        { type: 'heading', attrs: { level: 1 }, content: [{ type: 'text', text: 'Welcome to Halopress' }] },
+        {
+          type: 'paragraph',
+          content: [
+            { type: 'text', text: 'This guide helps you explore the Article schema created during setup.' }
+          ]
+        },
+        {
+          type: 'paragraph',
+          content: [
+            {
+              type: 'text',
+              text: 'Next, create your own schemas and start publishing content from the desk.'
+            }
+          ]
+        }
       ]
     }
   }
@@ -196,7 +210,7 @@ export async function ensureBootstrapSchema(db: any, createdBy: string) {
     id,
     schemaKey: ast.schemaKey,
     schemaVersion: 1,
-    title: 'Hello Halopress',
+    title: 'Welcome guide',
     status: 'published',
     extraJson: JSON.stringify(bootstrapExtra),
     createdBy,
@@ -211,7 +225,7 @@ export async function ensureBootstrapSchema(db: any, createdBy: string) {
     contentId: id,
     schemaKey: ast.schemaKey,
     schemaVersion: 1,
-    title: 'Hello Halopress',
+    title: 'Welcome guide',
     status: 'published',
     createdAt: now,
     updatedAt: now
@@ -244,7 +258,7 @@ export async function getInstallStatus(db: any) {
   const schemaCount = Number(schemaCountRows?.[0]?.[0] ?? 0)
 
   return {
-    ready: roleCount > 0 && userCount > 0 && schemaCount > 0,
+    ready: roleCount > 0 && userCount > 0,
     missingTables: [],
     roleCount,
     userCount,
