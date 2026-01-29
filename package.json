@@ -23,10 +23,10 @@
     "deploy:cf": "bash scripts/deploy-cloudflare.sh"
   },
   "dependencies": {
-    "@iconify-json/lucide": "^1.2.74",
-    "@iconify-json/simple-icons": "^1.2.59",
+    "@iconify-json/lucide": "^1.2.87",
+    "@iconify-json/simple-icons": "^1.2.68",
     "@nuxt/image": "2.0.0",
-    "@nuxt/ui": "^4.3.0",
+    "@nuxt/ui": "^4.4.0",
     "@tiptap/core": "3.14.0",
     "@tiptap/extension-collaboration": "3.14.0",
     "@tiptap/extension-drag-handle": "3.14.0",
@@ -37,27 +37,29 @@
     "@tiptap/extension-text-align": "3.14.0",
     "@tiptap/extensions": "3.14.0",
     "@tiptap/pm": "3.14.0",
-    "@tiptap/suggestion": "3.14.0",
     "@tiptap/starter-kit": "3.14.0",
+    "@tiptap/suggestion": "3.14.0",
     "@tiptap/vue-3": "3.14.0",
+    "canvas-confetti": "^1.9.4",
     "drizzle-orm": "^0.45.1",
     "jose": "^6.1.3",
-    "nuxt": "^4.2.2",
+    "nuxt": "^4.3.0",
     "sortablejs": "^1.15.6",
     "ulid": "^3.0.2",
-    "zod": "^4.2.1",
+    "zod": "^4.3.6",
     "zod-from-json-schema": "^0.5.2"
   },
   "devDependencies": {
     "@libsql/client": "^0.15.15",
-    "@nuxt/eslint": "^1.10.0",
-    "@types/node": "^25.0.3",
+    "@nuxt/eslint": "^1.13.0",
+    "@types/canvas-confetti": "^1.9.0",
+    "@types/node": "^25.1.0",
     "@types/sortablejs": "^1.15.9",
     "drizzle-kit": "^0.31.8",
-    "eslint": "^9.39.1",
+    "eslint": "^9.39.2",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
-    "vue-tsc": "^3.1.5"
+    "vue-tsc": "^3.2.4"
   },
   "pnpm": {
     "overrides": {

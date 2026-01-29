@@ -8,6 +8,7 @@ import type {
 import type { Editor, JSONContent } from '@tiptap/vue-3'
 import { mapEditorItems } from '@nuxt/ui/utils/editor'
 import { markRaw } from 'vue'
+import type { DragHandleProps } from '@tiptap/extension-drag-handle-vue-3'
 import TextAlign from '@tiptap/extension-text-align'
 import ImageUpload from '~/editor/RichEditorImageUpload'
 import RichEditorLinkPopover from './RichEditorLinkPopover.vue'
@@ -293,6 +294,8 @@ const onNodeChange = (event: { node: JSONContent | null, pos: number }) => {
   selectedNode.value = event
 }
 
+const dragHandleNestedOptions = undefined as unknown as DragHandleProps['nestedOptions']
+
 const getImageToolbarItems = (editor: Editor): EditorToolbarItem<typeof customHandlers>[][] => {
   const node = editor.state.doc.nodeAt(editor.state.selection.from)
 
@@ -387,6 +390,7 @@ const extensions = markRaw([
         v-if="editable"
         v-slot="{ ui, onClick }"
         :editor="editor"
+        :nested-options="dragHandleNestedOptions"
         plugin-key="richtext-drag-handle"
         @node-change="onNodeChange"
       >

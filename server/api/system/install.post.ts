@@ -12,10 +12,11 @@ import {
 } from '../../utils/install'
 
 export default defineEventHandler(async (event) => {
-  const body = await readBody<{ email?: string; name?: string; password?: string }>(event)
+  const body = await readBody<{ email?: string; name?: string; password?: string; sampleData?: boolean }>(event)
   const email = (body?.email ?? '').trim().toLowerCase()
   const name = (body?.name ?? '').trim()
   const password = body?.password ?? ''
+  const sampleData = body?.sampleData === true
 
   if (!email || !password) throw badRequest('Missing admin credentials')
 
@@ -46,7 +47,9 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  await ensureBootstrapSchema(db, sub)
+  if (sampleData) {
+    await ensureBootstrapSchema(db, sub)
+  }
 
   return { ok: true }
 })
