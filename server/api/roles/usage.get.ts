@@ -38,7 +38,7 @@ export default defineEventHandler(async (event) => {
     .get()
 
   return {
-    schemas: schemas.map((row: any) => ({
+    schemas: schemas.map(row => ({
       schemaKey: row.schemaKey,
       title: row.title ?? row.schemaKey,
       canRead: !!row.canRead,

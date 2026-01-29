@@ -200,7 +200,13 @@ const columns = computed<TableColumn<UserRow>[]>(() => ([
   {
     accessorKey: 'createdAt',
     header: 'Created',
-    cell: ({ row }) => new Date(row.getValue('createdAt') as string).toLocaleString()
+    cell: ({ row }) => new Date(row.getValue('createdAt') as string).toLocaleString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
   },
   {
     id: 'actions',

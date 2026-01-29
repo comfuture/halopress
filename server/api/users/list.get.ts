@@ -55,7 +55,7 @@ export default defineEventHandler(async (event) => {
     .get()
   const adminCount = Number(adminCountRow?.count ?? 0)
 
-  const enriched = items.map((item: any) => ({
+  const enriched = items.map(item => ({
     ...item,
     canDelete: !(item.roleKey === 'admin' && item.status !== 'deleted' && adminCount <= 1)
   }))
