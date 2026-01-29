@@ -51,7 +51,7 @@ async function createRole() {
       method: 'POST',
       body: {
         roleKey,
-        title: newRoleTitle.value.trim() || undefined,
+        title: newRoleTitle.value.trim() || null,
         level: parseLevel(newRoleLevel.value)
       }
     })

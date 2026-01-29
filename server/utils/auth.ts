@@ -58,6 +58,16 @@ export async function requireAdmin(event: H3Event): Promise<SessionPayload> {
   if (session.role !== 'admin') throw unauthorized()
   const tenantKey = getTenantKey(event)
   if (session.tenantKey !== tenantKey) throw unauthorized('Tenant mismatch')
+  if (session.sub.startsWith('user:')) {
+    const userId = session.sub.slice(5)
+    const db = await getDb(event)
+    const row = await db
+      .select({ id: userTable.id, status: userTable.status })
+      .from(userTable)
+      .where(eq(userTable.id, userId))
+      .get()
+    if (!row || row.status !== 'active') throw unauthorized()
+  }
   return session
 }
 
@@ -97,6 +107,7 @@ export async function getAdminUserByEmail(event: H3Event, email: string) {
         id: userTable.id,
         email: userTable.email,
         roleKey: userTable.roleKey,
+        status: userTable.status,
         passwordHash: userTable.passwordHash,
         passwordSalt: userTable.passwordSalt
       })
@@ -104,7 +115,7 @@ export async function getAdminUserByEmail(event: H3Event, email: string) {
       .where(eq(userTable.email, email))
       .limit(1)
     const user = rows?.[0]
-    if (!user || user.roleKey !== 'admin') return null
+    if (!user || user.roleKey !== 'admin' || user.status !== 'active') return null
     return user
   } catch (error) {
     if (isMissingUserTableError(error)) return null
