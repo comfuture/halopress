@@ -44,7 +44,18 @@ export default defineEventHandler(async (event) => {
     query = query.where(and(...whereParts))
   }
 
-  const items = await query
+  type UserListRow = {
+    id: string
+    email: string
+    name: string | null
+    roleKey: string
+    roleTitle: string | null
+    roleLevel: number | null
+    status: string
+    createdAt: Date | string | number
+  }
+
+  const items: UserListRow[] = await query
     .orderBy(desc(userTable.createdAt))
     .limit(limit)
 
@@ -55,7 +66,7 @@ export default defineEventHandler(async (event) => {
     .get()
   const adminCount = Number(adminCountRow?.count ?? 0)
 
-  const enriched = items.map(item => ({
+  const enriched = items.map((item: UserListRow) => ({
     ...item,
     canDelete: !(item.roleKey === 'admin' && item.status !== 'deleted' && adminCount <= 1)
   }))

@@ -14,7 +14,15 @@ export default defineEventHandler(async (event) => {
 
   const db = await getDb(event)
 
-  const schemas = await db
+  type SchemaUsageRow = {
+    schemaKey: string
+    title: string | null
+    canRead: boolean | number
+    canWrite: boolean | number
+    canAdmin: boolean | number
+  }
+
+  const schemas: SchemaUsageRow[] = await db
     .select({
       schemaKey: schemaRoleTable.schemaKey,
       canRead: schemaRoleTable.canRead,
@@ -38,7 +46,7 @@ export default defineEventHandler(async (event) => {
     .get()
 
   return {
-    schemas: schemas.map(row => ({
+    schemas: schemas.map((row: SchemaUsageRow) => ({
       schemaKey: row.schemaKey,
       title: row.title ?? row.schemaKey,
       canRead: !!row.canRead,
