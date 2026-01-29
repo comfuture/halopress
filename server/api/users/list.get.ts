@@ -9,14 +9,22 @@ export default defineEventHandler(async (event) => {
   await requireAdmin(event)
   const q = getQuery(event)
   const limit = Math.min(Number(q.limit ?? 50) || 50, 200)
-  const status = typeof q.status === 'string' && q.status.length ? q.status : null
-  const roleKey = typeof q.roleKey === 'string' && q.roleKey.length ? q.roleKey : null
+  const statusRaw = typeof q.status === 'string' && q.status.length ? q.status : null
+  const status = statusRaw && statusRaw !== 'all' ? statusRaw : null
+  const roleKeyParam = typeof q.role === 'string' && q.role.length ? q.role : null
+  const roleKeyRaw = roleKeyParam || (typeof q.roleKey === 'string' && q.roleKey.length ? q.roleKey : null)
+  const roleKey = roleKeyRaw && roleKeyRaw !== 'all' ? roleKeyRaw : null
+  const search = typeof q.q === 'string' ? q.q.trim().toLowerCase() : ''
 
   const db = await getDb(event)
 
   const whereParts: any[] = []
   if (status) whereParts.push(eq(userTable.status, status))
   if (roleKey) whereParts.push(eq(userTable.roleKey, roleKey))
+  if (search) {
+    const term = `%${search}%`
+    whereParts.push(sql`(\n      lower(coalesce(${userTable.name}, '')) like ${term}\n      or lower(${userTable.email}) like ${term}\n      or lower(${userTable.id}) like ${term}\n    )`)
+  }
 
   let query = db
     .select({
