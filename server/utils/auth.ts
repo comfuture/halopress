@@ -106,8 +106,9 @@ export async function getAdminUserByEmail(event: H3Event, email: string) {
     const user = rows?.[0]
     if (!user || user.roleKey !== 'admin') return null
     return user
-  } catch {
-    return null
+  } catch (error) {
+    if (isMissingUserTableError(error)) return null
+    throw error
   }
 }
 
@@ -115,4 +116,10 @@ export async function isAdminLoginAllowedDb(event: H3Event, email: string, passw
   const user = await getAdminUserByEmail(event, email)
   if (!user?.passwordHash || !user?.passwordSalt) return false
   return await verifyPassword(password, user.passwordHash, user.passwordSalt)
+}
+
+function isMissingUserTableError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error)
+  return message.includes('no such table: user')
+    || message.includes('relation "user" does not exist')
 }
