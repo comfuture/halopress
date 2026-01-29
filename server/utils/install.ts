@@ -103,14 +103,18 @@ export async function runMigrations(db: any) {
   }
 }
 
-export async function seedRoles(db: any) {
+export type UserRoleSeed = { roleKey: string; title: string; level: number }
+
+const defaultRoles: UserRoleSeed[] = [
+  { roleKey: 'admin', title: 'Admin', level: 100 },
+  { roleKey: 'user', title: 'User', level: 50 },
+  { roleKey: 'anonymous', title: 'Anonymous', level: 0 }
+]
+
+export async function seedRoles(db: any, roles: UserRoleSeed[] = defaultRoles) {
   await db
     .insert(userRole)
-    .values([
-      { roleKey: 'admin', title: 'Admin' },
-      { roleKey: 'user', title: 'User' },
-      { roleKey: 'anonymous', title: 'Anonymous' }
-    ])
+    .values(roles)
     .onConflictDoNothing()
 }
 

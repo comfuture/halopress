@@ -2,7 +2,8 @@ import { index, integer, primaryKey, real, sqliteTable, text } from 'drizzle-orm
 
 export const userRole = sqliteTable('user_role', {
   roleKey: text('role_key').notNull(),
-  title: text('title')
+  title: text('title'),
+  level: integer('level').notNull().default(50)
 }, t => ({
   pk: primaryKey({ columns: [t.roleKey] })
 }))
