@@ -1,6 +1,6 @@
 <script setup lang="ts">
 definePageMeta({
-  layout: 'default'
+  layout: 'blank'
 })
 
 const state = reactive({
@@ -40,27 +40,24 @@ async function submit() {
 </script>
 
 <template>
-  <UContainer class="py-12">
-    <div class="max-w-md mx-auto">
-      <UCard>
+  <div class="min-h-screen bg-muted/60 px-6 py-12 flex items-center justify-center">
+    <div class="w-full max-w-md">
+      <UCard variant="subtle" class="shadow-lg ring-1 ring-muted/30">
         <template #header>
           <div class="space-y-1">
-            <h1 class="text-lg font-semibold">
-              Desk Login
+            <h1 class="text-xl font-semibold">
+              HaloPress Login
             </h1>
-            <p class="text-sm text-muted">
-              Sign in with the admin email/username created in `/_install` or `HALOPRESS_ADMIN_EMAIL` / `HALOPRESS_ADMIN_PASSWORD`.
-            </p>
           </div>
         </template>
 
         <UForm :state="state" class="space-y-4" @submit.prevent="submit">
           <UFormField label="Email or username" name="identifier">
-            <UInput v-model="state.identifier" placeholder="admin@local" autocomplete="username" />
+            <UInput v-model="state.identifier" class="w-full" placeholder="admin@local" autocomplete="username" />
           </UFormField>
 
           <UFormField label="Password" name="password">
-            <UInput v-model="state.password" type="password" autocomplete="current-password" />
+            <UInput v-model="state.password" class="w-full" type="password" autocomplete="current-password" />
           </UFormField>
 
           <UButton type="submit" block :loading="loading">
@@ -69,5 +66,5 @@ async function submit() {
         </UForm>
       </UCard>
     </div>
-  </UContainer>
+  </div>
 </template>
