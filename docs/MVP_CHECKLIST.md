@@ -1,7 +1,7 @@
 # Halopress MVP Checklist
 
 ## 0. Local setup
-- [ ] Set env: `HALOPRESS_AUTH_SECRET`, `HALOPRESS_ADMIN_EMAIL`, `HALOPRESS_ADMIN_PASSWORD`
+- [ ] Set env: `NUXT_AUTH_ORIGIN`, `NUXT_AUTH_SECRET`
 - [ ] `pnpm install`
 - [ ] `pnpm dev`
 
@@ -11,8 +11,8 @@
 - [x] DB adapter (local `node:sqlite` + Cloudflare D1 binding hook) (`server/db/db.ts`)
 
 ## 2. Auth (Desk)
-- [x] Admin login (`/api/auth/login`) using env credentials
-- [x] Session cookie (JWT HS256)
+- [x] Admin login (NuxtAuth credentials)
+- [x] Session strategy (JWT)
 - [x] Desk route guard (`app/middleware/desk-auth.global.ts`)
 - [ ] Replace env-login with OAuth (better-auth) (post-MVP)
 

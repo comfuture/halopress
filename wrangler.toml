@@ -4,9 +4,8 @@ compatibility_date = "2025-01-15"
 compatibility_flags = ["nodejs_compat"]
 
 [vars]
-# HALOPRESS_AUTH_SECRET = "change-me"
-# HALOPRESS_ADMIN_EMAIL = "admin@yourdomain"
-# HALOPRESS_ADMIN_PASSWORD = "change-me"
+# NUXT_AUTH_SECRET = "change-me"
+# NUXT_AUTH_ORIGIN = "https://yourdomain/api/auth"
 
 [[d1_databases]]
 binding = "DB"
