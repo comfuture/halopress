@@ -1,8 +1,7 @@
 import { readBody } from 'h3'
 import { getDb } from '../../db/db'
 import { badRequest, notFound, unauthorized } from '../../utils/http'
-import { getAdminUserByEmail, isAdminLoginAllowed, isAdminLoginAllowedDb, setAuthSession } from '../../utils/auth'
-import { getTenantKey } from '../../utils/tenant'
+import { getAdminUserByIdentifier, isAdminLoginAllowed, isAdminLoginAllowedDb } from '../../utils/auth'
 import {
   ensureAdminUser,
   ensureBootstrapSchema,
@@ -41,18 +40,12 @@ export default defineEventHandler(async (event) => {
   if ((freshStatus.userCount ?? 0) > 0) {
     const allowed = (await isAdminLoginAllowedDb(event, email, password)) || isAdminLoginAllowed(email, password)
     if (!allowed) throw unauthorized('Invalid admin credentials')
-    const adminUser = await getAdminUserByEmail(event, email)
+    const adminUser = await getAdminUserByIdentifier(event, email)
     sub = adminUser ? `user:${adminUser.id}` : `admin:${email}`
   } else {
     const adminId = await ensureAdminUser(db, { email, name, password })
     if (!adminId) throw badRequest('Admin user already exists')
     sub = `user:${adminId}`
-    await setAuthSession(event, {
-      sub,
-      email,
-      role: 'admin',
-      tenantKey: getTenantKey(event)
-    })
   }
 
   if (sampleData) {
