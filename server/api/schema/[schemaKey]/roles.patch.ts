@@ -4,7 +4,7 @@ import { readBody } from 'h3'
 import { getDb } from '../../../db/db'
 import { schemaRole as schemaRoleTable, userRole as userRoleTable } from '../../../db/schema'
 import { requireAdmin } from '../../../utils/auth'
-import { badRequest, notFound } from '../../../utils/http'
+import { badRequest, forbidden, notFound } from '../../../utils/http'
 
 export default defineEventHandler(async (event) => {
   await requireAdmin(event)
@@ -20,6 +20,7 @@ export default defineEventHandler(async (event) => {
 
   const roleKey = (body?.roleKey ?? '').trim()
   if (!roleKey) throw badRequest('Missing role key')
+  if (roleKey === 'admin') throw forbidden('Admin role permissions are immutable')
 
   const db = await getDb(event)
   const role = await db
