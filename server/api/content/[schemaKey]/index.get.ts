@@ -3,9 +3,11 @@ import { getQuery } from 'h3'
 
 import { getDb } from '../../../db/db'
 import { content as contentTable, contentItems as contentItemsTable, contentRef as contentRefTable } from '../../../db/schema'
+import { requireSchemaPermission } from '../../../utils/schema-permission'
 
 export default defineEventHandler(async (event) => {
   const schemaKey = event.context.params?.schemaKey as string
+  await requireSchemaPermission(event, schemaKey, 'read')
   const q = getQuery(event)
   const pageSize = Math.min(Number(q.pageSize ?? q.limit ?? 20) || 20, 50)
   const cursor = typeof q.cursor === 'string' && q.cursor.length ? q.cursor : null

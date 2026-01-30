@@ -1,7 +1,7 @@
 import { readBody } from 'h3'
 
 import { getDb } from '../../../db/db'
-import { requireAdmin } from '../../../utils/auth'
+import { getAuthSession } from '../../../utils/auth'
 import { badRequest, notFound } from '../../../utils/http'
 import { newId } from '../../../utils/ids'
 import { content as contentTable } from '../../../db/schema'
@@ -11,11 +11,13 @@ import { upsertContentSearchData } from '../../../cms/search-index'
 import { upsertContentItemSnapshot } from '../../../cms/content-items'
 import { replaceBase64ImagesInExtra } from '../../../utils/asset-data-url'
 import { queueWidgetCacheInvalidation } from '../../../utils/widget-cache'
+import { requireSchemaPermission } from '../../../utils/schema-permission'
 
 export default defineEventHandler(async (event) => {
-  const session = await requireAdmin(event)
-  const actorId = (session.user as any)?.id ?? null
   const schemaKey = event.context.params?.schemaKey as string
+  await requireSchemaPermission(event, schemaKey, 'write')
+  const session = await getAuthSession(event)
+  const actorId = (session?.user as any)?.id ?? null
   const body = await readBody<{ title?: string; status?: string; extra?: Record<string, unknown> }>(event)
 
   const db = await getDb(event)
