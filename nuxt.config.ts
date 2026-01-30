@@ -16,7 +16,7 @@ const ipxHttpDomains = (process.env.NUXT_IPX_HTTP_DOMAINS
 const ipxAssetsAlias = process.env.NUXT_IPX_ALIAS_ASSETS || `${siteURL}/assets`
 
 export default defineNuxtConfig({
-  modules: ['@nuxt/eslint', '@nuxt/ui', '@nuxt/image'],
+  modules: ['@nuxt/eslint', '@nuxt/ui', '@nuxt/image', '@sidebase/nuxt-auth'],
 
   devtools: {
     enabled: true
@@ -78,6 +78,15 @@ export default defineNuxtConfig({
     authSecret: process.env.HALOPRESS_AUTH_SECRET || 'dev-secret-change-me',
     adminEmail: process.env.HALOPRESS_ADMIN_EMAIL || 'admin@local',
     adminPassword: process.env.HALOPRESS_ADMIN_PASSWORD || 'admin'
+  },
+
+  auth: {
+    provider: {
+      type: 'authjs',
+      defaultProvider: 'credentials',
+      addDefaultCallbackUrl: true
+    },
+    globalAppMiddleware: false
   },
 
   eslint: {
