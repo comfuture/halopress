@@ -27,6 +27,9 @@ const columns = computed<TableColumn<ContentRow>[]>(() => ([
   {
     accessorKey: 'title',
     header: 'Title',
+    meta: {
+      class: { td: 'max-w-[28rem] sm:max-w-[36rem] lg:max-w-[44rem]' }
+    },
     cell: ({ row }) => {
       const title = row.original.title || row.original.id
       return h('div', { class: 'flex items-center gap-3 min-w-0' }, [
@@ -39,13 +42,13 @@ const columns = computed<TableColumn<ContentRow>[]>(() => ([
             class: 'shrink-0'
           })
           : null,
-        h('div', { class: 'min-w-0' }, [
+        h('div', { class: 'min-w-0 flex-1' }, [
           h(NuxtLink, {
             to: `/_desk/content/${schemaKey.value}/${row.original.id}`,
             class: 'text-highlighted hover:underline font-medium truncate'
           }, () => title),
           row.original.description
-            ? h('p', { class: 'text-sm text-muted truncate' }, row.original.description)
+            ? h('p', { class: 'text-sm text-muted truncate max-w-full' }, row.original.description)
             : null
         ])
       ])
