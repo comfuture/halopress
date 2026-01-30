@@ -2,11 +2,11 @@ import { and, asc, desc, eq, gt, lt, or } from 'drizzle-orm'
 import { getQuery } from 'h3'
 
 import { getDb } from '../../../db/db'
-import { getAuthSession } from '../../../utils/auth'
 import { notFound, unauthorized } from '../../../utils/http'
 import { content as contentTable, contentItems as contentItemsTable } from '../../../db/schema'
 import { buildContentItemSnapshot } from '../../../cms/content-items'
 import { getActiveSchema } from '../../../cms/repo'
+import { requireSchemaPermission } from '../../../utils/schema-permission'
 
 export default defineEventHandler(async (event) => {
   const schemaKey = event.context.params?.schemaKey as string
@@ -15,6 +15,7 @@ export default defineEventHandler(async (event) => {
   const includeSurroundings = ['1', 'true'].includes(String(q.surroundings ?? q.includeSurroundings ?? ''))
   const order = q.order === 'asc' ? 'asc' : 'desc'
 
+  const permission = await requireSchemaPermission(event, schemaKey, 'read')
   const db = await getDb(event)
   const row = await db
     .select()
@@ -24,10 +25,8 @@ export default defineEventHandler(async (event) => {
 
   if (!row) throw notFound('Content not found')
 
-  let session = null as Awaited<ReturnType<typeof getAuthSession>> | null
-  if (row.status !== 'published') {
-    session = await getAuthSession(event)
-    if (!session) throw unauthorized()
+  if (row.status !== 'published' && permission.roleKey === 'anonymous') {
+    throw unauthorized()
   }
 
   const extra = JSON.parse(row.extraJson)
@@ -67,8 +66,7 @@ export default defineEventHandler(async (event) => {
     const requestedStatus = typeof q.status === 'string' && q.status.length ? q.status : row.status
     let status = requestedStatus
     if (requestedStatus !== 'published') {
-      if (!session) session = await getAuthSession(event)
-      if (!session) status = 'published'
+      if (permission.roleKey === 'anonymous') status = 'published'
     }
     const baseUpdatedAt = item.updatedAt
     const baseId = item.contentId ?? item.id ?? row.id
