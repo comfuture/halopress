@@ -75,12 +75,13 @@ export default defineNuxtConfig({
   },
 
   runtimeConfig: {
-    authSecret: process.env.HALOPRESS_AUTH_SECRET || 'dev-secret-change-me',
-    adminEmail: process.env.HALOPRESS_ADMIN_EMAIL || 'admin@local',
-    adminPassword: process.env.HALOPRESS_ADMIN_PASSWORD || 'admin'
+    authSecret: process.env.NUXT_AUTH_SECRET || 'dev-secret-change-me',
+    authOrigin: process.env.NUXT_AUTH_ORIGIN || process.env.AUTH_ORIGIN,
   },
 
   auth: {
+    originEnvKey: 'NUXT_AUTH_ORIGIN',
+    baseURL: '/api/auth',
     provider: {
       type: 'authjs',
       defaultProvider: 'credentials',

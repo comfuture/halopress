@@ -18,9 +18,8 @@ Checklist: `docs/MVP_CHECKLIST.md`
 ### 1) Environment variables
 
 ```bash
-export HALOPRESS_AUTH_SECRET="dev-secret-change-me"
-export HALOPRESS_ADMIN_EMAIL="admin@local"
-export HALOPRESS_ADMIN_PASSWORD="admin"
+export NUXT_AUTH_ORIGIN="http://localhost:3000/api/auth"
+export NUXT_AUTH_SECRET="dev-secret-change-me"
 ```
 
 ### 2) Install dependencies
@@ -75,9 +74,8 @@ Update `wrangler.toml` with your real D1 database values:
 Environment variables should be set via Wrangler secrets:
 
 ```bash
-npx wrangler secret put HALOPRESS_AUTH_SECRET
-npx wrangler secret put HALOPRESS_ADMIN_EMAIL
-npx wrangler secret put HALOPRESS_ADMIN_PASSWORD
+npx wrangler secret put NUXT_AUTH_SECRET
+npx wrangler secret put NUXT_AUTH_ORIGIN
 ```
 
 ### 2) Apply D1 migrations (remote)
