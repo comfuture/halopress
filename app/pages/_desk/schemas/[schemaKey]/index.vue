@@ -3,7 +3,7 @@ import { ulid } from 'ulid'
 import { z } from 'zod'
 import type { SortableEvent } from 'sortablejs'
 import { useSortable } from '@vueuse/integrations/useSortable'
-import type { BreadcrumbItem } from '@nuxt/ui'
+import type { BreadcrumbItem, NavigationMenuItem } from '@nuxt/ui'
 
 definePageMeta({
   layout: 'desk'
@@ -67,6 +67,22 @@ const { confirm } = useConfirmDialog()
 
 const routeKey = computed(() => String(route.params.schemaKey))
 const isNew = computed(() => routeKey.value === 'new')
+
+const toolbarItems = computed<NavigationMenuItem[]>(() => ([
+  {
+    label: 'Schema',
+    icon: 'i-lucide-braces',
+    to: `/_desk/schemas/${routeKey.value}`,
+    active: !route.path.endsWith('/settings')
+  },
+  {
+    label: 'Settings',
+    icon: 'i-lucide-settings',
+    to: `/_desk/schemas/${routeKey.value}/settings`,
+    active: route.path.endsWith('/settings'),
+    disabled: isNew.value
+  }
+]))
 
 const schemaMetaFormRef = ref<any>(null)
 const addFieldFormRef = ref<any>(null)
@@ -710,6 +726,20 @@ async function confirmPublish() {
           </UButton>
         </template>
       </DeskNavbar>
+
+      <UDashboardToolbar :ui="{ left: 'flex w-full' }">
+        <template #left>
+          <div class="w-full px-2">
+            <UNavigationMenu
+              :items="toolbarItems"
+              highlight
+              highlight-color="primary"
+              variant="link"
+              class="w-full data-[orientation=horizontal]:border-b border-default"
+            />
+          </div>
+        </template>
+      </UDashboardToolbar>
     </template>
 
     <template #body>
