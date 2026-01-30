@@ -50,18 +50,8 @@ const { data, pending, refresh } = await useFetch<{ items: RolePermission[] }>(f
 
 const roles = ref<RolePermission[]>([])
 
-function normalizeRoles(items: RolePermission[] = []) {
-  return items.map(item => ({
-    ...item,
-    canRead: item.roleKey === 'admin' ? true : item.canRead,
-    canWrite: item.roleKey === 'admin' ? true : item.canWrite,
-    canAdmin: item.roleKey === 'admin' ? true : item.canAdmin,
-    locked: item.roleKey === 'admin' ? true : item.locked
-  }))
-}
-
 watch(data, (value) => {
-  roles.value = normalizeRoles(value?.items ?? [])
+  roles.value = value?.items ?? []
 }, { immediate: true })
 
 watch(schemaKey, async (value, prev) => {

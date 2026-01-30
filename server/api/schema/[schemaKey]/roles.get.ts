@@ -12,7 +12,16 @@ export default defineEventHandler(async (event) => {
 
   const db = await getDb(event)
 
-  const rows = await db
+  type RoleRow = {
+    roleKey: string
+    title: string | null
+    level: number
+    canRead: boolean | number | null
+    canWrite: boolean | number | null
+    canAdmin: boolean | number | null
+  }
+
+  const rows: RoleRow[] = await db
     .select({
       roleKey: userRoleTable.roleKey,
       title: userRoleTable.title,
@@ -28,24 +37,33 @@ export default defineEventHandler(async (event) => {
     ))
     .orderBy(desc(userRoleTable.level), asc(userRoleTable.roleKey))
 
-  const items = rows.map(row => ({
+  type RoleItem = {
+    roleKey: string
+    title: string | null
+    level: number
+    canRead: boolean
+    canWrite: boolean
+    canAdmin: boolean
+    locked: boolean
+  }
+
+  const items: RoleItem[] = rows.map((row) => ({
     roleKey: row.roleKey,
     title: row.title ?? null,
-    level: row.level ?? 0,
+    level: row.level,
     canRead: !!row.canRead,
     canWrite: !!row.canWrite,
     canAdmin: !!row.canAdmin,
     locked: false
   }))
 
-  const adminItem = items.find(item => item.roleKey === 'admin')
+  const adminItem = items.find((item) => item.roleKey === 'admin')
   if (adminItem) {
     adminItem.canRead = true
     adminItem.canWrite = true
     adminItem.canAdmin = true
     adminItem.locked = true
     adminItem.title = adminItem.title ?? 'Admin'
-    adminItem.level = adminItem.level ?? 100
   } else {
     items.push({
       roleKey: 'admin',
@@ -58,7 +76,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  items.sort((a, b) => (b.level ?? 0) - (a.level ?? 0) || a.roleKey.localeCompare(b.roleKey))
+  items.sort((a, b) => b.level - a.level || a.roleKey.localeCompare(b.roleKey))
 
   return { items }
 })
