@@ -1,10 +1,9 @@
 import CredentialsProvider from 'next-auth/providers/credentials'
 import { NuxtAuthHandler } from '#auth'
-import { eq } from 'drizzle-orm'
+import { eq, or } from 'drizzle-orm'
 
 import { getDb } from '../../db/db'
 import { user as userTable } from '../../db/schema'
-import { isAdminLoginAllowed } from '../../utils/auth'
 import { verifyPassword } from '../../utils/password'
 
 type CredentialInput = {
@@ -27,31 +26,20 @@ export default NuxtAuthHandler({
     CredentialsProvider.default({
       name: 'Credentials',
       credentials: {
-        identifier: { label: 'Email', type: 'text' },
+        identifier: { label: 'Email or username', type: 'text' },
         password: { label: 'Password', type: 'password' }
       },
       async authorize(credentials: Record<string, string> | undefined, req: { headers?: Record<string, string | string[] | undefined> }) {
         const input = credentials as CredentialInput | null
         const rawIdentifier = (input?.identifier || input?.email || input?.username || '').trim()
-        const identifier = rawIdentifier.toLowerCase()
+        const identifier = rawIdentifier.includes('@') ? rawIdentifier.toLowerCase() : rawIdentifier
         const password = input?.password ?? ''
 
         if (!identifier || !password) return null
-        if (!identifier.includes('@')) return null
 
         const rawHost = req?.headers?.host
         const host = Array.isArray(rawHost) ? (rawHost[0] ?? 'local') : rawHost || 'local'
         const tenantKey = host.split(':')[0] || 'local'
-
-        if (isAdminLoginAllowed(identifier, password)) {
-          return {
-            id: `admin:${identifier}`,
-            email: identifier,
-            name: 'Admin',
-            role: 'admin',
-            tenantKey
-          }
-        }
 
         let row: {
           id: string
@@ -76,7 +64,7 @@ export default NuxtAuthHandler({
               passwordSalt: userTable.passwordSalt
             })
             .from(userTable)
-            .where(eq(userTable.email, identifier))
+            .where(or(eq(userTable.email, identifier), eq(userTable.name, identifier)))
             .limit(1)
 
           row = user?.[0]

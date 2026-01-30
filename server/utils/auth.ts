@@ -1,7 +1,6 @@
 import type { H3Event } from 'h3'
 import { eq, or } from 'drizzle-orm'
 import { getServerSession } from '#auth'
-import { useRuntimeConfig } from '#imports'
 
 import { unauthorized } from './http'
 import { getTenantKey } from './tenant'
@@ -45,13 +44,6 @@ export async function requireAdmin(event: H3Event): Promise<NonNullable<AuthSess
   }
 
   return session as NonNullable<AuthSession>
-}
-
-export function isAdminLoginAllowed(email: string, password: string) {
-  const config = useRuntimeConfig()
-  const adminEmail = (config.adminEmail as string | undefined) ?? ''
-  const adminPassword = (config.adminPassword as string | undefined) ?? ''
-  return email === adminEmail && password === adminPassword
 }
 
 export async function getAdminUserByIdentifier(event: H3Event, identifier: string) {
