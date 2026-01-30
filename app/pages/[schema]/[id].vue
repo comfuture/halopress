@@ -5,6 +5,15 @@ const route = useRoute()
 const schemaKey = computed(() => String(route.params.schema))
 const id = computed(() => String(route.params.id))
 
+const { data: permission, error: permissionError } = await useFetch<{ canRead: boolean }>(
+  () => `/api/schema/${schemaKey.value}/permission`,
+  { server: true }
+)
+
+if (permissionError.value || !permission.value?.canRead) {
+  throw createError({ statusCode: 404, statusMessage: 'Not Found' })
+}
+
 const { content: doc, schema } = await useHalopressContent(schemaKey, { id })
 
 const fields = computed(() => schema.value?.registry?.fields ?? [])
