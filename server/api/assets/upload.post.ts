@@ -15,6 +15,7 @@ function kindFromMime(mimeType: string) {
 
 export default defineEventHandler(async (event) => {
   const session = await requireAdmin(event)
+  const actorId = (session.user as any)?.id ?? null
   const form = await readMultipartFormData(event)
   const file = form?.find(p => p.name === 'file')
   if (!file || !file.data) throw badRequest('Missing file')
@@ -40,10 +41,9 @@ export default defineEventHandler(async (event) => {
     width: null,
     height: null,
     durationMs: null,
-    createdBy: session.sub,
+    createdBy: actorId,
     createdAt: now
   })
 
   return { ok: true, assetId, objectKey, mimeType, sizeBytes }
 })
-

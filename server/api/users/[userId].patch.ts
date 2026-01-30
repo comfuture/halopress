@@ -10,6 +10,7 @@ const allowedStatuses = new Set(['active', 'suspended', 'disabled', 'deleted'])
 
 export default defineEventHandler(async (event) => {
   const session = await requireAdmin(event)
+  const actorId = (session.user as any)?.id ?? null
   const userId = event.context.params?.userId as string
   if (!userId) throw badRequest('Missing user id')
 
@@ -52,7 +53,7 @@ export default defineEventHandler(async (event) => {
 
   if (!Object.keys(updates).length) throw badRequest('No changes')
 
-  const selfId = session.sub.startsWith('user:') ? session.sub.slice(5) : null
+  const selfId = actorId && !actorId.startsWith('admin:') ? actorId : null
   if (selfId && selfId === userId && updates.status === 'deleted') {
     throw badRequest('Cannot delete current user')
   }

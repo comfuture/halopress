@@ -10,6 +10,7 @@ import { syncContentFields } from '../../cms/search-index'
 
 export default defineEventHandler(async (event) => {
   const session = await requireAdmin(event)
+  const actorId = (session.user as any)?.id ?? null
   const db = await getDb(event)
 
   const existing = await db
@@ -33,7 +34,7 @@ export default defineEventHandler(async (event) => {
     uiSchema: JSON.stringify(compiled.uiSchema),
     registryJson: JSON.stringify(compiled.registry),
     diffJson: JSON.stringify({ from: null, to: 1 }),
-    createdBy: session.sub,
+    createdBy: actorId,
     createdAt: now,
     note: 'bootstrap'
   })
@@ -65,7 +66,7 @@ export default defineEventHandler(async (event) => {
     title: 'Hello Halopress',
     status: 'published',
     extraJson: JSON.stringify(bootstrapExtra),
-    createdBy: session.sub,
+    createdBy: actorId,
     createdAt: now,
     updatedAt: now
   })
