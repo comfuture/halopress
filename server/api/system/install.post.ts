@@ -1,7 +1,7 @@
 import { readBody } from 'h3'
 import { getDb } from '../../db/db'
 import { badRequest, notFound, unauthorized } from '../../utils/http'
-import { getAdminUserByIdentifier, isAdminLoginAllowed, isAdminLoginAllowedDb } from '../../utils/auth'
+import { getAdminUserByIdentifier, isAdminLoginAllowedDb } from '../../utils/auth'
 import {
   ensureAdminUser,
   ensureBootstrapSchema,
@@ -38,7 +38,7 @@ export default defineEventHandler(async (event) => {
 
   let sub = 'system:install'
   if ((freshStatus.userCount ?? 0) > 0) {
-    const allowed = (await isAdminLoginAllowedDb(event, email, password)) || isAdminLoginAllowed(email, password)
+    const allowed = await isAdminLoginAllowedDb(event, email, password)
     if (!allowed) throw unauthorized('Invalid admin credentials')
     const adminUser = await getAdminUserByIdentifier(event, email)
     sub = adminUser ? `user:${adminUser.id}` : `admin:${email}`

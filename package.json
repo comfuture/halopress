@@ -14,7 +14,6 @@
     "db:push": "drizzle-kit push --force",
     "db:studio": "drizzle-kit studio",
     "db:backfill:content-items": "tsx scripts/backfill-content-items.ts",
-    "db:seed": "tsx scripts/seeds.ts",
     "db:drop": "drizzle-kit drop",
     "db:d1:list": "npx wrangler d1 migrations list",
     "db:d1:apply": "npx wrangler d1 migrations apply",
