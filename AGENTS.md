@@ -1,6 +1,10 @@
-## Nuxt UI 사용
+## Nuxt UI usage
 
-- nuxt-ui mcp 를 이용하여 사용법을 숙지하고 컴포넌트 및 코드를 작성합니다.
+- Use the nuxt-ui MCP to learn the API and implement components and code correctly.
+
+## PR authoring
+
+- When writing PR bodies, do not leave literal `\n` sequences in the text; use real line breaks instead.
 
 # DB Migration
 Generate migration from schema changes
