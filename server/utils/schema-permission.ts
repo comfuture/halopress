@@ -3,7 +3,7 @@ import { and, eq } from 'drizzle-orm'
 
 import { getDb } from '../db/db'
 import { schemaRole as schemaRoleTable } from '../db/schema'
-import { getAuthSession } from './auth'
+import { getAuthSession, requireAdmin } from './auth'
 import { badRequest, forbidden } from './http'
 
 export type SchemaPermissionAction = 'read' | 'write' | 'admin'
@@ -25,6 +25,7 @@ export async function getSchemaPermission(event: H3Event, schemaKey: string): Pr
   const roleKey = (session?.user as { role?: string } | undefined)?.role || 'anonymous'
 
   if (isAdminRole(roleKey)) {
+    await requireAdmin(event)
     return { roleKey, canRead: true, canWrite: true, canAdmin: true }
   }
 
