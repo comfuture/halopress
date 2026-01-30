@@ -52,8 +52,12 @@ watch(data, (value) => {
   roles.value = (value?.items ?? []).map(item => ({ ...item }))
 })
 
-watch(isNew, async (value) => {
-  if (!value) await refresh()
+watch(schemaKey, async (value) => {
+  if (!value || value === 'new') {
+    roles.value = []
+    return
+  }
+  await refresh()
 }, { immediate: true })
 
 const saving = reactive<Record<string, boolean>>({})
