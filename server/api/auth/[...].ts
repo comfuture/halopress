@@ -1,6 +1,6 @@
 import CredentialsProvider from 'next-auth/providers/credentials'
 import { NuxtAuthHandler } from '#auth'
-import { eq, or } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 
 import { getDb } from '../../db/db'
 import { user as userTable } from '../../db/schema'
@@ -27,16 +27,17 @@ export default NuxtAuthHandler({
     CredentialsProvider.default({
       name: 'Credentials',
       credentials: {
-        identifier: { label: 'Email or username', type: 'text' },
+        identifier: { label: 'Email', type: 'text' },
         password: { label: 'Password', type: 'password' }
       },
       async authorize(credentials: Record<string, string> | undefined, req: { headers?: Record<string, string | string[] | undefined> }) {
         const input = credentials as CredentialInput | null
         const rawIdentifier = (input?.identifier || input?.email || input?.username || '').trim()
-        const identifier = rawIdentifier.includes('@') ? rawIdentifier.toLowerCase() : rawIdentifier
+        const identifier = rawIdentifier.toLowerCase()
         const password = input?.password ?? ''
 
         if (!identifier || !password) return null
+        if (!identifier.includes('@')) return null
 
         const rawHost = req?.headers?.host
         const host = Array.isArray(rawHost) ? (rawHost[0] ?? 'local') : rawHost || 'local'
@@ -75,7 +76,7 @@ export default NuxtAuthHandler({
               passwordSalt: userTable.passwordSalt
             })
             .from(userTable)
-            .where(or(eq(userTable.email, identifier), eq(userTable.name, identifier)))
+            .where(eq(userTable.email, identifier))
             .limit(1)
 
           row = user?.[0]
