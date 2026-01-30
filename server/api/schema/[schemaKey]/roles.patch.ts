@@ -1,0 +1,52 @@
+import { eq } from 'drizzle-orm'
+import { readBody } from 'h3'
+
+import { getDb } from '../../../db/db'
+import { schemaRole as schemaRoleTable, userRole as userRoleTable } from '../../../db/schema'
+import { requireAdmin } from '../../../utils/auth'
+import { badRequest, notFound } from '../../../utils/http'
+
+export default defineEventHandler(async (event) => {
+  await requireAdmin(event)
+  const schemaKey = event.context.params?.schemaKey as string
+  if (!schemaKey) throw badRequest('Missing schema key')
+
+  const body = await readBody<{
+    roleKey?: string
+    canRead?: boolean
+    canWrite?: boolean
+    canAdmin?: boolean
+  }>(event)
+
+  const roleKey = (body?.roleKey ?? '').trim()
+  if (!roleKey) throw badRequest('Missing role key')
+
+  const db = await getDb(event)
+  const role = await db
+    .select({ roleKey: userRoleTable.roleKey })
+    .from(userRoleTable)
+    .where(eq(userRoleTable.roleKey, roleKey))
+    .get()
+
+  if (!role) throw notFound('Role not found')
+
+  const canRead = !!body?.canRead
+  const canWrite = !!body?.canWrite
+  const canAdmin = !!body?.canAdmin
+
+  await db
+    .insert(schemaRoleTable)
+    .values({
+      schemaKey,
+      roleKey,
+      canRead,
+      canWrite,
+      canAdmin
+    })
+    .onConflictDoUpdate({
+      target: [schemaRoleTable.schemaKey, schemaRoleTable.roleKey],
+      set: { canRead, canWrite, canAdmin }
+    })
+
+  return { ok: true }
+})
