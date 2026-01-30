@@ -13,6 +13,7 @@ import { ensureAnonymousSchemaRole } from '../../../utils/install'
 
 export default defineEventHandler(async (event) => {
   const session = await requireAdmin(event)
+  const actorId = (session.user as any)?.id ?? null
   const schemaKey = event.context.params?.schemaKey as string
   const body = await readBody<{ ast?: unknown; note?: string; migrate?: boolean }>(event)
   const db = await getDb(event)
@@ -52,7 +53,7 @@ export default defineEventHandler(async (event) => {
     uiSchema: JSON.stringify(compiled.uiSchema),
     registryJson: JSON.stringify(compiled.registry),
     diffJson: JSON.stringify({ from: latest?.version ?? null, to: nextVersion }),
-    createdBy: session.sub,
+    createdBy: actorId,
     createdAt: now,
     note: body?.note?.trim() || null
   })

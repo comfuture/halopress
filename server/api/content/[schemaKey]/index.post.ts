@@ -14,6 +14,7 @@ import { queueWidgetCacheInvalidation } from '../../../utils/widget-cache'
 
 export default defineEventHandler(async (event) => {
   const session = await requireAdmin(event)
+  const actorId = (session.user as any)?.id ?? null
   const schemaKey = event.context.params?.schemaKey as string
   const body = await readBody<{ title?: string; status?: string; extra?: Record<string, unknown> }>(event)
 
@@ -30,7 +31,7 @@ export default defineEventHandler(async (event) => {
   if (typeof extra !== 'object' || Array.isArray(extra) || !extra) throw badRequest('Invalid extra')
 
   await db.transaction(async (tx: any) => {
-    await replaceBase64ImagesInExtra({ event, db: tx, createdBy: session.sub, extra })
+    await replaceBase64ImagesInExtra({ event, db: tx, createdBy: actorId, extra })
 
     await tx.insert(contentTable).values({
       id,
@@ -39,7 +40,7 @@ export default defineEventHandler(async (event) => {
       title,
       status,
       extraJson: JSON.stringify(extra),
-      createdBy: session.sub,
+      createdBy: actorId,
       createdAt: now,
       updatedAt: now
     })

@@ -15,7 +15,7 @@ export async function getAuthSession(event: H3Event): Promise<AuthSession> {
   return await getServerSession(event)
 }
 
-export async function requireAdmin(event: H3Event) {
+export async function requireAdmin(event: H3Event): Promise<NonNullable<AuthSession>> {
   const session = await getAuthSession(event)
   const user = session?.user as {
     id?: string
@@ -44,7 +44,7 @@ export async function requireAdmin(event: H3Event) {
     if (!row || row.status !== 'active') throw unauthorized()
   }
 
-  return session
+  return session as NonNullable<AuthSession>
 }
 
 export function isAdminLoginAllowed(email: string, password: string) {
