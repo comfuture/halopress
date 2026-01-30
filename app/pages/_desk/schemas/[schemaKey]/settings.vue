@@ -12,6 +12,7 @@ type RolePermission = {
   canRead: boolean
   canWrite: boolean
   canAdmin: boolean
+  locked?: boolean
 }
 
 const route = useRoute()
@@ -49,7 +50,13 @@ const { data, pending, refresh } = await useFetch<{ items: RolePermission[] }>(f
 const roles = ref<RolePermission[]>([])
 
 watch(data, (value) => {
-  roles.value = (value?.items ?? []).map(item => ({ ...item }))
+  roles.value = (value?.items ?? []).map(item => ({
+    ...item,
+    canRead: item.roleKey === 'admin' ? true : item.canRead,
+    canWrite: item.roleKey === 'admin' ? true : item.canWrite,
+    canAdmin: item.roleKey === 'admin' ? true : item.canAdmin,
+    locked: item.roleKey === 'admin' ? true : item.locked
+  }))
 })
 
 watch(schemaKey, async (value) => {
@@ -63,6 +70,7 @@ watch(schemaKey, async (value) => {
 const saving = reactive<Record<string, boolean>>({})
 
 async function updatePermission(role: RolePermission, key: 'canRead' | 'canWrite' | 'canAdmin', value: boolean) {
+  if (role.locked) return
   if (saving[role.roleKey]) return
   const previous = role[key]
   role[key] = value
@@ -157,7 +165,7 @@ async function updatePermission(role: RolePermission, key: 'canRead' | 'canWrite
                 <USwitch
                   :model-value="role.canRead"
                   :loading="saving[role.roleKey]"
-                  :disabled="saving[role.roleKey]"
+                  :disabled="saving[role.roleKey] || role.locked"
                   :aria-label="`Read permission for ${role.title || role.roleKey}`"
                   @update:model-value="value => updatePermission(role, 'canRead', value)"
                 />
@@ -166,7 +174,7 @@ async function updatePermission(role: RolePermission, key: 'canRead' | 'canWrite
                 <USwitch
                   :model-value="role.canWrite"
                   :loading="saving[role.roleKey]"
-                  :disabled="saving[role.roleKey]"
+                  :disabled="saving[role.roleKey] || role.locked"
                   :aria-label="`Write permission for ${role.title || role.roleKey}`"
                   @update:model-value="value => updatePermission(role, 'canWrite', value)"
                 />
@@ -175,7 +183,7 @@ async function updatePermission(role: RolePermission, key: 'canRead' | 'canWrite
                 <USwitch
                   :model-value="role.canAdmin"
                   :loading="saving[role.roleKey]"
-                  :disabled="saving[role.roleKey]"
+                  :disabled="saving[role.roleKey] || role.locked"
                   :aria-label="`Admin permission for ${role.title || role.roleKey}`"
                   @update:model-value="value => updatePermission(role, 'canAdmin', value)"
                 />

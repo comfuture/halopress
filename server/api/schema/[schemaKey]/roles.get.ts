@@ -28,14 +28,37 @@ export default defineEventHandler(async (event) => {
     ))
     .orderBy(desc(userRoleTable.level), asc(userRoleTable.roleKey))
 
-  return {
-    items: rows.map(row => ({
-      roleKey: row.roleKey,
-      title: row.title ?? null,
-      level: row.level ?? 0,
-      canRead: !!row.canRead,
-      canWrite: !!row.canWrite,
-      canAdmin: !!row.canAdmin
-    }))
+  const items = rows.map(row => ({
+    roleKey: row.roleKey,
+    title: row.title ?? null,
+    level: row.level ?? 0,
+    canRead: !!row.canRead,
+    canWrite: !!row.canWrite,
+    canAdmin: !!row.canAdmin,
+    locked: false
+  }))
+
+  const adminItem = items.find(item => item.roleKey === 'admin')
+  if (adminItem) {
+    adminItem.canRead = true
+    adminItem.canWrite = true
+    adminItem.canAdmin = true
+    adminItem.locked = true
+    adminItem.title = adminItem.title ?? 'Admin'
+    adminItem.level = adminItem.level ?? 100
+  } else {
+    items.push({
+      roleKey: 'admin',
+      title: 'Admin',
+      level: 100,
+      canRead: true,
+      canWrite: true,
+      canAdmin: true,
+      locked: true
+    })
   }
+
+  items.sort((a, b) => (b.level ?? 0) - (a.level ?? 0) || a.roleKey.localeCompare(b.roleKey))
+
+  return { items }
 })
