@@ -1,7 +1,7 @@
 <script setup lang="ts">
 const route = useRoute()
 
-const { data: me } = await useFetch('/api/auth/me')
+const { data, signOut } = useAuth()
 const { data: schemaList } = await useFetch<{ items: any[] }>('/api/schema/list')
 
 const activeContentBase = computed(() => {
@@ -67,8 +67,7 @@ const navItems = computed(() => ([
 ]))
 
 async function logout() {
-  await $fetch('/api/auth/logout', { method: 'POST' })
-  await navigateTo('/_desk/login')
+  await signOut({ callbackUrl: '/_desk/login' })
 }
 </script>
 
@@ -89,7 +88,7 @@ async function logout() {
 
       <template #footer>
         <div class="flex items-center justify-between gap-2">
-          <span class="text-xs text-muted truncate">{{ me?.user?.email || 'Guest' }}</span>
+          <span class="text-xs text-muted truncate">{{ data?.user?.email || 'Guest' }}</span>
           <UButton icon="i-lucide-log-out" color="neutral" variant="ghost" @click="logout" />
         </div>
       </template>

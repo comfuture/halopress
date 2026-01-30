@@ -4,21 +4,28 @@ definePageMeta({
 })
 
 const state = reactive({
-  email: '',
+  identifier: '',
   password: ''
 })
 
 const loading = ref(false)
 const toast = useToast()
+const { signIn } = useAuth()
 
 async function submit() {
   loading.value = true
   try {
-    await $fetch('/api/auth/login', {
-      method: 'POST',
-      credentials: 'include',
-      body: { email: state.email, password: state.password }
+    const result = await signIn('credentials', {
+      identifier: state.identifier,
+      password: state.password,
+      redirect: false,
+      callbackUrl: '/_desk'
     })
+
+    if (result?.error) {
+      throw new Error(result.error)
+    }
+
     await navigateTo('/_desk', { replace: true })
   } catch (e: any) {
     toast.add({
@@ -42,14 +49,14 @@ async function submit() {
               Desk Login
             </h1>
             <p class="text-sm text-muted">
-              Use the admin account created in `/_install` or `HALOPRESS_ADMIN_EMAIL` / `HALOPRESS_ADMIN_PASSWORD`.
+              Sign in with the admin email/username created in `/_install` or `HALOPRESS_ADMIN_EMAIL` / `HALOPRESS_ADMIN_PASSWORD`.
             </p>
           </div>
         </template>
 
         <UForm :state="state" class="space-y-4" @submit.prevent="submit">
-          <UFormField label="Email" name="email">
-            <UInput v-model="state.email" placeholder="admin@local" autocomplete="email" />
+          <UFormField label="Email or username" name="identifier">
+            <UInput v-model="state.identifier" placeholder="admin@local" autocomplete="username" />
           </UFormField>
 
           <UFormField label="Password" name="password">

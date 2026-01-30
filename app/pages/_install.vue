@@ -44,6 +44,7 @@ const state = reactive({
 
 const loading = ref(false)
 const toast = useToast()
+const { signIn } = useAuth()
 
 const summaryItems = computed(() => [
   {
@@ -123,6 +124,17 @@ async function completeSetup() {
         sampleData: state.sampleData
       }
     })
+
+    const result = await signIn('credentials', {
+      identifier: state.email,
+      password: state.password,
+      redirect: false,
+      callbackUrl: '/_desk'
+    })
+
+    if (result?.error) {
+      throw new Error(result.error)
+    }
 
     await fireConfetti()
     await navigateTo('/_desk', { replace: true })

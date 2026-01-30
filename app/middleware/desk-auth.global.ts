@@ -2,7 +2,10 @@ export default defineNuxtRouteMiddleware(async (to) => {
   if (!to.path.startsWith('/_desk')) return
   if (to.path === '/_desk/login') return
 
-  const { data } = await useFetch('/api/auth/me')
-  if (!data.value?.user) return await navigateTo('/_desk/login')
-})
+  const { status, data, getSession } = useAuth()
+  if (status.value === 'authenticated' && data.value?.user) return
+  if (status.value === 'unauthenticated') return await navigateTo('/_desk/login')
 
+  const session = await getSession()
+  if (!session) return await navigateTo('/_desk/login')
+})
