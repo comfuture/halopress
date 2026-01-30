@@ -44,28 +44,34 @@ const breadcrumbItems = computed<BreadcrumbItem[]>(() => ([
 
 const fetchUrl = computed(() => `/api/schema/${schemaKey.value}/roles`)
 const { data, pending, refresh } = await useFetch<{ items: RolePermission[] }>(fetchUrl, {
-  immediate: false
+  server: true,
+  immediate: schemaKey.value !== 'new'
 })
 
 const roles = ref<RolePermission[]>([])
 
-watch(data, (value) => {
-  roles.value = (value?.items ?? []).map(item => ({
+function normalizeRoles(items: RolePermission[] = []) {
+  return items.map(item => ({
     ...item,
     canRead: item.roleKey === 'admin' ? true : item.canRead,
     canWrite: item.roleKey === 'admin' ? true : item.canWrite,
     canAdmin: item.roleKey === 'admin' ? true : item.canAdmin,
     locked: item.roleKey === 'admin' ? true : item.locked
   }))
-})
+}
 
-watch(schemaKey, async (value) => {
+watch(data, (value) => {
+  roles.value = normalizeRoles(value?.items ?? [])
+}, { immediate: true })
+
+watch(schemaKey, async (value, prev) => {
+  if (value === prev) return
   if (!value || value === 'new') {
     roles.value = []
     return
   }
   await refresh()
-}, { immediate: true })
+})
 
 const saving = reactive<Record<string, boolean>>({})
 
