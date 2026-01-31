@@ -1,5 +1,5 @@
 import type { H3Event } from 'h3'
-import { and, eq, sql } from 'drizzle-orm'
+import { and, desc, eq, sql } from 'drizzle-orm'
 
 import { getDb } from '../db/db'
 import { settings as settingsTable } from '../db/schema'
@@ -79,6 +79,28 @@ export async function isSettingsTableReady(event?: H3Event) {
     return Boolean(rows?.[0]?.[0])
   } catch {
     return false
+  }
+}
+
+export async function getSettingsGroupUpdatedAt(
+  groupKey: string,
+  scope = 'global',
+  event?: H3Event
+): Promise<Date | null> {
+  if (!(await isSettingsTableReady(event))) return null
+  try {
+    const db = await getDb(event)
+    const row = await db
+      .select({ updatedAt: settingsTable.updatedAt })
+      .from(settingsTable)
+      .where(and(eq(settingsTable.scope, scope), eq(settingsTable.groupKey, groupKey)))
+      .orderBy(desc(settingsTable.updatedAt))
+      .limit(1)
+      .get()
+    return row?.updatedAt ?? null
+  } catch (error) {
+    if (isMissingSettingsTableError(error)) return null
+    throw error
   }
 }
 
