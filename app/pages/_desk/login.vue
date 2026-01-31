@@ -10,7 +10,25 @@ const state = reactive({
 
 const loading = ref(false)
 const toast = useToast()
-const { signIn } = useAuth()
+const { signIn, getProviders } = useAuth()
+const providers = ref<Record<string, { id: string; name: string }> | null>(null)
+const loadingProviders = ref(true)
+
+const oauthProviders = computed(() => Object.values(providers.value || {})
+  .filter(provider => provider.id !== 'credentials'))
+const hasCredentials = computed(() => Boolean(providers.value?.credentials))
+
+try {
+  providers.value = await getProviders()
+} catch {
+  providers.value = {}
+} finally {
+  loadingProviders.value = false
+}
+
+async function signInWith(providerId: string) {
+  await signIn(providerId, { callbackUrl: '/_desk' })
+}
 
 async function submit() {
   loading.value = true
@@ -51,19 +69,39 @@ async function submit() {
           </div>
         </template>
 
-        <UForm :state="state" class="space-y-4" @submit.prevent="submit">
-          <UFormField label="Email or username" name="identifier">
-            <UInput v-model="state.identifier" class="w-full" placeholder="admin@local" autocomplete="username" />
-          </UFormField>
+        <div class="space-y-4">
+          <div v-if="oauthProviders.length" class="space-y-2">
+            <UButton
+              v-for="provider in oauthProviders"
+              :key="provider.id"
+              block
+              variant="outline"
+              color="neutral"
+              :loading="loadingProviders"
+              @click="signInWith(provider.id)"
+            >
+              Continue with {{ provider.name }}
+            </UButton>
+          </div>
 
-          <UFormField label="Password" name="password">
-            <UInput v-model="state.password" class="w-full" type="password" autocomplete="current-password" />
-          </UFormField>
+          <div v-if="oauthProviders.length && hasCredentials" class="text-center text-xs text-muted">
+            or
+          </div>
 
-          <UButton type="submit" block :loading="loading">
-            Sign in
-          </UButton>
-        </UForm>
+          <UForm v-if="hasCredentials" :state="state" class="space-y-4" @submit.prevent="submit">
+            <UFormField label="Email or username" name="identifier">
+              <UInput v-model="state.identifier" class="w-full" placeholder="admin@local" autocomplete="username" />
+            </UFormField>
+
+            <UFormField label="Password" name="password">
+              <UInput v-model="state.password" class="w-full" type="password" autocomplete="current-password" />
+            </UFormField>
+
+            <UButton type="submit" block :loading="loading">
+              Sign in
+            </UButton>
+          </UForm>
+        </div>
       </UCard>
     </div>
   </div>
