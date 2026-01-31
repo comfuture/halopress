@@ -16,7 +16,11 @@ type CredentialInput = {
   password?: string
 }
 
-export default defineEventHandler(async (event) => {
+type AuthHandler = ReturnType<typeof NuxtAuthHandler>
+
+let authHandlerPromise: Promise<AuthHandler> | null = null
+
+async function buildAuthHandler(event: Parameters<AuthHandler>[0]) {
   const credentialsEnabled = await resolveCredentialsEnabled(event)
   const googleConfig = await resolveOAuthProviderConfig('google', event)
   const oauthProviders: any[] = []
@@ -35,7 +39,7 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  const handler = NuxtAuthHandler({
+  return NuxtAuthHandler({
     secret: useRuntimeConfig().authSecret,
     session: {
       strategy: 'jwt'
@@ -192,7 +196,13 @@ export default defineEventHandler(async (event) => {
       }
     }
   })
+}
 
+export default defineEventHandler(async (event) => {
+  if (!authHandlerPromise) {
+    authHandlerPromise = buildAuthHandler(event)
+  }
+  const handler = await authHandlerPromise
   return handler(event)
 })
 
