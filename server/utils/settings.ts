@@ -73,7 +73,7 @@ export async function isSettingsTableReady(event?: H3Event) {
   try {
     const db = await getDb(event)
     const rows = await db.values(
-      sql.raw("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'settings'")
+      sql.raw('SELECT name FROM sqlite_master WHERE type = \'table\' AND name = \'settings\'')
     )
     return Boolean(rows?.[0]?.[0])
   } catch {
