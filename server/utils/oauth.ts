@@ -1,5 +1,5 @@
 import type { H3Event } from 'h3'
-import { getSettingValue } from './settings'
+import { getSettingValue, isSettingsTableReady } from './settings'
 
 export type OAuthProviderId = 'google'
 
@@ -96,6 +96,9 @@ function mergeDefined(base: OAuthProviderConfig, override: OAuthProviderConfig) 
 
 export async function resolveOAuthProviderConfig(providerId: OAuthProviderId, event?: H3Event) {
   const source = resolveSettingsSource()
+  if (source.useDb && !(await isSettingsTableReady(event))) {
+    source.useDb = false
+  }
   const envConfig = source.useEnv ? buildEnvConfig(providerId) : {}
   const dbConfig = source.useDb ? await buildDbConfig(providerId, event) : {}
   return source.useEnv
@@ -105,6 +108,9 @@ export async function resolveOAuthProviderConfig(providerId: OAuthProviderId, ev
 
 export async function resolveCredentialsEnabled(event?: H3Event) {
   const source = resolveSettingsSource()
+  if (source.useDb && !(await isSettingsTableReady(event))) {
+    source.useDb = false
+  }
   const providersList = parseProvidersList(process.env.NUXT_OAUTH_PROVIDERS)
   const envEnabledOverride = parseBoolean(process.env.NUXT_OAUTH_CREDENTIALS_ENABLED)
   let enabled: boolean | undefined = envEnabledOverride
