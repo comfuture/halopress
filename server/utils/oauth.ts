@@ -120,8 +120,8 @@ export async function resolveCredentialsEnabled(event?: H3Event) {
   if (source.useDb && !(await isSettingsTableReady(event))) {
     source.useDb = false
   }
-  const providersList = parseProvidersList(process.env.NUXT_OAUTH_PROVIDERS)
-  const envEnabledOverride = parseBoolean(process.env.NUXT_OAUTH_CREDENTIALS_ENABLED)
+  const providersList = source.useEnv ? parseProvidersList(process.env.NUXT_OAUTH_PROVIDERS) : null
+  const envEnabledOverride = source.useEnv ? parseBoolean(process.env.NUXT_OAUTH_CREDENTIALS_ENABLED) : undefined
   let enabled: boolean | undefined = envEnabledOverride
 
   if (enabled === undefined && providersList) {
