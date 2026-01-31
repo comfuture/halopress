@@ -2,6 +2,7 @@ import { readBody } from 'h3'
 import { getDb } from '../../db/db'
 import { badRequest, notFound, unauthorized } from '../../utils/http'
 import { getAdminUserByIdentifier, isAdminLoginAllowedDb } from '../../utils/auth'
+import { upsertSetting } from '../../utils/settings'
 import {
   ensureAdminUser,
   ensureBootstrapSchema,
@@ -17,15 +18,31 @@ export default defineEventHandler(async (event) => {
     name?: string
     password?: string
     sampleData?: boolean
+    auth?: {
+      credentialsEnabled?: boolean
+      googleEnabled?: boolean
+      googleClientId?: string
+      googleClientSecret?: string
+    }
     roles?: Array<{ roleKey?: string; title?: string; level?: number }>
   }>(event)
   const email = (body?.email ?? '').trim().toLowerCase()
   const name = (body?.name ?? '').trim()
   const password = body?.password ?? ''
   const sampleData = body?.sampleData === true
+  const auth = body?.auth
+  const credentialsEnabled = auth?.credentialsEnabled !== false
+  const googleEnabled = auth?.googleEnabled === true
+  const googleClientIdInput = (auth?.googleClientId ?? '').trim()
+  const googleClientSecretInput = (auth?.googleClientSecret ?? '').trim()
+  const envGoogleClientId = (process.env.NUXT_OAUTH_GOOGLE_CLIENT_ID ?? '').trim()
+  const envGoogleClientSecret = (process.env.NUXT_OAUTH_GOOGLE_CLIENT_SECRET ?? '').trim()
+  const encryptionSecret = process.env.NUXT_SECRET ?? ''
   const roles = normalizeRoles(body?.roles)
 
   if (!email || !password) throw badRequest('Missing admin credentials')
+  if (!credentialsEnabled && !googleEnabled) throw badRequest('At least one auth method must be enabled')
+  if (googleEnabled && !encryptionSecret) throw badRequest('NUXT_SECRET is required to enable Google OAuth')
 
   const db = await getDb(event)
   const status = await getInstallStatus(db)
@@ -33,6 +50,49 @@ export default defineEventHandler(async (event) => {
 
   await runMigrations(db)
   await seedRoles(db, roles)
+
+  await upsertSetting({
+    key: 'auth.oauth.credentials.enabled',
+    value: credentialsEnabled ? 'true' : 'false',
+    valueType: 'boolean',
+    groupKey: 'auth.oauth',
+    updatedBy: 'system:install'
+  }, event)
+
+  await upsertSetting({
+    key: 'auth.oauth.google.enabled',
+    value: googleEnabled ? 'true' : 'false',
+    valueType: 'boolean',
+    groupKey: 'auth.oauth',
+    updatedBy: 'system:install'
+  }, event)
+
+  if (googleEnabled) {
+    const googleClientId = googleClientIdInput || envGoogleClientId
+    const googleClientSecret = googleClientSecretInput || envGoogleClientSecret
+
+    if (!googleClientId || !googleClientSecret) {
+      throw badRequest('Missing Google OAuth client ID or secret')
+    }
+
+    await upsertSetting({
+      key: 'auth.oauth.google.clientId',
+      value: googleClientId,
+      valueType: 'string',
+      groupKey: 'auth.oauth',
+      updatedBy: 'system:install'
+    }, event)
+
+    await upsertSetting({
+      key: 'auth.oauth.google.clientSecret',
+      value: googleClientSecret,
+      valueType: 'string',
+      isEncrypted: true,
+      encryptionKey: encryptionSecret,
+      groupKey: 'auth.oauth',
+      updatedBy: 'system:install'
+    }, event)
+  }
 
   const freshStatus = await getInstallStatus(db)
 
