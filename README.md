@@ -22,6 +22,26 @@ export NUXT_AUTH_ORIGIN="http://localhost:3000/api/auth"
 export NUXT_AUTH_SECRET="dev-secret-change-me"
 ```
 
+Optional OAuth (Google) env variables:
+
+```bash
+export NUXT_OAUTH_SETTINGS_SOURCE="env+db"
+export NUXT_OAUTH_PROVIDERS="google"
+export NUXT_OAUTH_CREDENTIALS_ENABLED="true"
+export NUXT_OAUTH_GOOGLE_ENABLED="true"
+export NUXT_OAUTH_GOOGLE_CLIENT_ID="..."
+export NUXT_OAUTH_GOOGLE_CLIENT_SECRET="..."
+export NUXT_OAUTH_GOOGLE_ENCRYPTION_KEY="..."  # provider-specific decrypt key
+export NUXT_SECRET="..." # fallback decrypt key for encrypted settings
+```
+
+DB settings keys (scope: `global`) for OAuth:
+
+- `auth.oauth.google.enabled` (boolean)
+- `auth.oauth.google.clientId` (string)
+- `auth.oauth.google.clientSecret` (string, encrypted)
+- `auth.oauth.credentials.enabled` (boolean)
+
 ### 2) Install dependencies
 
 ```bash
