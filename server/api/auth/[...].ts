@@ -39,6 +39,80 @@ async function buildAuthHandler(event: Parameters<AuthHandler>[0]) {
     }
   }
 
+  const providers: any[] = []
+
+  if (credentialsEnabled) {
+    providers.push(
+      // @ts-expect-error Use .default here for it to work during SSR.
+      CredentialsProvider.default({
+        name: 'Credentials',
+        credentials: {
+          identifier: { label: 'Email or username', type: 'text' },
+          password: { label: 'Password', type: 'password' }
+        },
+        async authorize(credentials: Record<string, string> | undefined, req: { headers?: Record<string, string | string[] | undefined> }) {
+          const input = credentials as CredentialInput | null
+          const rawIdentifier = (input?.identifier || input?.email || input?.username || '').trim()
+          const identifier = rawIdentifier.includes('@') ? rawIdentifier.toLowerCase() : rawIdentifier
+          const password = input?.password ?? ''
+
+          if (!identifier || !password) return null
+
+          const rawHost = req?.headers?.host
+          const host = Array.isArray(rawHost) ? (rawHost[0] ?? 'local') : rawHost || 'local'
+          const tenantKey = host.split(':')[0] || 'local'
+
+          let row: {
+            id: string
+            email: string
+            name: string | null
+            roleKey: string
+            status: string
+            passwordHash: string | null
+            passwordSalt: string | null
+          } | undefined
+
+          try {
+            const db = await getDb(event)
+            const user = await db
+              .select({
+                id: userTable.id,
+                email: userTable.email,
+                name: userTable.name,
+                roleKey: userTable.roleKey,
+                status: userTable.status,
+                passwordHash: userTable.passwordHash,
+                passwordSalt: userTable.passwordSalt
+              })
+              .from(userTable)
+              .where(or(eq(userTable.email, identifier), eq(userTable.name, identifier)))
+              .limit(1)
+
+            row = user?.[0]
+          } catch (error) {
+            if (isMissingUserTableError(error)) return null
+            throw error
+          }
+
+          if (!row || row.roleKey !== 'admin' || row.status !== 'active') return null
+          if (!row.passwordHash || !row.passwordSalt) return null
+          const ok = await verifyPassword(password, row.passwordHash, row.passwordSalt)
+          if (!ok) return null
+
+          return {
+            id: row.id,
+            email: row.email,
+            name: row.name || row.email,
+            role: row.roleKey,
+            tenantKey
+          }
+        }
+      })
+    )
+  }
+
+  providers.push(...oauthProviders)
+
   return NuxtAuthHandler({
     secret: useRuntimeConfig().authSecret,
     session: {
@@ -47,76 +121,7 @@ async function buildAuthHandler(event: Parameters<AuthHandler>[0]) {
     pages: {
       signIn: '/_desk/login'
     },
-    providers: [
-      ...(credentialsEnabled ? [
-        // @ts-expect-error Use .default here for it to work during SSR.
-        CredentialsProvider.default({
-          name: 'Credentials',
-          credentials: {
-            identifier: { label: 'Email or username', type: 'text' },
-            password: { label: 'Password', type: 'password' }
-          },
-          async authorize(credentials: Record<string, string> | undefined, req: { headers?: Record<string, string | string[] | undefined> }) {
-            const input = credentials as CredentialInput | null
-            const rawIdentifier = (input?.identifier || input?.email || input?.username || '').trim()
-            const identifier = rawIdentifier.includes('@') ? rawIdentifier.toLowerCase() : rawIdentifier
-            const password = input?.password ?? ''
-
-            if (!identifier || !password) return null
-
-            const rawHost = req?.headers?.host
-            const host = Array.isArray(rawHost) ? (rawHost[0] ?? 'local') : rawHost || 'local'
-            const tenantKey = host.split(':')[0] || 'local'
-
-            let row: {
-              id: string
-              email: string
-              name: string | null
-              roleKey: string
-              status: string
-              passwordHash: string | null
-              passwordSalt: string | null
-            } | undefined
-
-            try {
-              const db = await getDb(event)
-              const user = await db
-                .select({
-                  id: userTable.id,
-                  email: userTable.email,
-                  name: userTable.name,
-                  roleKey: userTable.roleKey,
-                  status: userTable.status,
-                  passwordHash: userTable.passwordHash,
-                  passwordSalt: userTable.passwordSalt
-                })
-                .from(userTable)
-                .where(or(eq(userTable.email, identifier), eq(userTable.name, identifier)))
-                .limit(1)
-
-              row = user?.[0]
-            } catch (error) {
-              if (isMissingUserTableError(error)) return null
-              throw error
-            }
-
-            if (!row || row.roleKey !== 'admin' || row.status !== 'active') return null
-            if (!row.passwordHash || !row.passwordSalt) return null
-            const ok = await verifyPassword(password, row.passwordHash, row.passwordSalt)
-            if (!ok) return null
-
-            return {
-              id: row.id,
-              email: row.email,
-              name: row.name || row.email,
-              role: row.roleKey,
-              tenantKey
-            }
-          }
-        })
-      ] : []),
-      ...oauthProviders
-    ],
+    providers,
     callbacks: {
       async signIn({ user, account }) {
         if (account?.provider === 'credentials') return true
