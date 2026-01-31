@@ -73,8 +73,17 @@ async function buildDbConfig(providerId: string, event?: H3Event): Promise<OAuth
   const baseKey = `auth.oauth.${providerId}`
   const decryptKey = resolveEncryptionKey(providerId)
   const enabled = await getSettingValue<boolean>(DEFAULT_SCOPE, `${baseKey}.enabled`, undefined, event)
+  if (enabled === false) {
+    return { enabled: false }
+  }
+
   const clientId = await getSettingValue<string>(DEFAULT_SCOPE, `${baseKey}.clientId`, undefined, event)
-  const clientSecret = await getSettingValue<string>(DEFAULT_SCOPE, `${baseKey}.clientSecret`, { decryptKey }, event)
+  const clientSecret = await safeGetSettingValue<string>(
+    DEFAULT_SCOPE,
+    `${baseKey}.clientSecret`,
+    { decryptKey },
+    event
+  )
   const autoProvision = await getSettingValue<boolean>(DEFAULT_SCOPE, `${baseKey}.autoProvision`, undefined, event)
   return {
     enabled: enabled ?? undefined,
@@ -119,10 +128,26 @@ export async function resolveCredentialsEnabled(event?: H3Event) {
     enabled = providersList.includes('credentials')
   }
 
-  if (source.useDb) {
+  if (source.useDb && enabled === undefined) {
     const dbEnabled = await getSettingValue<boolean>(DEFAULT_SCOPE, 'auth.oauth.credentials.enabled', undefined, event)
-    enabled = enabled ?? (dbEnabled ?? undefined)
+    if (dbEnabled !== null) {
+      enabled = dbEnabled
+    }
   }
 
   return enabled ?? true
+}
+
+async function safeGetSettingValue<T = string>(
+  scope: string,
+  key: string,
+  options: { decryptKey?: string } | undefined,
+  event?: H3Event
+): Promise<T | null> {
+  try {
+    return await getSettingValue<T>(scope, key, options, event)
+  } catch (error) {
+    console.warn('[oauth] Failed to resolve setting', key, error)
+    return null
+  }
 }

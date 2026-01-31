@@ -37,8 +37,9 @@ function parseValue(value: string, valueType: SettingValueType) {
   if (valueType === 'json') {
     try {
       return JSON.parse(value)
-    } catch {
-      return value
+    } catch (error) {
+      console.warn('[settings] Failed to parse JSON value', error)
+      return null
     }
   }
   return value
@@ -95,12 +96,12 @@ export async function getSettingValue<T = string>(
 export async function resolveSettingValue<T = string>(
   row: SettingRow,
   options?: { decryptKey?: string }
-): Promise<T> {
+): Promise<T | null> {
   let raw = row.value
   if (row.isEncrypted) {
     raw = await decryptString(raw, options?.decryptKey || '')
   }
-  return parseValue(raw, row.valueType) as T
+  return parseValue(raw, row.valueType) as T | null
 }
 
 export async function upsertSetting(input: SettingInput, event?: H3Event) {
