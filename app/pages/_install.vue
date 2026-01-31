@@ -18,6 +18,12 @@ const steps = [
     slot: 'admin' as const
   },
   {
+    title: 'Auth methods',
+    description: 'Choose how you want to sign in',
+    icon: 'i-lucide-shield-check',
+    slot: 'auth' as const
+  },
+  {
     title: 'Sample schema',
     description: 'Decide if you want starter content',
     icon: 'i-lucide-sparkles',
@@ -33,18 +39,29 @@ const steps = [
 
 const activeStep = ref(0)
 const adminForm = ref<any>(null)
+const authForm = ref<any>(null)
+const lastStepIndex = steps.length - 1
 
 const state = reactive({
   email: '',
   name: '',
   password: '',
   passwordConfirm: '',
-  sampleData: true
+  sampleData: true,
+  auth: {
+    credentialsEnabled: true,
+    googleEnabled: false,
+    googleClientId: '',
+    googleClientSecret: ''
+  }
 })
 
 const loading = ref(false)
 const toast = useToast()
 const { signIn } = useAuth()
+const hasSecret = computed(() => Boolean(data.value?.hasSecret))
+const oauthEnv = computed(() => data.value?.oauthEnv || { googleClientId: false, googleClientSecret: false })
+const googleEnvReady = computed(() => oauthEnv.value.googleClientId && oauthEnv.value.googleClientSecret)
 
 const summaryItems = computed(() => [
   {
@@ -54,6 +71,13 @@ const summaryItems = computed(() => [
   {
     label: 'Admin name',
     value: state.name?.trim() ? state.name.trim() : 'Not set'
+  },
+  {
+    label: 'Auth methods',
+    value: [
+      state.auth.credentialsEnabled ? 'Email + password' : null,
+      state.auth.googleEnabled ? 'Google OAuth' : null
+    ].filter(Boolean).join(', ') || 'Not set'
   },
   {
     label: 'Sample schema + Welcome guide',
@@ -72,11 +96,39 @@ function validate(values: typeof state): FormError[] {
   return errors
 }
 
+function validateAuth(values: typeof state): FormError[] {
+  const errors: FormError[] = []
+  if (!values.auth.credentialsEnabled && !values.auth.googleEnabled) {
+    errors.push({ name: 'authMethods', message: 'Enable at least one sign-in method.' })
+  }
+
+  if (values.auth.googleEnabled) {
+    if (!hasSecret.value) {
+      errors.push({ name: 'googleClientSecret', message: 'NUXT_SECRET is required to encrypt OAuth secrets.' })
+    }
+    if (!values.auth.googleClientId && !oauthEnv.value.googleClientId) {
+      errors.push({ name: 'googleClientId', message: 'Google client ID is required.' })
+    }
+    if (!values.auth.googleClientSecret && !oauthEnv.value.googleClientSecret) {
+      errors.push({ name: 'googleClientSecret', message: 'Google client secret is required.' })
+    }
+  }
+
+  return errors
+}
+
 async function advanceFromAdmin() {
   if (loading.value) return
   const errors = await adminForm.value?.validate()
   if (errors?.length) return
   activeStep.value = 1
+}
+
+async function advanceFromAuth() {
+  if (loading.value) return
+  const errors = await authForm.value?.validate()
+  if (errors?.length) return
+  activeStep.value = 2
 }
 
 function goBack() {
@@ -86,7 +138,7 @@ function goBack() {
 
 function goNext() {
   if (loading.value) return
-  activeStep.value = Math.min(2, activeStep.value + 1)
+  activeStep.value = Math.min(lastStepIndex, activeStep.value + 1)
 }
 
 async function fireConfetti() {
@@ -121,7 +173,13 @@ async function completeSetup() {
         email: state.email,
         name: state.name,
         password: state.password,
-        sampleData: state.sampleData
+        sampleData: state.sampleData,
+        auth: {
+          credentialsEnabled: state.auth.credentialsEnabled,
+          googleEnabled: state.auth.googleEnabled,
+          googleClientId: state.auth.googleClientId,
+          googleClientSecret: state.auth.googleClientSecret
+        }
       }
     })
 
@@ -227,11 +285,100 @@ async function completeSetup() {
             </div>
           </template>
 
+          <template #auth>
+            <div class="space-y-6">
+              <div class="space-y-2">
+                <h2 class="text-lg font-semibold">
+                  Step 2: Choose sign-in methods
+                </h2>
+                <p class="text-sm text-muted">
+                  Select at least one authentication method for the desk. You can adjust this later in settings.
+                </p>
+              </div>
+
+              <UForm ref="authForm" :state="state" :validate="validateAuth" class="space-y-4" @submit.prevent="advanceFromAuth">
+                <UFormField
+                  label="Sign-in methods"
+                  name="authMethods"
+                  help="Enable at least one method so admins can access the desk."
+                >
+                  <div class="space-y-3">
+                    <div class="flex items-center justify-between gap-6 rounded-lg border border-muted px-4 py-3">
+                      <div>
+                        <p class="text-sm font-medium text-foreground">
+                          Email + password
+                        </p>
+                        <p class="text-xs text-muted">
+                          Use the admin credentials you set in step one.
+                        </p>
+                      </div>
+                      <USwitch v-model="state.auth.credentialsEnabled" />
+                    </div>
+
+                    <div class="flex items-center justify-between gap-6 rounded-lg border border-muted px-4 py-3">
+                      <div>
+                        <p class="text-sm font-medium text-foreground">
+                          Google OAuth
+                        </p>
+                        <p class="text-xs text-muted">
+                          Allow admins to sign in with Google accounts.
+                        </p>
+                      </div>
+                      <USwitch v-model="state.auth.googleEnabled" />
+                    </div>
+                  </div>
+                </UFormField>
+
+                <div v-if="state.auth.googleEnabled" class="space-y-4">
+                  <UFormField
+                    label="Google client ID"
+                    name="googleClientId"
+                    help="Leave empty to use NUXT_OAUTH_GOOGLE_CLIENT_ID from the environment."
+                  >
+                    <UInput v-model="state.auth.googleClientId" class="w-full" placeholder="Google client ID" />
+                  </UFormField>
+
+                  <UFormField
+                    label="Google client secret"
+                    name="googleClientSecret"
+                    help="Leave empty to use NUXT_OAUTH_GOOGLE_CLIENT_SECRET from the environment."
+                  >
+                    <UInput v-model="state.auth.googleClientSecret" class="w-full" type="password" placeholder="Google client secret" />
+                  </UFormField>
+
+                  <div v-if="!hasSecret" class="rounded-lg border border-warning/40 bg-warning/10 px-4 py-3">
+                    <p class="text-sm font-medium text-warning">
+                      NUXT_SECRET is required to encrypt OAuth secrets.
+                    </p>
+                    <p class="text-xs text-warning/80">
+                      Set NUXT_SECRET in your environment before enabling Google OAuth.
+                    </p>
+                  </div>
+
+                  <div v-if="googleEnvReady" class="rounded-lg border border-muted bg-default px-4 py-3">
+                    <p class="text-xs text-muted">
+                      Environment variables detected for Google OAuth. Leave the fields empty to use them.
+                    </p>
+                  </div>
+                </div>
+
+                <div class="flex items-center justify-between">
+                  <UButton leading-icon="i-lucide-arrow-left" variant="ghost" color="neutral" @click="goBack">
+                    Back
+                  </UButton>
+                  <UButton type="submit" trailing-icon="i-lucide-arrow-right" :loading="loading" :disabled="state.auth.googleEnabled && !hasSecret">
+                    Next
+                  </UButton>
+                </div>
+              </UForm>
+            </div>
+          </template>
+
           <template #sample>
             <div class="space-y-6">
               <div class="space-y-2">
                 <h2 class="text-lg font-semibold">
-                  Step 2: Sample schema and data
+                  Step 3: Sample schema and data
                 </h2>
                 <p class="text-sm text-muted">
                   You can start with a ready-to-edit Article schema and a Welcome guide article, or
@@ -272,7 +419,7 @@ async function completeSetup() {
             <div class="space-y-6">
               <div class="space-y-2">
                 <h2 class="text-lg font-semibold">
-                  Step 3: Review and complete
+                  Step 4: Review and complete
                 </h2>
                 <p class="text-sm text-muted">
                   Confirm the setup choices below. When you complete setup we will run migrations,
