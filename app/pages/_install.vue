@@ -183,19 +183,25 @@ async function completeSetup() {
       }
     })
 
-    const result = await signIn('credentials', {
-      identifier: state.email,
-      password: state.password,
-      redirect: false,
-      callbackUrl: '/_desk'
-    })
+    if (state.auth.credentialsEnabled) {
+      const result = await signIn('credentials', {
+        identifier: state.email,
+        password: state.password,
+        redirect: false,
+        callbackUrl: '/_desk'
+      })
 
-    if (result?.error) {
-      throw new Error(result.error)
+      if (result?.error) {
+        throw new Error(result.error)
+      }
+
+      await fireConfetti()
+      await navigateTo('/_desk', { replace: true })
+      return
     }
 
     await fireConfetti()
-    await navigateTo('/_desk', { replace: true })
+    await navigateTo('/_desk/login', { replace: true })
   } catch (e: any) {
     toast.add({
       title: 'Setup failed',
