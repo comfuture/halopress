@@ -42,11 +42,6 @@ function getProviderEnvPrefix(providerId: string) {
   return `NUXT_OAUTH_${providerId.toUpperCase()}`
 }
 
-function resolveEncryptionKey(providerId: string) {
-  const providerKey = `${getProviderEnvPrefix(providerId)}_ENCRYPTION_KEY`
-  return process.env[providerKey] || process.env.NUXT_SECRET
-}
-
 function buildEnvConfig(providerId: string): OAuthProviderConfig {
   const prefix = getProviderEnvPrefix(providerId)
   const providersList = parseProvidersList(process.env.NUXT_OAUTH_PROVIDERS)
@@ -71,7 +66,7 @@ function buildEnvConfig(providerId: string): OAuthProviderConfig {
 
 async function buildDbConfig(providerId: string, event?: H3Event): Promise<OAuthProviderConfig> {
   const baseKey = `auth.oauth.${providerId}`
-  const decryptKey = resolveEncryptionKey(providerId)
+  const decryptKey = process.env.NUXT_SECRET
   const enabled = await getSettingValue<boolean>(DEFAULT_SCOPE, `${baseKey}.enabled`, undefined, event)
   if (enabled === false) {
     return { enabled: false }

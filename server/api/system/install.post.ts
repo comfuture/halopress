@@ -37,7 +37,7 @@ export default defineEventHandler(async (event) => {
   const googleClientSecretInput = (auth?.googleClientSecret ?? '').trim()
   const envGoogleClientId = (process.env.NUXT_OAUTH_GOOGLE_CLIENT_ID ?? '').trim()
   const envGoogleClientSecret = (process.env.NUXT_OAUTH_GOOGLE_CLIENT_SECRET ?? '').trim()
-  const encryptionSecret = process.env.NUXT_OAUTH_GOOGLE_ENCRYPTION_KEY || process.env.NUXT_SECRET || ''
+  const encryptionSecret = process.env.NUXT_SECRET || ''
   const roles = normalizeRoles(body?.roles)
 
   if (!email || !password) throw badRequest('Missing admin credentials')
