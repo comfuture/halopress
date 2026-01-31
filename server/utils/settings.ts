@@ -1,5 +1,5 @@
 import type { H3Event } from 'h3'
-import { eq, and } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 
 import { getDb } from '../db/db'
 import { settings as settingsTable } from '../db/schema'
@@ -46,22 +46,39 @@ function parseValue(value: string, valueType: SettingValueType) {
 
 export async function getSetting(scope: string, key: string, event?: H3Event): Promise<SettingRow | null> {
   const db = await getDb(event)
-  const row = await db
-    .select({
-      scope: settingsTable.scope,
-      key: settingsTable.key,
-      value: settingsTable.value,
-      valueType: settingsTable.valueType,
-      isEncrypted: settingsTable.isEncrypted,
-      groupKey: settingsTable.groupKey,
-      updatedBy: settingsTable.updatedBy,
-      updatedAt: settingsTable.updatedAt,
-      note: settingsTable.note
-    })
-    .from(settingsTable)
-    .where(and(eq(settingsTable.scope, scope), eq(settingsTable.key, key)))
-    .get()
-  return row ?? null
+  try {
+    const row = await db
+      .select({
+        scope: settingsTable.scope,
+        key: settingsTable.key,
+        value: settingsTable.value,
+        valueType: settingsTable.valueType,
+        isEncrypted: settingsTable.isEncrypted,
+        groupKey: settingsTable.groupKey,
+        updatedBy: settingsTable.updatedBy,
+        updatedAt: settingsTable.updatedAt,
+        note: settingsTable.note
+      })
+      .from(settingsTable)
+      .where(and(eq(settingsTable.scope, scope), eq(settingsTable.key, key)))
+      .get()
+    return row ?? null
+  } catch (error) {
+    if (isMissingSettingsTableError(error)) return null
+    throw error
+  }
+}
+
+export async function isSettingsTableReady(event?: H3Event) {
+  try {
+    const db = await getDb(event)
+    const rows = await db.values(
+      sql.raw("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'settings'")
+    )
+    return Boolean(rows?.[0]?.[0])
+  } catch {
+    return false
+  }
 }
 
 export async function getSettingValue<T = string>(
@@ -122,4 +139,8 @@ export async function upsertSetting(input: SettingInput, event?: H3Event) {
         note: input.note ?? null
       }
     })
+}
+
+function isMissingSettingsTableError(error: unknown) {
+  return error instanceof Error && error.message.includes('no such table: settings')
 }
