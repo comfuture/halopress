@@ -22,6 +22,22 @@ export const user = sqliteTable('user', {
   byEmail: index('idx_user_email').on(t.email)
 }))
 
+export const settings = sqliteTable('settings', {
+  scope: text('scope').notNull().default('global'),
+  key: text('key').notNull(),
+  value: text('value').notNull(),
+  valueType: text('value_type').notNull().default('string'),
+  isEncrypted: integer('is_encrypted', { mode: 'boolean' }).notNull().default(false),
+  groupKey: text('group_key'),
+  updatedBy: text('updated_by'),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+  note: text('note')
+}, t => ({
+  pk: primaryKey({ columns: [t.scope, t.key] }),
+  byKey: index('idx_settings_key').on(t.key),
+  byGroup: index('idx_settings_group').on(t.groupKey)
+}))
+
 export const schema = sqliteTable('schema', {
   schemaKey: text('schema_key').notNull(),
   version: integer('version').notNull(),

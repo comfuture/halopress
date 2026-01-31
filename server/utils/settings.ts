@@ -1,0 +1,125 @@
+import type { H3Event } from 'h3'
+import { eq, and } from 'drizzle-orm'
+
+import { getDb } from '../db/db'
+import { settings as settingsTable } from '../db/schema'
+import { decryptString, encryptString } from './crypto'
+
+export type SettingValueType = 'string' | 'json' | 'boolean' | 'number'
+
+export type SettingRow = {
+  scope: string
+  key: string
+  value: string
+  valueType: SettingValueType
+  isEncrypted: boolean
+  groupKey?: string | null
+  updatedBy?: string | null
+  updatedAt: Date
+  note?: string | null
+}
+
+type SettingInput = {
+  scope?: string
+  key: string
+  value: string
+  valueType?: SettingValueType
+  isEncrypted?: boolean
+  groupKey?: string | null
+  updatedBy?: string | null
+  note?: string | null
+  encryptionKey?: string
+}
+
+function parseValue(value: string, valueType: SettingValueType) {
+  if (valueType === 'boolean') return value === 'true' || value === '1'
+  if (valueType === 'number') return Number(value)
+  if (valueType === 'json') {
+    try {
+      return JSON.parse(value)
+    } catch {
+      return value
+    }
+  }
+  return value
+}
+
+export async function getSetting(scope: string, key: string, event?: H3Event): Promise<SettingRow | null> {
+  const db = await getDb(event)
+  const row = await db
+    .select({
+      scope: settingsTable.scope,
+      key: settingsTable.key,
+      value: settingsTable.value,
+      valueType: settingsTable.valueType,
+      isEncrypted: settingsTable.isEncrypted,
+      groupKey: settingsTable.groupKey,
+      updatedBy: settingsTable.updatedBy,
+      updatedAt: settingsTable.updatedAt,
+      note: settingsTable.note
+    })
+    .from(settingsTable)
+    .where(and(eq(settingsTable.scope, scope), eq(settingsTable.key, key)))
+    .get()
+  return row ?? null
+}
+
+export async function getSettingValue<T = string>(
+  scope: string,
+  key: string,
+  options?: { decryptKey?: string },
+  event?: H3Event
+): Promise<T | null> {
+  const row = await getSetting(scope, key, event)
+  if (!row) return null
+  return await resolveSettingValue(row, options)
+}
+
+export async function resolveSettingValue<T = string>(
+  row: SettingRow,
+  options?: { decryptKey?: string }
+): Promise<T> {
+  let raw = row.value
+  if (row.isEncrypted) {
+    raw = await decryptString(raw, options?.decryptKey || '')
+  }
+  return parseValue(raw, row.valueType) as T
+}
+
+export async function upsertSetting(input: SettingInput, event?: H3Event) {
+  const scope = input.scope ?? 'global'
+  const valueType = input.valueType ?? 'string'
+  const isEncrypted = Boolean(input.isEncrypted)
+  const updatedAt = new Date()
+  let value = input.value
+
+  if (isEncrypted) {
+    value = await encryptString(value, input.encryptionKey || '')
+  }
+
+  const db = await getDb(event)
+  await db.insert(settingsTable)
+    .values({
+      scope,
+      key: input.key,
+      value,
+      valueType,
+      isEncrypted,
+      groupKey: input.groupKey ?? null,
+      updatedBy: input.updatedBy ?? null,
+      updatedAt,
+      note: input.note ?? null
+    })
+    .onConflictDoUpdate({
+      target: [settingsTable.scope, settingsTable.key],
+      set: {
+        value,
+        valueType,
+        isEncrypted,
+        groupKey: input.groupKey ?? null,
+        updatedBy: input.updatedBy ?? null,
+        updatedAt,
+        note: input.note ?? null
+      }
+    })
+}
