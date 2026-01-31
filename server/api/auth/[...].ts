@@ -1,13 +1,14 @@
 import CredentialsProvider from 'next-auth/providers/credentials'
 import GoogleProvider from 'next-auth/providers/google'
 import { NuxtAuthHandler } from '#auth'
-import { defineEventHandler } from 'h3'
+import { createError, defineEventHandler, getRequestURL } from 'h3'
 import { eq, or } from 'drizzle-orm'
 
 import { getDb } from '../../db/db'
 import { user as userTable } from '../../db/schema'
 import { verifyPassword } from '../../utils/password'
 import { resolveCredentialsEnabled, resolveOAuthProviderConfig } from '../../utils/oauth'
+import { getInstallStatus } from '../../utils/install'
 
 type CredentialInput = {
   identifier?: string
@@ -204,6 +205,16 @@ async function buildAuthHandler(event: Parameters<AuthHandler>[0]) {
 }
 
 export default defineEventHandler(async (event) => {
+  const installDb = await getDb(event)
+  const installStatus = await getInstallStatus(installDb)
+  if (!installStatus.ready) {
+    const path = getRequestURL(event).pathname
+    if (path.endsWith('/session')) return { user: null }
+    if (path.endsWith('/providers')) return {}
+    if (path.endsWith('/csrf')) return { csrfToken: '' }
+    throw createError({ statusCode: 503, statusMessage: 'Auth not ready' })
+  }
+
   if (!authHandlerPromise) {
     authHandlerPromise = buildAuthHandler(event)
   }
