@@ -11,12 +11,12 @@ const state = reactive({
 const loading = ref(false)
 const toast = useToast()
 const { signIn, getProviders } = useAuth()
-const providers = ref<Record<string, { id: string; name: string }> | null>(null)
+const providers = ref<Record<string, { id: string; name: string } | undefined> | null>(null)
 const loadingProviders = ref(true)
 
 const oauthProviders = computed(() => Object.values(providers.value || {})
-  .filter(provider => provider.id !== 'credentials'))
-const hasCredentials = computed(() => Boolean(providers.value?.credentials))
+  .filter((provider): provider is { id: string; name: string } => Boolean(provider?.id) && provider?.id !== 'credentials'))
+const hasCredentials = computed(() => Boolean(providers.value?.credentials?.id === 'credentials'))
 
 try {
   providers.value = await getProviders()
