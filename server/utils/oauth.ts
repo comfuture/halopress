@@ -34,7 +34,7 @@ function resolveSettingsSource(): SettingsSource {
   const raw = (process.env.NUXT_OAUTH_SETTINGS_SOURCE || 'env+db').toLowerCase()
   if (raw === 'env') return { useEnv: true, useDb: false }
   if (raw === 'db') return { useEnv: false, useDb: true }
-  if (raw === 'db+env') return { useEnv: true, useDb: true }
+  if (raw === 'db+env' || raw === 'env+db') return { useEnv: true, useDb: true }
   return { useEnv: true, useDb: true }
 }
 
