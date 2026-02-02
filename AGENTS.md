@@ -6,6 +6,11 @@
 
 - When writing PR bodies, do not leave literal `\n` sequences in the text; use real line breaks instead.
 
+## Nuxt runtimeConfig notes
+
+- For Nuxt runtimeConfig defaults, do not read `process.env.*` in `nuxt.config.ts`; set only safe defaults and rely on runtime `NUXT_*` env overrides.
+- Reviewers may suggest restoring `process.env.AUTH_ORIGIN` fallbacks; we intentionally avoid that to align with Nuxt runtimeConfig guidance (build-time env reads can break at runtime).
+
 # DB Migration
 Generate migration from schema changes
 
