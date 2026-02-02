@@ -5,7 +5,7 @@ import { resolveEncryptionKey } from '../../../utils/oauth'
 export default defineEventHandler(async (event) => {
   const db = await getDb(event)
   const status = await getInstallStatus(db)
-  const googleEncryptionKey = resolveEncryptionKey('google')
+  const googleEncryptionKey = resolveEncryptionKey('google', event)
   return {
     ...status,
     hasSecret: Boolean(googleEncryptionKey),

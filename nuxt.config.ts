@@ -75,8 +75,9 @@ export default defineNuxtConfig({
   },
 
   runtimeConfig: {
-    authSecret: process.env.NUXT_AUTH_SECRET || 'dev-secret-change-me',
-    authOrigin: process.env.NUXT_AUTH_ORIGIN || process.env.AUTH_ORIGIN
+    authSecret: 'dev-secret-change-me',
+    authOrigin: 'http://localhost:3000/api/auth',
+    secretKey: ''
   },
 
   auth: {
