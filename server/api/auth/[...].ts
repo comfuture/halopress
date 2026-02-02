@@ -9,7 +9,7 @@ import { user as userTable } from '../../db/schema'
 import { verifyPassword } from '../../utils/password'
 import { resolveCredentialsEnabled, resolveOAuthProviderConfig } from '../../utils/oauth'
 import { getInstallStatus } from '../../utils/install'
-import { getSettingsGroupUpdatedAt } from '../../utils/settings'
+import { getTenantKey } from '../../utils/tenant'
 
 type CredentialInput = {
   identifier?: string
@@ -19,8 +19,6 @@ type CredentialInput = {
 }
 
 type AuthHandler = ReturnType<typeof NuxtAuthHandler>
-
-let authHandlerCache: { handler: AuthHandler; updatedAt: number | null } | null = null
 
 async function buildAuthHandler(event: Parameters<AuthHandler>[0]) {
   const credentialsEnabled = await resolveCredentialsEnabled(event)
@@ -160,6 +158,8 @@ async function buildAuthHandler(event: Parameters<AuthHandler>[0]) {
           token.name = user.name
         }
         if (account?.provider && account.provider !== 'credentials') {
+          const tenantKey = getTenantKey(event)
+          token.tenantKey = tenantKey
           const email = (token.email || user?.email || '').trim().toLowerCase()
           if (email) {
             try {
@@ -216,17 +216,8 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 503, statusMessage: 'Auth not ready' })
   }
 
-  const updatedAt = await getSettingsGroupUpdatedAt('auth.oauth', 'global', event)
-  const updatedAtMs = updatedAt ? updatedAt.getTime() : null
-
-  if (!authHandlerCache || authHandlerCache.updatedAt !== updatedAtMs) {
-    authHandlerCache = {
-      handler: await buildAuthHandler(event),
-      updatedAt: updatedAtMs
-    }
-  }
-
-  return authHandlerCache.handler(event)
+  const handler = await buildAuthHandler(event)
+  return handler(event)
 })
 
 function isMissingUserTableError(error: unknown) {

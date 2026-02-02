@@ -31,6 +31,7 @@ export NUXT_OAUTH_CREDENTIALS_ENABLED="true"
 export NUXT_OAUTH_GOOGLE_ENABLED="true"
 export NUXT_OAUTH_GOOGLE_CLIENT_ID="..."
 export NUXT_OAUTH_GOOGLE_CLIENT_SECRET="..."
+export NUXT_OAUTH_GOOGLE_ENCRYPTION_KEY="..." # optional provider-specific encryption key
 export NUXT_SECRET="..." # encryption key for encrypted settings
 ```
 

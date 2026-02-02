@@ -2,6 +2,7 @@ import { readBody } from 'h3'
 import { getDb } from '../../db/db'
 import { badRequest, notFound, unauthorized } from '../../utils/http'
 import { getAdminUserByIdentifier, isAdminLoginAllowedDb } from '../../utils/auth'
+import { resolveEncryptionKey } from '../../utils/oauth'
 import { upsertSetting } from '../../utils/settings'
 import {
   ensureAdminUser,
@@ -37,12 +38,14 @@ export default defineEventHandler(async (event) => {
   const googleClientSecretInput = (auth?.googleClientSecret ?? '').trim()
   const envGoogleClientId = (process.env.NUXT_OAUTH_GOOGLE_CLIENT_ID ?? '').trim()
   const envGoogleClientSecret = (process.env.NUXT_OAUTH_GOOGLE_CLIENT_SECRET ?? '').trim()
-  const encryptionSecret = process.env.NUXT_SECRET || ''
+  const encryptionSecret = resolveEncryptionKey('google')
   const roles = normalizeRoles(body?.roles)
 
   if (!email || !password) throw badRequest('Missing admin credentials')
   if (!credentialsEnabled && !googleEnabled) throw badRequest('At least one auth method must be enabled')
-  if (googleEnabled && !encryptionSecret) throw badRequest('NUXT_SECRET is required to enable Google OAuth')
+  if (googleEnabled && !encryptionSecret) {
+    throw badRequest('NUXT_SECRET or NUXT_OAUTH_GOOGLE_ENCRYPTION_KEY is required to enable Google OAuth')
+  }
 
   const db = await getDb(event)
   const status = await getInstallStatus(db)

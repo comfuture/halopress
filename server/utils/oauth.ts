@@ -42,6 +42,14 @@ function getProviderEnvPrefix(providerId: string) {
   return `NUXT_OAUTH_${providerId.toUpperCase()}`
 }
 
+export function resolveEncryptionKey(providerId: OAuthProviderId) {
+  const providerKey = process.env[`${getProviderEnvPrefix(providerId)}_ENCRYPTION_KEY`]
+  const resolvedProviderKey = providerKey?.trim()
+  if (resolvedProviderKey) return resolvedProviderKey
+  const baseKey = process.env.NUXT_SECRET?.trim()
+  return baseKey || ''
+}
+
 function buildEnvConfig(providerId: string): OAuthProviderConfig {
   const prefix = getProviderEnvPrefix(providerId)
   const providersList = parseProvidersList(process.env.NUXT_OAUTH_PROVIDERS)
@@ -64,21 +72,28 @@ function buildEnvConfig(providerId: string): OAuthProviderConfig {
   }
 }
 
-async function buildDbConfig(providerId: string, event?: H3Event): Promise<OAuthProviderConfig> {
+async function buildDbConfig(
+  providerId: OAuthProviderId,
+  event?: H3Event,
+  options?: { enabled?: boolean | null; skipSecrets?: boolean }
+): Promise<OAuthProviderConfig> {
   const baseKey = `auth.oauth.${providerId}`
-  const decryptKey = process.env.NUXT_SECRET
-  const enabled = await getSettingValue<boolean>(DEFAULT_SCOPE, `${baseKey}.enabled`, undefined, event)
+  const decryptKey = resolveEncryptionKey(providerId) || undefined
+  const enabled = options?.enabled
+    ?? await getSettingValue<boolean>(DEFAULT_SCOPE, `${baseKey}.enabled`, undefined, event)
   if (enabled === false) {
     return { enabled: false }
   }
 
   const clientId = await getSettingValue<string>(DEFAULT_SCOPE, `${baseKey}.clientId`, undefined, event)
-  const clientSecret = await safeGetSettingValue<string>(
-    DEFAULT_SCOPE,
-    `${baseKey}.clientSecret`,
-    { decryptKey },
-    event
-  )
+  const clientSecret = options?.skipSecrets
+    ? null
+    : await safeGetSettingValue<string>(
+      DEFAULT_SCOPE,
+      `${baseKey}.clientSecret`,
+      decryptKey ? { decryptKey } : undefined,
+      event
+    )
   const autoProvision = await getSettingValue<boolean>(DEFAULT_SCOPE, `${baseKey}.autoProvision`, undefined, event)
   return {
     enabled: enabled ?? undefined,
@@ -104,7 +119,13 @@ export async function resolveOAuthProviderConfig(providerId: OAuthProviderId, ev
     source.useDb = false
   }
   const envConfig = source.useEnv ? buildEnvConfig(providerId) : {}
-  const dbConfig = source.useDb ? await buildDbConfig(providerId, event) : {}
+  if (!source.useDb) return envConfig as OAuthProviderConfig
+
+  const enabled = await getSettingValue<boolean>(DEFAULT_SCOPE, `auth.oauth.${providerId}.enabled`, undefined, event)
+  if (enabled === false) return { enabled: false }
+
+  const skipSecrets = Boolean(source.useEnv && envConfig.clientId && envConfig.clientSecret)
+  const dbConfig = await buildDbConfig(providerId, event, { enabled, skipSecrets })
   return source.useEnv
     ? mergeDefined(dbConfig as OAuthProviderConfig, envConfig as OAuthProviderConfig)
     : dbConfig
