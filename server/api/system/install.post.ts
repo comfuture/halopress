@@ -36,8 +36,9 @@ export default defineEventHandler(async (event) => {
   const googleEnabled = auth?.googleEnabled === true
   const googleClientIdInput = (auth?.googleClientId ?? '').trim()
   const googleClientSecretInput = (auth?.googleClientSecret ?? '').trim()
-  const envGoogleClientId = (process.env.NUXT_OAUTH_GOOGLE_CLIENT_ID ?? '').trim()
-  const envGoogleClientSecret = (process.env.NUXT_OAUTH_GOOGLE_CLIENT_SECRET ?? '').trim()
+  const config = useRuntimeConfig(event)
+  const envGoogleClientId = (config.oauthGoogleClientId ?? '').trim()
+  const envGoogleClientSecret = (config.oauthGoogleClientSecret ?? '').trim()
   const encryptionSecret = resolveEncryptionKey('google', event)
   const roles = normalizeRoles(body?.roles)
 
