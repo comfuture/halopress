@@ -32,7 +32,7 @@ export NUXT_OAUTH_GOOGLE_ENABLED="true"
 export NUXT_OAUTH_GOOGLE_CLIENT_ID="..."
 export NUXT_OAUTH_GOOGLE_CLIENT_SECRET="..."
 export NUXT_OAUTH_GOOGLE_ENCRYPTION_KEY="..." # optional provider-specific encryption key
-export NUXT_SECRET="..." # encryption key for encrypted settings
+export NUXT_SECRET_KEY="..." # encryption key for encrypted settings
 ```
 
 DB settings keys (scope: `global`) for OAuth:

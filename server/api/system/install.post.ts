@@ -38,13 +38,13 @@ export default defineEventHandler(async (event) => {
   const googleClientSecretInput = (auth?.googleClientSecret ?? '').trim()
   const envGoogleClientId = (process.env.NUXT_OAUTH_GOOGLE_CLIENT_ID ?? '').trim()
   const envGoogleClientSecret = (process.env.NUXT_OAUTH_GOOGLE_CLIENT_SECRET ?? '').trim()
-  const encryptionSecret = resolveEncryptionKey('google')
+  const encryptionSecret = resolveEncryptionKey('google', event)
   const roles = normalizeRoles(body?.roles)
 
   if (!email || !password) throw badRequest('Missing admin credentials')
   if (!credentialsEnabled && !googleEnabled) throw badRequest('At least one auth method must be enabled')
   if (googleEnabled && !encryptionSecret) {
-    throw badRequest('NUXT_SECRET or NUXT_OAUTH_GOOGLE_ENCRYPTION_KEY is required to enable Google OAuth')
+    throw badRequest('NUXT_SECRET_KEY or NUXT_OAUTH_GOOGLE_ENCRYPTION_KEY is required to enable Google OAuth')
   }
 
   const db = await getDb(event)
