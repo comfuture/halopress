@@ -77,7 +77,8 @@ export default defineNuxtConfig({
   runtimeConfig: {
     authSecret: 'dev-secret-change-me',
     authOrigin: 'http://localhost:3000/api/auth',
-    secretKey: ''
+    secretKey: '',
+    oauthGoogleEncryptionKey: ''
   },
 
   auth: {

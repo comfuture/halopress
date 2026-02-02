@@ -43,9 +43,9 @@ function getProviderEnvPrefix(providerId: string) {
 }
 
 export function resolveEncryptionKey(providerId: OAuthProviderId, event?: H3Event) {
-  const providerKey = process.env[`${getProviderEnvPrefix(providerId)}_ENCRYPTION_KEY`]
-  if (providerKey) return providerKey
   const config = useRuntimeConfig(event)
+  const providerKey = providerId === 'google' ? config.oauthGoogleEncryptionKey : ''
+  if (providerKey) return providerKey
   const baseKey = config.secretKey || process.env.NUXT_SECRET || ''
   return baseKey
 }
