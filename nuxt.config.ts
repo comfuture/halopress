@@ -78,7 +78,13 @@ export default defineNuxtConfig({
     authSecret: 'dev-secret-change-me',
     authOrigin: 'http://localhost:3000/api/auth',
     secretKey: '',
-    oauthGoogleEncryptionKey: ''
+    oauthGoogleEncryptionKey: '',
+    oauthSettingsSource: 'env+db',
+    oauthProviders: '',
+    oauthCredentialsEnabled: '',
+    oauthGoogleEnabled: '',
+    oauthGoogleClientId: '',
+    oauthGoogleClientSecret: ''
   },
 
   auth: {

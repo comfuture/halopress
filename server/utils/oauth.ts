@@ -17,8 +17,9 @@ type OAuthProviderConfig = {
 
 const DEFAULT_SCOPE = 'global'
 
-function parseBoolean(value?: string) {
-  if (value === undefined) return undefined
+function parseBoolean(value?: string | boolean | null) {
+  if (value === undefined || value === null || value === '') return undefined
+  if (typeof value === 'boolean') return value
   const normalized = value.trim().toLowerCase()
   if (['true', '1', 'yes', 'on'].includes(normalized)) return true
   if (['false', '0', 'no', 'off'].includes(normalized)) return false
@@ -30,16 +31,13 @@ function parseProvidersList(value?: string) {
   return value.split(',').map(item => item.trim().toLowerCase()).filter(Boolean)
 }
 
-function resolveSettingsSource(): SettingsSource {
-  const raw = (process.env.NUXT_OAUTH_SETTINGS_SOURCE || 'env+db').toLowerCase()
+function resolveSettingsSource(event?: H3Event): SettingsSource {
+  const config = useRuntimeConfig(event)
+  const raw = (config.oauthSettingsSource || 'env+db').toLowerCase()
   if (raw === 'env') return { useEnv: true, useDb: false }
   if (raw === 'db') return { useEnv: false, useDb: true }
   if (raw === 'db+env' || raw === 'env+db') return { useEnv: true, useDb: true }
   return { useEnv: true, useDb: true }
-}
-
-function getProviderEnvPrefix(providerId: string) {
-  return `NUXT_OAUTH_${providerId.toUpperCase()}`
 }
 
 export function resolveEncryptionKey(providerId: OAuthProviderId, event?: H3Event) {
@@ -50,12 +48,14 @@ export function resolveEncryptionKey(providerId: OAuthProviderId, event?: H3Even
   return baseKey
 }
 
-function buildEnvConfig(providerId: string): OAuthProviderConfig {
-  const prefix = getProviderEnvPrefix(providerId)
-  const providersList = parseProvidersList(process.env.NUXT_OAUTH_PROVIDERS)
-  const enabledOverride = parseBoolean(process.env[`${prefix}_ENABLED`])
-  const clientId = process.env[`${prefix}_CLIENT_ID`]
-  const clientSecret = process.env[`${prefix}_CLIENT_SECRET`]
+function buildEnvConfig(providerId: OAuthProviderId, event?: H3Event): OAuthProviderConfig {
+  const config = useRuntimeConfig(event)
+  const providersList = parseProvidersList(config.oauthProviders)
+  const enabledOverride = providerId === 'google'
+    ? parseBoolean(config.oauthGoogleEnabled)
+    : undefined
+  const clientId = providerId === 'google' ? config.oauthGoogleClientId : undefined
+  const clientSecret = providerId === 'google' ? config.oauthGoogleClientSecret : undefined
 
   let enabled: boolean | undefined = enabledOverride
   if (enabled === undefined && providersList) {
@@ -114,11 +114,11 @@ function mergeDefined(base: OAuthProviderConfig, override: OAuthProviderConfig) 
 }
 
 export async function resolveOAuthProviderConfig(providerId: OAuthProviderId, event?: H3Event) {
-  const source = resolveSettingsSource()
+  const source = resolveSettingsSource(event)
   if (source.useDb && !(await isSettingsTableReady(event))) {
     source.useDb = false
   }
-  const envConfig = source.useEnv ? buildEnvConfig(providerId) : {}
+  const envConfig = source.useEnv ? buildEnvConfig(providerId, event) : {}
   if (!source.useDb) return envConfig as OAuthProviderConfig
 
   const enabled = await getSettingValue<boolean>(DEFAULT_SCOPE, `auth.oauth.${providerId}.enabled`, undefined, event)
@@ -132,12 +132,13 @@ export async function resolveOAuthProviderConfig(providerId: OAuthProviderId, ev
 }
 
 export async function resolveCredentialsEnabled(event?: H3Event) {
-  const source = resolveSettingsSource()
+  const source = resolveSettingsSource(event)
   if (source.useDb && !(await isSettingsTableReady(event))) {
     source.useDb = false
   }
-  const providersList = source.useEnv ? parseProvidersList(process.env.NUXT_OAUTH_PROVIDERS) : null
-  const envEnabledOverride = source.useEnv ? parseBoolean(process.env.NUXT_OAUTH_CREDENTIALS_ENABLED) : undefined
+  const config = useRuntimeConfig(event)
+  const providersList = source.useEnv ? parseProvidersList(config.oauthProviders) : null
+  const envEnabledOverride = source.useEnv ? parseBoolean(config.oauthCredentialsEnabled) : undefined
   let enabled: boolean | undefined = envEnabledOverride
 
   if (enabled === undefined && providersList) {
