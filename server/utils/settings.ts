@@ -31,14 +31,14 @@ type SettingInput = {
   encryptionKey?: string
 }
 
-function parseValue(value: string, valueType: SettingValueType) {
+function parseValue(value: string, valueType: SettingValueType): string | number | boolean | unknown | null {
   if (valueType === 'boolean') return value === 'true' || value === '1'
   if (valueType === 'number') return Number(value)
   if (valueType === 'json') {
     try {
       return JSON.parse(value)
     } catch (error) {
-      console.warn('[settings] Failed to parse JSON value', error)
+      console.error('[settings] Failed to parse JSON value', error)
       return null
     }
   }
@@ -121,7 +121,17 @@ export async function resolveSettingValue<T = string>(
 ): Promise<T | null> {
   let raw = row.value
   if (row.isEncrypted) {
-    raw = await decryptString(raw, options?.decryptKey || '')
+    const decryptKey = options?.decryptKey
+    if (!decryptKey) {
+      console.warn('[settings] Missing decryption key for setting', row.key)
+      return null
+    }
+    try {
+      raw = await decryptString(raw, decryptKey)
+    } catch (error) {
+      console.warn('[settings] Failed to decrypt setting', row.key, error)
+      return null
+    }
   }
   return parseValue(raw, row.valueType) as T | null
 }

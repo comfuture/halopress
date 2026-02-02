@@ -104,7 +104,10 @@ function validateAuth(values: typeof state): FormError[] {
 
   if (values.auth.googleEnabled) {
     if (!hasSecret.value) {
-      errors.push({ name: 'googleClientSecret', message: 'NUXT_SECRET is required to encrypt OAuth secrets.' })
+      errors.push({
+        name: 'googleClientSecret',
+        message: 'NUXT_SECRET or NUXT_OAUTH_GOOGLE_ENCRYPTION_KEY is required to encrypt OAuth secrets.'
+      })
     }
     if (!values.auth.googleClientId && !oauthEnv.value.googleClientId) {
       errors.push({ name: 'googleClientId', message: 'Google client ID is required.' })
@@ -354,10 +357,10 @@ async function completeSetup() {
 
                   <div v-if="!hasSecret" class="rounded-lg border border-warning/40 bg-warning/10 px-4 py-3">
                     <p class="text-sm font-medium text-warning">
-                      NUXT_SECRET is required to encrypt OAuth secrets.
+                      NUXT_SECRET or NUXT_OAUTH_GOOGLE_ENCRYPTION_KEY is required to encrypt OAuth secrets.
                     </p>
                     <p class="text-xs text-warning/80">
-                      Set NUXT_SECRET in your environment before enabling Google OAuth.
+                      Set NUXT_SECRET or NUXT_OAUTH_GOOGLE_ENCRYPTION_KEY in your environment before enabling Google OAuth.
                     </p>
                   </div>
 
