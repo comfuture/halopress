@@ -44,11 +44,10 @@ function getProviderEnvPrefix(providerId: string) {
 
 export function resolveEncryptionKey(providerId: OAuthProviderId, event?: H3Event) {
   const providerKey = process.env[`${getProviderEnvPrefix(providerId)}_ENCRYPTION_KEY`]
-  const resolvedProviderKey = providerKey?.trim()
-  if (resolvedProviderKey) return resolvedProviderKey
+  if (providerKey) return providerKey
   const config = useRuntimeConfig(event)
-  const baseKey = config.secretKey?.trim()
-  return baseKey || ''
+  const baseKey = config.secretKey || process.env.NUXT_SECRET || ''
+  return baseKey
 }
 
 function buildEnvConfig(providerId: string): OAuthProviderConfig {
