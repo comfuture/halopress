@@ -200,7 +200,7 @@ const columns = computed<TableColumn<RoleItem>[]>(() => ([
         { label: 'Delete', icon: 'i-lucide-trash-2', color: 'error', disabled: isSystem, onSelect: () => openDelete(role) }
       ]]
 
-      return h(UDropdownMenu, { items, content: { align: 'end' } }, () => h(UButton, {
+      return h(UDropdownMenu as any, { items, content: { align: 'end' } }, () => h(UButton, {
         icon: 'i-lucide-more-vertical',
         color: 'neutral',
         variant: 'ghost',

@@ -225,7 +225,7 @@ const columns = computed<TableColumn<UserRow>[]>(() => ([
         }
       ]]
 
-      return h(UDropdownMenu, { items, content: { align: 'end' } }, () => h(UButton, {
+      return h(UDropdownMenu as any, { items, content: { align: 'end' } }, () => h(UButton, {
         icon: 'i-lucide-more-vertical',
         color: 'neutral',
         variant: 'ghost',
@@ -335,7 +335,7 @@ const columns = computed<TableColumn<UserRow>[]>(() => ([
       </UButton>
       <UButton
         color="primary"
-        :loading="editRow && getPending(editRow.id).name"
+        :loading="editRow ? getPending(editRow.id).name : false"
         type="submit"
         :form="editFormId"
       >
