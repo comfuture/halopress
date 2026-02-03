@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { h, resolveComponent } from 'vue'
+import { h } from 'vue'
 import type { TableColumn } from '@nuxt/ui'
+import { UBadge, UAvatar, NuxtLink } from '#components'
 
 definePageMeta({
   layout: 'desk'
@@ -9,7 +10,8 @@ definePageMeta({
 const route = useRoute()
 const schemaKey = computed(() => String(route.params.schemaKey))
 const status = ref<string>('all')
-const sortField = ref<string>('')
+const SORT_DEFAULT = '__default__'
+const sortField = ref<string>(SORT_DEFAULT)
 const sortDir = ref<'asc' | 'desc'>('desc')
 
 const { data: schema } = await useFetch<any>(() => `/api/schema/${schemaKey.value}/active`)
@@ -54,7 +56,7 @@ type FieldState = {
   values: string
   min: string
   max: string
-  bool: '' | 'true' | 'false'
+  bool: 'any' | 'true' | 'false'
   enumValues: string[]
 }
 
@@ -129,7 +131,7 @@ const filterState = reactive<Record<string, FieldState>>({})
 
 function ensureFieldState(field: NormalizedField): FieldState {
   if (!filterState[field.key]) {
-    filterState[field.key] = { value: '', values: '', min: '', max: '', bool: '', enumValues: [] }
+    filterState[field.key] = { value: '', values: '', min: '', max: '', bool: 'any', enumValues: [] }
   }
   return filterState[field.key]!
 }
@@ -169,7 +171,7 @@ const statusOptions = [
 ]
 
 const sortOptions = computed(() => [
-  { label: 'Updated (default)', value: '' },
+  { label: 'Updated (default)', value: SORT_DEFAULT },
   ...sortableFields.value.map(field => ({
     label: field.title || field.key,
     value: field.key
@@ -182,7 +184,7 @@ const sortDirOptions = [
 ]
 
 const booleanOptions = [
-  { label: 'Any', value: '' },
+  { label: 'Any', value: 'any' },
   { label: 'True', value: 'true' },
   { label: 'False', value: 'false' }
 ]
@@ -327,27 +329,23 @@ function fieldState(field: NormalizedField): FieldState {
 
 function applySearch() {
   appliedStatus.value = status.value
-  appliedSortField.value = sortField.value
-  appliedSortDir.value = sortDir.value
+  appliedSortField.value = sortField.value === SORT_DEFAULT ? '' : sortField.value
+  appliedSortDir.value = sortField.value === SORT_DEFAULT ? 'desc' : sortDir.value
   appliedFilters.value = buildFilters()
 }
 
 function resetFilters() {
   status.value = 'all'
-  sortField.value = ''
+  sortField.value = SORT_DEFAULT
   sortDir.value = 'desc'
   for (const key of Object.keys(filterState)) {
-    filterState[key] = { value: '', values: '', min: '', max: '', bool: '', enumValues: [] }
+    filterState[key] = { value: '', values: '', min: '', max: '', bool: 'any', enumValues: [] }
   }
   appliedFilters.value = []
   appliedStatus.value = 'all'
   appliedSortField.value = ''
   appliedSortDir.value = 'desc'
 }
-
-const UBadge = resolveComponent('UBadge')
-const UAvatar = resolveComponent('UAvatar')
-const NuxtLink = resolveComponent('NuxtLink')
 
 const columns = computed<TableColumn<ContentRow>[]>(() => {
   const base: TableColumn<ContentRow>[] = [
@@ -457,7 +455,7 @@ const columns = computed<TableColumn<ContentRow>[]>(() => {
               v-model="sortDir"
               :items="sortDirOptions"
               class="w-40"
-              :disabled="!sortField"
+              :disabled="sortField === SORT_DEFAULT"
             />
             <UButton color="primary" @click="applySearch">
               Search

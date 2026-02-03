@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { h, resolveComponent } from 'vue'
+import { h } from 'vue'
 import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
+import { UBadge, UDropdownMenu, UButton } from '#components'
 
 definePageMeta({
   layout: 'desk',
@@ -158,10 +159,6 @@ async function deleteUser(row: UserRow) {
     state.delete = false
   }
 }
-
-const UBadge = resolveComponent('UBadge')
-const UDropdownMenu = resolveComponent('UDropdownMenu')
-const UButton = resolveComponent('UButton')
 
 const columns = computed<TableColumn<UserRow>[]>(() => ([
   {

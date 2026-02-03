@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { h, resolveComponent } from 'vue'
+import { h } from 'vue'
 import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
+import { UButton, UDropdownMenu } from '#components'
 
 type RoleItem = { roleKey: string; title: string | null; level: number }
 
@@ -169,9 +170,6 @@ async function confirmDelete() {
     deleting.value = false
   }
 }
-
-const UButton = resolveComponent('UButton')
-const UDropdownMenu = resolveComponent('UDropdownMenu')
 
 const columns = computed<TableColumn<RoleItem>[]>(() => ([
   {
