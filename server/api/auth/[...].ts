@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks'
 import CredentialsProvider from 'next-auth/providers/credentials'
 import GoogleProvider from 'next-auth/providers/google'
 import { NuxtAuthHandler } from '#auth'
@@ -19,6 +20,20 @@ type CredentialInput = {
 }
 
 type AuthHandler = ReturnType<typeof NuxtAuthHandler>
+
+const authEventStorage = new AsyncLocalStorage<any>()
+
+function getAuthEvent() {
+  return authEventStorage.getStore()
+}
+
+function resolveTenantKey() {
+  const event = getAuthEvent()
+  if (!event) return 'local'
+  return getTenantKey(event)
+}
+
+let cachedAuthHandler: AuthHandler | null = null
 
 async function buildAuthHandler(event: Parameters<AuthHandler>[0]) {
   const credentialsEnabled = await resolveCredentialsEnabled(event)
@@ -51,6 +66,7 @@ async function buildAuthHandler(event: Parameters<AuthHandler>[0]) {
           password: { label: 'Password', type: 'password' }
         },
         async authorize(credentials: Record<string, string> | undefined, req: { headers?: Record<string, string | string[] | undefined> }) {
+          const authEvent = getAuthEvent()
           const input = credentials as CredentialInput | null
           const rawIdentifier = (input?.identifier || input?.email || input?.username || '').trim()
           const identifier = rawIdentifier.includes('@') ? rawIdentifier.toLowerCase() : rawIdentifier
@@ -73,7 +89,7 @@ async function buildAuthHandler(event: Parameters<AuthHandler>[0]) {
           } | undefined
 
           try {
-            const db = await getDb(event)
+            const db = await getDb(authEvent)
             const user = await db
               .select({
                 id: userTable.id,
@@ -124,13 +140,14 @@ async function buildAuthHandler(event: Parameters<AuthHandler>[0]) {
     providers,
     callbacks: {
       async signIn({ user, account }) {
+        const authEvent = getAuthEvent()
         if (account?.provider === 'credentials') return true
 
         const email = (user?.email || '').trim().toLowerCase()
         if (!email) return false
 
         try {
-          const db = await getDb(event)
+          const db = await getDb(authEvent)
           const row = await db
             .select({
               id: userTable.id,
@@ -158,12 +175,13 @@ async function buildAuthHandler(event: Parameters<AuthHandler>[0]) {
           token.name = user.name
         }
         if (account?.provider && account.provider !== 'credentials') {
-          const tenantKey = getTenantKey(event)
+          const authEvent = getAuthEvent()
+          const tenantKey = authEvent ? getTenantKey(authEvent) : resolveTenantKey()
           token.tenantKey = tenantKey
           const email = (token.email || user?.email || '').trim().toLowerCase()
           if (email) {
             try {
-              const db = await getDb(event)
+              const db = await getDb(authEvent)
               const row = await db
                 .select({
                   id: userTable.id,
@@ -216,8 +234,10 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 503, statusMessage: 'Auth not ready' })
   }
 
-  const handler = await buildAuthHandler(event)
-  return handler(event)
+  if (!cachedAuthHandler) {
+    cachedAuthHandler = await buildAuthHandler(event)
+  }
+  return authEventStorage.run(event, () => cachedAuthHandler!(event))
 })
 
 function isMissingUserTableError(error: unknown) {
