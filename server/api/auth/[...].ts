@@ -49,7 +49,11 @@ async function loadAuthProviderConfig(event: Parameters<AuthHandler>[0]): Promis
   const googleConfig = await resolveOAuthProviderConfig('google', event)
   return {
     credentialsEnabled,
-    googleConfig
+    googleConfig: {
+      enabled: Boolean(googleConfig.enabled),
+      clientId: googleConfig.clientId ?? null,
+      clientSecret: googleConfig.clientSecret ?? null
+    }
   }
 }
 
