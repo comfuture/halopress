@@ -1,1 +1,0 @@
-ALTER TABLE `user_role` ADD `level` integer DEFAULT 50 NOT NULL;

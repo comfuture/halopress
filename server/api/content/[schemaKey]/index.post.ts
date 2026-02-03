@@ -48,7 +48,17 @@ export default defineEventHandler(async (event) => {
     })
 
     await syncContentRefs({ db: tx, contentId: id, registry, extra })
-    await upsertContentSearchData({ db: tx, contentId: id, registry, extra })
+    await upsertContentSearchData({
+      db: tx,
+      contentId: id,
+      registry,
+      extra,
+      content: {
+        title,
+        createdAt: now,
+        updatedAt: now
+      }
+    })
     await upsertContentItemSnapshot({
       db: tx,
       registry,

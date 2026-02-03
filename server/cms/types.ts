@@ -54,6 +54,7 @@ export type FieldNode = {
   ui?: UiConfig
   search?: SearchConfig
   rel?: RelConfig
+  system?: boolean
 }
 
 export type SchemaAst = {
@@ -78,6 +79,7 @@ export type SchemaRegistry = {
     ui?: UiConfig
     search?: SearchConfig
     rel?: RelConfig
+    system?: boolean
   }>
   relations: Array<{
     fieldId: string

@@ -118,7 +118,7 @@ export const contentItems = sqliteTable('content_items', {
   byStatus: index('idx_content_items_status').on(t.schemaKey, t.status, t.updatedAt)
 }))
 
-export const contentFields = sqliteTable('content_fields', {
+export const contentSearchConfig = sqliteTable('content_search_config', {
   schemaKey: text('schema_key').notNull(),
   fieldId: text('field_id').notNull(),
   fieldKey: text('field_key').notNull(),
@@ -128,35 +128,20 @@ export const contentFields = sqliteTable('content_fields', {
   sortable: integer('sortable', { mode: 'boolean' }).notNull().default(false)
 }, t => ({
   pk: primaryKey({ columns: [t.schemaKey, t.fieldId] }),
-  bySchema: index('idx_content_fields_schema').on(t.schemaKey),
-  byFieldKey: index('idx_content_fields_key').on(t.schemaKey, t.fieldKey)
+  bySchema: index('idx_content_search_config_schema').on(t.schemaKey),
+  byFieldKey: index('idx_content_search_config_key').on(t.schemaKey, t.fieldKey)
 }))
 
-export const contentStringData = sqliteTable('content_string_data', {
+export const contentSearchData = sqliteTable('content_search_data', {
   contentId: text('content_id').notNull(),
   fieldId: text('field_id').notNull(),
-  value: text('value').notNull()
+  dataType: text('data_type').notNull(),
+  text: text('text'),
+  value: real('value')
 }, t => ({
   pk: primaryKey({ columns: [t.contentId, t.fieldId] }),
-  idxFilter: index('idx_filter_content_string_data').on(t.fieldId, t.value, t.contentId)
-}))
-
-export const contentNumberData = sqliteTable('content_number_data', {
-  contentId: text('content_id').notNull(),
-  fieldId: text('field_id').notNull(),
-  value: real('value').notNull()
-}, t => ({
-  pk: primaryKey({ columns: [t.contentId, t.fieldId] }),
-  idxFilter: index('idx_filter_content_number_data').on(t.fieldId, t.value, t.contentId)
-}))
-
-export const contentDateData = sqliteTable('content_date_data', {
-  contentId: text('content_id').notNull(),
-  fieldId: text('field_id').notNull(),
-  value: integer('value', { mode: 'timestamp' }).notNull()
-}, t => ({
-  pk: primaryKey({ columns: [t.contentId, t.fieldId] }),
-  idxFilter: index('idx_filter_content_date_data').on(t.fieldId, t.value, t.contentId)
+  idxFilterText: index('idx_filter_content_search_text').on(t.fieldId, t.dataType, t.text, t.contentId),
+  idxFilterValue: index('idx_filter_content_search_value').on(t.fieldId, t.dataType, t.value, t.contentId)
 }))
 
 export const contentRef = sqliteTable('content_ref', {

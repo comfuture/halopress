@@ -24,6 +24,10 @@ const toast = useToast()
 const schemaKey = computed(() => String(route.params.schemaKey))
 
 const { data: schema } = await useFetch<any>(() => `/api/schema/${schemaKey.value}/active`)
+const titleRequired = computed(() => {
+  const fields = schema.value?.registry?.fields ?? []
+  return fields.some((field: any) => field?.system && field?.key === 'title' && field?.required)
+})
 
 const breadcrumbItems = computed<BreadcrumbItem[]>(() => ([
   { label: schema.value?.title || schemaKey.value, icon: 'i-lucide-files', to: `/_desk/content/${schemaKey.value}` },
@@ -48,6 +52,7 @@ watchEffect(() => {
   if (!schema.value?.registry) return
   const next: Record<string, any> = {}
   for (const f of schema.value.registry.fields) {
+    if (f?.system) continue
     next[f.key] = state.extra[f.key] ?? (f.kind === 'richtext' ? { type: 'doc', content: [{ type: 'paragraph' }] } : null)
   }
   state.extra = next
@@ -75,6 +80,10 @@ const canPublish = computed(() => isDirty.value && !publishing.value)
 
 async function saveDraft() {
   if (!isDirty.value) return
+  if (titleRequired.value && !state.title.trim()) {
+    toast.add({ title: 'Title is required', color: 'error' })
+    return
+  }
   if (!(await contentFormRef.value?.validate?.())) {
     toast.add({ title: 'Fix validation errors', color: 'error' })
     return
@@ -96,6 +105,10 @@ async function saveDraft() {
 
 async function publish() {
   if (!isDirty.value) return
+  if (titleRequired.value && !state.title.trim()) {
+    toast.add({ title: 'Title is required', color: 'error' })
+    return
+  }
   if (!(await contentFormRef.value?.validate?.())) {
     toast.add({ title: 'Fix validation errors', color: 'error' })
     return
@@ -153,7 +166,7 @@ async function publish() {
     <template #body>
       <UCard v-if="schema?.registry" class="shrink-0">
         <div class="flex flex-col gap-4">
-          <UFormField label="Title" class="w-full">
+          <UFormField label="Title" class="w-full" :required="titleRequired">
             <UInput v-model="state.title" placeholder="Optional title" class="w-full" />
           </UFormField>
 

@@ -41,6 +41,7 @@ type FieldNode = {
     target: string
     cardinality: 'one' | 'many'
   }
+  system?: boolean
 }
 
 type SchemaAst = {
@@ -119,6 +120,56 @@ const state = reactive({
   fields: [] as FieldNode[]
 })
 
+const SYSTEM_FIELDS: FieldNode[] = [
+  {
+    id: '__system_title',
+    key: 'title',
+    kind: 'string',
+    title: 'Title',
+    required: false,
+    search: { mode: 'off', filterable: false, sortable: false },
+    system: true
+  },
+  {
+    id: '__system_created_at',
+    key: 'created_at',
+    kind: 'datetime',
+    title: 'Created at',
+    required: false,
+    search: { mode: 'off', filterable: false, sortable: false },
+    system: true
+  },
+  {
+    id: '__system_updated_at',
+    key: 'updated_at',
+    kind: 'datetime',
+    title: 'Updated at',
+    required: false,
+    search: { mode: 'off', filterable: false, sortable: false },
+    system: true
+  }
+]
+
+const SYSTEM_FIELD_KEYS = new Set(SYSTEM_FIELDS.map(field => field.key))
+
+function applySystemFields(fields: FieldNode[]) {
+  const byKey = new Map(fields.map(field => [field.key, field]))
+  const systemFields = SYSTEM_FIELDS.map((sys) => {
+    const existing = byKey.get(sys.key)
+    return {
+      ...sys,
+      ...(existing ? { required: existing.required, search: existing.search } : {}),
+      system: true
+    }
+  })
+  const nonSystem = fields.filter(field => !SYSTEM_FIELD_KEYS.has(field.key))
+  return [...systemFields, ...nonSystem]
+}
+
+if (isNew.value) {
+  state.fields = applySystemFields([])
+}
+
 const breadcrumbItems = computed<BreadcrumbItem[]>(() => ([
   { label: 'Schemas', to: '/_desk/schemas' },
   { label: isNew.value ? 'New' : (state.title || state.schemaKey) }
@@ -162,7 +213,7 @@ function moveField(from: number, to: number) {
 
 const sortable = useSortable('.hp-sort-list', fieldsRef, {
   handle: '.hp-sort-handle',
-  draggable: '.hp-sort-item',
+  draggable: '.hp-sort-item:not([data-locked="true"])',
   animation: 150,
   ghostClass: 'hp-sort-ghost',
   chosenClass: 'hp-sort-chosen',
@@ -217,7 +268,7 @@ watch(
     state.schemaKey = next.schemaKey
     state.title = next.ast?.title ?? next.title ?? next.schemaKey
     state.description = next.ast?.description ?? ''
-    state.fields = deepClone(next.ast?.fields ?? [])
+    state.fields = applySystemFields(deepClone(next.ast?.fields ?? []))
     lastSavedAstJson.value = stableStringify(buildAstFromState())
   },
   { immediate: true }
@@ -233,7 +284,8 @@ const fieldDraft = reactive<any>({
   enumValues: [] as any[],
   search: { mode: 'off', filterable: false, sortable: false },
   relTarget: 'system:User',
-  relCardinality: 'one'
+  relCardinality: 'one',
+  system: false
 })
 
 const editDraft = reactive<any>({
@@ -246,7 +298,8 @@ const editDraft = reactive<any>({
   enumValues: [] as any[],
   search: { mode: 'off', filterable: false, sortable: false },
   relTarget: 'system:User',
-  relCardinality: 'one'
+  relCardinality: 'one',
+  system: false
 })
 
 const editKindSnapshot = ref<string | null>(null)
@@ -465,7 +518,8 @@ function openNewField() {
     enumValues: [],
     search: { mode: 'off', filterable: false, sortable: false },
     relTarget: 'system:User',
-    relCardinality: 'one'
+    relCardinality: 'one',
+    system: false
   })
   normalizeSearchDraft(fieldDraft)
   addFieldModalOpen.value = true
@@ -484,7 +538,8 @@ function startEditField(index: number) {
     enumValues: cloned.enumValues ?? [],
     search: cloned.search ?? { mode: 'off', filterable: false, sortable: false },
     relTarget: cloned.rel?.target ?? 'system:User',
-    relCardinality: cloned.rel?.cardinality ?? 'one'
+    relCardinality: cloned.rel?.cardinality ?? 'one',
+    system: !!cloned.system
   })
   normalizeSearchDraft(editDraft)
   editingIndex.value = index
@@ -499,12 +554,13 @@ function closeEditModal() {
 function removeField(index: number) {
   if (editingIndex.value === index) closeEditModal()
   if (editingIndex.value !== null && editingIndex.value > index) editingIndex.value -= 1
+  if (state.fields[index]?.system) return
   state.fields.splice(index, 1)
 }
 
 async function confirmRemoveField(index: number) {
   const field = state.fields[index]
-  if (!field) return
+  if (!field || field.system) return
   const ok = await confirm({
     title: 'Remove field',
     body: 'This change only affects the draft until you publish.',
@@ -520,7 +576,22 @@ function normalizeFieldDraft(draft: any) {
     toast.add({ title: 'Field key required', color: 'error' })
     return null
   }
+  if (!draft.system && SYSTEM_FIELD_KEYS.has(draft.key)) {
+    toast.add({ title: 'Reserved field key', description: `The key "${draft.key}" is reserved.`, color: 'error' })
+    return null
+  }
   const next = JSON.parse(JSON.stringify(draft))
+  if (next.system) {
+    const systemField = SYSTEM_FIELDS.find(field => field.key === next.key)
+    if (systemField) {
+      next.id = systemField.id
+      next.kind = systemField.kind
+      next.title = systemField.title
+      next.description = systemField.description
+      next.enumValues = systemField.enumValues
+      next.rel = systemField.rel
+    }
+  }
 
   if (next.kind !== 'enum') delete next.enumValues
   if (next.kind !== 'reference' && next.kind !== 'asset') {
@@ -790,11 +861,15 @@ async function confirmPublish() {
             v-for="(f, i) in state.fields"
             :key="f.id"
             class="hp-sort-item py-2 w-full"
+            :data-locked="f.system ? 'true' : undefined"
           >
             <div class="w-full flex items-start justify-between gap-2">
               <div class="min-w-0 flex items-start gap-2">
-                <div class="hp-sort-handle mt-0.5 flex items-center justify-center text-muted cursor-grab active:cursor-grabbing select-none">
-                  <UIcon name="i-lucide-grip-vertical" size="16" />
+                <div
+                  class="hp-sort-handle mt-0.5 flex items-center justify-center text-muted select-none"
+                  :class="f.system ? 'opacity-40 cursor-not-allowed' : 'cursor-grab active:cursor-grabbing'"
+                >
+                  <UIcon :name="f.system ? 'i-lucide-lock' : 'i-lucide-grip-vertical'" size="16" />
                 </div>
                 <UAvatar
                   :icon="getFieldKindIcon(f.kind)"
@@ -805,6 +880,9 @@ async function confirmPublish() {
                 <div class="min-w-0">
                   <div class="flex items-center gap-2 min-w-0">
                     <span class="font-medium truncate">{{ f.title || f.key }}</span>
+                    <UBadge v-if="f.system" size="xs" color="primary" variant="soft" class="shrink-0">
+                      system
+                    </UBadge>
                     <UBadge
                       v-if="!f.title"
                       size="xs"
@@ -828,7 +906,14 @@ async function confirmPublish() {
                 <UButton size="xs" color="neutral" variant="outline" icon="i-lucide-pencil" @click="startEditField(i)">
                   Edit
                 </UButton>
-                <UButton size="xs" color="error" variant="outline" icon="i-lucide-trash" @click="confirmRemoveField(i)">
+                <UButton
+                  v-if="!f.system"
+                  size="xs"
+                  color="error"
+                  variant="outline"
+                  icon="i-lucide-trash"
+                  @click="confirmRemoveField(i)"
+                >
                   Remove
                 </UButton>
               </div>
@@ -988,16 +1073,17 @@ async function confirmPublish() {
                   autocapitalize="none"
                   autocomplete="off"
                   spellcheck="false"
+                  :disabled="editDraft.system"
                 />
               </UFormField>
               <UFormField name="kind" label="Kind" class="md:col-span-2" required>
-                <USelect v-model="editDraft.kind" :items="fieldKindOptions" class="w-full" />
+                <USelect v-model="editDraft.kind" :items="fieldKindOptions" class="w-full" :disabled="editDraft.system" />
               </UFormField>
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
               <UFormField label="Title">
-                <UInput v-model="editDraft.title" placeholder="Body" />
+                <UInput v-model="editDraft.title" placeholder="Body" :disabled="editDraft.system" />
               </UFormField>
               <UFormField label="Required">
                 <USwitch v-model="editDraft.required" />
@@ -1025,7 +1111,7 @@ async function confirmPublish() {
               </div>
             </div>
 
-            <div v-if="editDraft.kind === 'enum'" class="space-y-2">
+            <div v-if="editDraft.kind === 'enum' && !editDraft.system" class="space-y-2">
               <div class="flex items-center justify-between">
                 <span class="text-sm font-medium">Enum values</span>
                 <UButton
@@ -1044,7 +1130,7 @@ async function confirmPublish() {
               </div>
             </div>
 
-            <div v-if="editDraft.kind === 'reference'" class="space-y-3">
+            <div v-if="editDraft.kind === 'reference' && !editDraft.system" class="space-y-3">
               <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <UFormField label="Target">
                   <USelect

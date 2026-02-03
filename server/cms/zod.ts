@@ -56,7 +56,8 @@ export const fieldNodeSchema = z.object({
   enumValues: z.array(z.object({ label: z.string(), value: z.string() }).strict()).optional(),
   ui: uiConfig.optional(),
   search: searchConfig.optional(),
-  rel: relConfig.optional()
+  rel: relConfig.optional(),
+  system: z.boolean().optional()
 }).strict()
 
 export const schemaAstSchema = z.object({

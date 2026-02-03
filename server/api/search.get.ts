@@ -2,9 +2,9 @@ import { getQuery } from 'h3'
 import { and, asc, desc, eq, exists, inArray, lt, gte, lte, sql } from 'drizzle-orm'
 
 import { getDb } from '../db/db'
-import { content as contentTable, contentFields as contentFieldsTable, contentDateData, contentNumberData, contentStringData } from '../db/schema'
+import { content as contentTable, contentItems as contentItemsTable, contentSearchConfig, contentSearchData } from '../db/schema'
 import { badRequest } from '../utils/http'
-import { coerceSearchValue, searchTableForKind } from '../cms/search-index'
+import { coerceSearchValue, searchDataTypeForKind } from '../cms/search-index'
 
 type FilterInput = {
   field: string
@@ -15,7 +15,7 @@ type FilterInput = {
   max?: unknown
 }
 
-type ContentFieldRow = typeof contentFieldsTable.$inferSelect
+type ContentFieldRow = typeof contentSearchConfig.$inferSelect
 
 function parseFilters(raw: unknown) {
   if (!raw) return []
@@ -56,6 +56,7 @@ export default defineEventHandler(async (event) => {
   const sortParam = typeof q.sort === 'string' ? q.sort : null
   const sortField = typeof q.sortField === 'string' ? q.sortField : null
   const sortDirParam = typeof q.sortDir === 'string' ? q.sortDir : null
+  const requestedFields = ensureArray((q as any).fields)
 
   let sortKey: string | null = sortField
   let sortDir: 'asc' | 'desc' = sortDirParam === 'desc' ? 'desc' : 'asc'
@@ -70,8 +71,8 @@ export default defineEventHandler(async (event) => {
 
   const fieldRows = await db
     .select()
-    .from(contentFieldsTable)
-    .where(eq(contentFieldsTable.schemaKey, schemaKey)) as ContentFieldRow[]
+    .from(contentSearchConfig)
+    .where(eq(contentSearchConfig.schemaKey, schemaKey)) as ContentFieldRow[]
 
   const fieldByKey = new Map(fieldRows.map(row => [row.fieldKey, row]))
 
@@ -86,20 +87,21 @@ export default defineEventHandler(async (event) => {
     if (!config.filterable) throw badRequest(`Field not filterable: ${filter.field}`)
 
     const kind = config.kind as any
-    const tableKind = searchTableForKind(kind)
-    if (!tableKind) throw badRequest(`Unsupported field type: ${filter.field}`)
+    const dataType = searchDataTypeForKind(kind)
+    if (!dataType) throw badRequest(`Unsupported field type: ${filter.field}`)
 
     const op = filter.op ?? (config.searchMode as 'exact' | 'range' | 'exact_set' | 'off')
     if (!op || op === 'off') throw badRequest(`Search mode disabled: ${filter.field}`)
 
-    if (op === 'range' && tableKind === 'string') throw badRequest(`Range not supported: ${filter.field}`)
+    if (op === 'range' && dataType === 'text') throw badRequest(`Range not supported: ${filter.field}`)
 
     let existsQuery: any = null
 
-    if (tableKind === 'string') {
+    if (dataType === 'text') {
       const baseConditions = [
-        eq(contentStringData.contentId, contentTable.id),
-        eq(contentStringData.fieldId, config.fieldId)
+        eq(contentSearchData.contentId, contentTable.id),
+        eq(contentSearchData.fieldId, config.fieldId),
+        eq(contentSearchData.dataType, dataType)
       ]
 
       if (op === 'exact') {
@@ -107,8 +109,8 @@ export default defineEventHandler(async (event) => {
         if (value == null) throw badRequest(`Invalid value: ${filter.field}`)
         existsQuery = db
           .select({ one: sql`1` })
-          .from(contentStringData)
-          .where(and(...baseConditions, eq(contentStringData.value, value as string)))
+          .from(contentSearchData)
+          .where(and(...baseConditions, eq(contentSearchData.text, value as string)))
       } else if (op === 'exact_set') {
         const values = ensureArray(filter.values ?? filter.value)
           .map(v => coerceSearchValue({ kind, enumValues: [] } as any, v))
@@ -116,18 +118,19 @@ export default defineEventHandler(async (event) => {
         if (!values.length) throw badRequest(`Invalid values: ${filter.field}`)
         existsQuery = db
           .select({ one: sql`1` })
-          .from(contentStringData)
-          .where(and(...baseConditions, inArray(contentStringData.value, values)))
+          .from(contentSearchData)
+          .where(and(...baseConditions, inArray(contentSearchData.text, values)))
       }
       if (!existsQuery) throw badRequest(`Unsupported filter: ${filter.field}`)
       whereParts.push(exists(existsQuery))
       continue
     }
 
-    if (tableKind === 'number') {
+    if (dataType === 'integer' || dataType === 'float') {
       const baseConditions = [
-        eq(contentNumberData.contentId, contentTable.id),
-        eq(contentNumberData.fieldId, config.fieldId)
+        eq(contentSearchData.contentId, contentTable.id),
+        eq(contentSearchData.fieldId, config.fieldId),
+        eq(contentSearchData.dataType, dataType)
       ]
 
       if (op === 'exact') {
@@ -135,8 +138,8 @@ export default defineEventHandler(async (event) => {
         if (value == null) throw badRequest(`Invalid value: ${filter.field}`)
         existsQuery = db
           .select({ one: sql`1` })
-          .from(contentNumberData)
-          .where(and(...baseConditions, eq(contentNumberData.value, value as number)))
+          .from(contentSearchData)
+          .where(and(...baseConditions, eq(contentSearchData.value, value as number)))
       } else if (op === 'exact_set') {
         const values = ensureArray(filter.values ?? filter.value)
           .map(v => coerceSearchValue({ kind } as any, v))
@@ -144,18 +147,18 @@ export default defineEventHandler(async (event) => {
         if (!values.length) throw badRequest(`Invalid values: ${filter.field}`)
         existsQuery = db
           .select({ one: sql`1` })
-          .from(contentNumberData)
-          .where(and(...baseConditions, inArray(contentNumberData.value, values)))
+          .from(contentSearchData)
+          .where(and(...baseConditions, inArray(contentSearchData.value, values)))
       } else if (op === 'range') {
         const min = filter.min != null ? coerceSearchValue({ kind } as any, filter.min) : null
         const max = filter.max != null ? coerceSearchValue({ kind } as any, filter.max) : null
         if (min == null && max == null) throw badRequest(`Range requires min or max: ${filter.field}`)
         const rangeParts = [] as any[]
-        if (min != null) rangeParts.push(gte(contentNumberData.value, min as number))
-        if (max != null) rangeParts.push(lte(contentNumberData.value, max as number))
+        if (min != null) rangeParts.push(gte(contentSearchData.value, min as number))
+        if (max != null) rangeParts.push(lte(contentSearchData.value, max as number))
         existsQuery = db
           .select({ one: sql`1` })
-          .from(contentNumberData)
+          .from(contentSearchData)
           .where(and(...baseConditions, ...rangeParts))
       }
       if (!existsQuery) throw badRequest(`Unsupported filter: ${filter.field}`)
@@ -163,10 +166,11 @@ export default defineEventHandler(async (event) => {
       continue
     }
 
-    if (tableKind === 'date') {
+    if (dataType === 'date') {
       const baseConditions = [
-        eq(contentDateData.contentId, contentTable.id),
-        eq(contentDateData.fieldId, config.fieldId)
+        eq(contentSearchData.contentId, contentTable.id),
+        eq(contentSearchData.fieldId, config.fieldId),
+        eq(contentSearchData.dataType, dataType)
       ]
 
       if (op === 'exact') {
@@ -174,28 +178,28 @@ export default defineEventHandler(async (event) => {
         if (value == null) throw badRequest(`Invalid value: ${filter.field}`)
         existsQuery = db
           .select({ one: sql`1` })
-          .from(contentDateData)
-          .where(and(...baseConditions, eq(contentDateData.value, value as Date)))
+          .from(contentSearchData)
+          .where(and(...baseConditions, eq(contentSearchData.value, value as number)))
       } else if (op === 'range') {
         const min = filter.min != null ? coerceSearchValue({ kind } as any, filter.min) : null
         const max = filter.max != null ? coerceSearchValue({ kind } as any, filter.max) : null
         if (min == null && max == null) throw badRequest(`Range requires min or max: ${filter.field}`)
         const rangeParts = [] as any[]
-        if (min != null) rangeParts.push(gte(contentDateData.value, min as Date))
-        if (max != null) rangeParts.push(lte(contentDateData.value, max as Date))
+        if (min != null) rangeParts.push(gte(contentSearchData.value, min as number))
+        if (max != null) rangeParts.push(lte(contentSearchData.value, max as number))
         existsQuery = db
           .select({ one: sql`1` })
-          .from(contentDateData)
+          .from(contentSearchData)
           .where(and(...baseConditions, ...rangeParts))
       } else if (op === 'exact_set') {
         const values = ensureArray(filter.values ?? filter.value)
           .map(v => coerceSearchValue({ kind } as any, v))
-          .filter(v => v instanceof Date) as Date[]
+          .filter(v => typeof v === 'number') as number[]
         if (!values.length) throw badRequest(`Invalid values: ${filter.field}`)
         existsQuery = db
           .select({ one: sql`1` })
-          .from(contentDateData)
-          .where(and(...baseConditions, inArray(contentDateData.value, values)))
+          .from(contentSearchData)
+          .where(and(...baseConditions, inArray(contentSearchData.value, values)))
       }
       if (!existsQuery) throw badRequest(`Unsupported filter: ${filter.field}`)
       whereParts.push(exists(existsQuery))
@@ -209,11 +213,14 @@ export default defineEventHandler(async (event) => {
       schemaKey: contentTable.schemaKey,
       schemaVersion: contentTable.schemaVersion,
       title: contentTable.title,
+      description: contentItemsTable.description,
+      image: contentItemsTable.image,
       status: contentTable.status,
       createdAt: contentTable.createdAt,
       updatedAt: contentTable.updatedAt
     })
     .from(contentTable)
+    .leftJoin(contentItemsTable, eq(contentItemsTable.contentId, contentTable.id))
     .where(and(...whereParts))
     .limit(limit)
 
@@ -224,17 +231,14 @@ export default defineEventHandler(async (event) => {
     if (!config) throw badRequest(`Unknown sort field: ${sortKey}`)
     if (!config.sortable) throw badRequest(`Field not sortable: ${sortKey}`)
 
-    const tableKind = searchTableForKind(config.kind as any)
-    if (!tableKind) throw badRequest(`Unsupported sort field: ${sortKey}`)
+    const dataType = searchDataTypeForKind(config.kind as any)
+    if (!dataType) throw badRequest(`Unsupported sort field: ${sortKey}`)
 
-    if (tableKind === 'string') {
-      const sortExpr = sql`(select ${contentStringData.value} from ${contentStringData} where ${contentStringData.contentId} = ${contentTable.id} and ${contentStringData.fieldId} = ${config.fieldId})`
+    if (dataType === 'text') {
+      const sortExpr = sql`(select ${contentSearchData.text} from ${contentSearchData} where ${contentSearchData.contentId} = ${contentTable.id} and ${contentSearchData.fieldId} = ${config.fieldId} and ${contentSearchData.dataType} = ${dataType})`
       query = query.orderBy(sortDir === 'desc' ? desc(sortExpr) : asc(sortExpr), desc(contentTable.updatedAt))
-    } else if (tableKind === 'number') {
-      const sortExpr = sql`(select ${contentNumberData.value} from ${contentNumberData} where ${contentNumberData.contentId} = ${contentTable.id} and ${contentNumberData.fieldId} = ${config.fieldId})`
-      query = query.orderBy(sortDir === 'desc' ? desc(sortExpr) : asc(sortExpr), desc(contentTable.updatedAt))
-    } else if (tableKind === 'date') {
-      const sortExpr = sql`(select ${contentDateData.value} from ${contentDateData} where ${contentDateData.contentId} = ${contentTable.id} and ${contentDateData.fieldId} = ${config.fieldId})`
+    } else {
+      const sortExpr = sql`(select ${contentSearchData.value} from ${contentSearchData} where ${contentSearchData.contentId} = ${contentTable.id} and ${contentSearchData.fieldId} = ${config.fieldId} and ${contentSearchData.dataType} = ${dataType})`
       query = query.orderBy(sortDir === 'desc' ? desc(sortExpr) : asc(sortExpr), desc(contentTable.updatedAt))
     }
   } else {
@@ -242,9 +246,52 @@ export default defineEventHandler(async (event) => {
   }
 
   const items = await query
+  const fieldConfigs = requestedFields
+    .map((fieldKey) => fieldByKey.get(fieldKey))
+    .filter((field): field is ContentFieldRow => Boolean(field))
+
+  if (!items.length || !fieldConfigs.length) {
+    const nextCursor = !sortKey && items.length
+      ? String(new Date(items[items.length - 1]!.updatedAt).getTime())
+      : null
+    return { items, nextCursor }
+  }
+
+  const contentIds = items.map(item => item.id)
+  const fieldIdToKey = new Map(fieldConfigs.map(cfg => [cfg.fieldId, cfg.fieldKey]))
+  const fieldIds = fieldConfigs.map(cfg => cfg.fieldId)
+
+  const rows = await db
+    .select({
+      contentId: contentSearchData.contentId,
+      fieldId: contentSearchData.fieldId,
+      dataType: contentSearchData.dataType,
+      text: contentSearchData.text,
+      value: contentSearchData.value
+    })
+    .from(contentSearchData)
+    .where(and(
+      inArray(contentSearchData.contentId, contentIds),
+      inArray(contentSearchData.fieldId, fieldIds)
+    ))
+
+  const searchDataByContentId = new Map<string, Record<string, string | number | null>>()
+  for (const row of rows) {
+    const fieldKey = fieldIdToKey.get(row.fieldId)
+    if (!fieldKey) continue
+    const entry = searchDataByContentId.get(row.contentId) ?? {}
+    entry[fieldKey] = row.dataType === 'text' ? (row.text ?? null) : (row.value ?? null)
+    searchDataByContentId.set(row.contentId, entry)
+  }
+
+  const itemsWithSearchData = items.map((item) => ({
+    ...item,
+    searchData: searchDataByContentId.get(item.id) ?? {}
+  }))
+
   const nextCursor = !sortKey && items.length
     ? String(new Date(items[items.length - 1]!.updatedAt).getTime())
     : null
 
-  return { items, nextCursor }
+  return { items: itemsWithSearchData, nextCursor }
 })

@@ -27,16 +27,28 @@ watchEffect(() => {
   }
 })
 
+function normalizeEnumOptions(options: any[]) {
+  return options
+    .map((opt: any) => {
+      if (typeof opt === 'string') return { label: opt, value: opt }
+      if (typeof opt?.value === 'string') {
+        return { label: opt.label || opt.value, value: opt.value }
+      }
+      return null
+    })
+    .filter(Boolean) as Array<{ label: string; value: string }>
+}
+
 function enumOptions(fieldKey: string) {
   const astField = (props.schema?.ast?.fields ?? []).find((f: any) => f?.key === fieldKey)
-  if (Array.isArray(astField?.enumValues) && astField.enumValues.length) return astField.enumValues
+  if (Array.isArray(astField?.enumValues) && astField.enumValues.length) return normalizeEnumOptions(astField.enumValues)
 
   const field = (props.schema?.registry?.fields ?? []).find((f: any) => f?.key === fieldKey)
-  if (Array.isArray(field?.enumValues) && field.enumValues.length) return field.enumValues
+  if (Array.isArray(field?.enumValues) && field.enumValues.length) return normalizeEnumOptions(field.enumValues)
 
   const enums = props.schema?.jsonSchema?.properties?.[fieldKey]?.enum
   if (!Array.isArray(enums)) return []
-  return enums.map((v: string) => ({ label: v, value: v }))
+  return normalizeEnumOptions(enums)
 }
 
 function enumValues(fieldKey: string) {
@@ -72,6 +84,7 @@ const formSchema = computed(() => {
   const fields = props.schema?.registry?.fields ?? []
 
   for (const field of fields) {
+    if (field?.system) continue
     const label = field.title || field.key
     const required = !!field.required
 
@@ -176,7 +189,7 @@ defineExpose({
     class="flex flex-col gap-4"
   >
     <UFormField
-      v-for="field in schema.registry.fields"
+      v-for="field in schema.registry.fields.filter((f: any) => !f?.system)"
       :key="field.fieldId"
       :label="field.title || field.key"
       :name="field.key"
@@ -203,6 +216,7 @@ defineExpose({
         v-model="model[field.key]"
         :items="enumOptions(field.key)"
         value-key="value"
+        label-key="label"
         :placeholder="field.ui?.placeholder || 'Select…'"
         class="w-full sm:min-w-72"
       />

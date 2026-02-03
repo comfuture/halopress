@@ -27,6 +27,10 @@ const id = computed(() => String(route.params.id))
 
 const { data: schema } = await useFetch<any>(() => `/api/schema/${schemaKey.value}/active`)
 const { data: doc, refresh: refreshDoc } = await useFetch<any>(() => `/api/content/${schemaKey.value}/${id.value}`)
+const titleRequired = computed(() => {
+  const fields = schema.value?.registry?.fields ?? []
+  return fields.some((field: any) => field?.system && field?.key === 'title' && field?.required)
+})
 
 const breadcrumbItems = computed<BreadcrumbItem[]>(() => ([
   { label: schema.value?.title || schemaKey.value, icon: 'i-lucide-files', to: `/_desk/content/${schemaKey.value}` },
@@ -76,6 +80,10 @@ watch(
 
 async function saveDraft() {
   if (!isDirty.value) return
+  if (titleRequired.value && !state.title.trim()) {
+    toast.add({ title: 'Title is required', color: 'error' })
+    return
+  }
   if (!(await contentFormRef.value?.validate?.())) {
     toast.add({ title: 'Fix validation errors', color: 'error' })
     return
@@ -97,6 +105,10 @@ async function saveDraft() {
 
 async function publish() {
   if (!isDirty.value && doc.value?.status !== 'draft') return
+  if (titleRequired.value && !state.title.trim()) {
+    toast.add({ title: 'Title is required', color: 'error' })
+    return
+  }
   if (!(await contentFormRef.value?.validate?.())) {
     toast.add({ title: 'Fix validation errors', color: 'error' })
     return
@@ -188,7 +200,7 @@ async function remove() {
     <template #body>
       <UCard v-if="schema?.registry" class="shrink-0">
         <div class="flex flex-col gap-4">
-          <UFormField label="Title" class="w-full">
+          <UFormField label="Title" class="w-full" :required="titleRequired">
             <UInput v-model="state.title" placeholder="Optional title" class="w-full" />
           </UFormField>
 

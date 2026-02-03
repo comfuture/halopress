@@ -64,10 +64,11 @@ function fieldToJsonSchema(field: SchemaAst['fields'][number]) {
 }
 
 export function compileSchemaAst(ast: SchemaAst, version: number) {
-  const required = ast.fields.filter(f => f.required).map(f => f.key)
+  const required = ast.fields.filter(f => f.required && !f.system).map(f => f.key)
 
   const properties: Record<string, unknown> = {}
   for (const field of ast.fields) {
+    if (field.system) continue
     properties[field.key] = fieldToJsonSchema(field)
   }
 
@@ -120,7 +121,8 @@ export function compileSchemaAst(ast: SchemaAst, version: number) {
       enumValues: f.enumValues,
       ui: f.ui,
       search: f.search,
-      rel: f.rel
+      rel: f.rel,
+      system: f.system
     })),
     relations
   }

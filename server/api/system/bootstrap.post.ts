@@ -6,7 +6,7 @@ import { requireAdmin } from '../../utils/auth'
 import { newId } from '../../utils/ids'
 import { upsertContentItemSnapshot } from '../../cms/content-items'
 import { ensureAnonymousSchemaRole } from '../../utils/install'
-import { syncContentFields } from '../../cms/search-index'
+import { syncContentSearchConfig } from '../../cms/search-index'
 
 export default defineEventHandler(async (event) => {
   const session = await requireAdmin(event)
@@ -46,7 +46,7 @@ export default defineEventHandler(async (event) => {
   })
 
   await ensureAnonymousSchemaRole(db, ast.schemaKey)
-  await syncContentFields({ db, schemaKey: ast.schemaKey, registry: compiled.registry })
+  await syncContentSearchConfig({ db, schemaKey: ast.schemaKey, registry: compiled.registry })
 
   const id = newId()
   const bootstrapExtra = {

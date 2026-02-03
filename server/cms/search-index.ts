@@ -1,12 +1,6 @@
 import { and, eq } from 'drizzle-orm'
 import type { Db } from '../db/db'
-import {
-  content as contentTable,
-  contentDateData,
-  contentFields as contentFieldsTable,
-  contentNumberData,
-  contentStringData
-} from '../db/schema'
+import { content as contentTable, contentSearchConfig, contentSearchData } from '../db/schema'
 import type { FieldKind, SearchConfig, SchemaRegistry } from './types'
 import { Node, generateHTML, generateText, mergeAttributes } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
@@ -16,6 +10,27 @@ import Image from '@tiptap/extension-image'
 import Mention from '@tiptap/extension-mention'
 
 type SearchMode = NonNullable<SearchConfig['mode']>
+type SearchDataType = 'text' | 'integer' | 'float' | 'date'
+
+type ContentSearchBase = {
+  title?: string | null
+  createdAt?: Date | null
+  updatedAt?: Date | null
+}
+
+const SYSTEM_FIELD_KEYS = new Set(['title', 'created_at', 'updated_at'])
+
+function isSystemField(field: SchemaRegistry['fields'][number]) {
+  return Boolean((field as any).system) || SYSTEM_FIELD_KEYS.has(field.key)
+}
+
+function getSystemFieldValue(fieldKey: string, content?: ContentSearchBase) {
+  if (!content) return null
+  if (fieldKey === 'title') return content.title ?? null
+  if (fieldKey === 'created_at') return content.createdAt ?? null
+  if (fieldKey === 'updated_at') return content.updatedAt ?? null
+  return null
+}
 
 type NormalizedSearchConfig = {
   mode: SearchMode
@@ -88,10 +103,11 @@ const richtextExtensions = [
   ServerImageUpload
 ]
 
-export function searchTableForKind(kind: FieldKind) {
-  if (kind === 'number' || kind === 'integer' || kind === 'boolean') return 'number'
+export function searchDataTypeForKind(kind: FieldKind): SearchDataType | null {
+  if (kind === 'number') return 'float'
+  if (kind === 'integer' || kind === 'boolean') return 'integer'
   if (kind === 'date' || kind === 'datetime') return 'date'
-  if (kind === 'string' || kind === 'text' || kind === 'url' || kind === 'enum' || kind === 'richtext') return 'string'
+  if (kind === 'string' || kind === 'text' || kind === 'url' || kind === 'enum' || kind === 'richtext') return 'text'
   return null
 }
 
@@ -131,17 +147,24 @@ function toNumberValue(value: unknown): number | null {
   return null
 }
 
-function toDateValue(value: unknown): Date | null {
-  if (value instanceof Date && !Number.isNaN(value.getTime())) return value
+function toIntegerValue(value: unknown): number | null {
+  const num = toNumberValue(value)
+  if (num == null) return null
+  if (!Number.isFinite(num)) return null
+  return Math.trunc(num)
+}
+
+function toDateValueMs(value: unknown): number | null {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value.getTime()
   if (typeof value === 'number') {
     const date = new Date(value)
-    return Number.isNaN(date.getTime()) ? null : date
+    return Number.isNaN(date.getTime()) ? null : date.getTime()
   }
   if (typeof value === 'string') {
     const trimmed = value.trim()
     if (!trimmed) return null
     const date = new Date(trimmed)
-    return Number.isNaN(date.getTime()) ? null : date
+    return Number.isNaN(date.getTime()) ? null : date.getTime()
   }
   return null
 }
@@ -200,74 +223,52 @@ export function coerceSearchValue(field: SchemaRegistry['fields'][number], value
     case 'richtext':
       return toRichtextHtml(value)
     case 'boolean':
+      return toIntegerValue(value)
     case 'number':
-    case 'integer':
       return toNumberValue(value)
+    case 'integer':
+      return toIntegerValue(value)
     case 'date':
     case 'datetime':
-      return toDateValue(value)
+      return toDateValueMs(value)
     default:
       return null
   }
 }
 
 async function deleteSearchValueByField(db: Db, fieldId: string) {
-  await db.delete(contentStringData).where(eq(contentStringData.fieldId, fieldId))
-  await db.delete(contentNumberData).where(eq(contentNumberData.fieldId, fieldId))
-  await db.delete(contentDateData).where(eq(contentDateData.fieldId, fieldId))
+  await db.delete(contentSearchData).where(eq(contentSearchData.fieldId, fieldId))
 }
 
-async function deleteSearchValueByContent(db: Db, contentId: string, fieldId: string, table: 'string' | 'number' | 'date') {
-  if (table === 'string') {
-    await db
-      .delete(contentStringData)
-      .where(and(eq(contentStringData.contentId, contentId), eq(contentStringData.fieldId, fieldId)))
-    return
-  }
-  if (table === 'number') {
-    await db
-      .delete(contentNumberData)
-      .where(and(eq(contentNumberData.contentId, contentId), eq(contentNumberData.fieldId, fieldId)))
-    return
-  }
+async function deleteSearchValueByContent(db: Db, contentId: string, fieldId: string) {
   await db
-    .delete(contentDateData)
-    .where(and(eq(contentDateData.contentId, contentId), eq(contentDateData.fieldId, fieldId)))
+    .delete(contentSearchData)
+    .where(and(eq(contentSearchData.contentId, contentId), eq(contentSearchData.fieldId, fieldId)))
 }
 
 async function upsertSearchValue(
   db: Db,
   contentId: string,
   fieldId: string,
-  table: 'string' | 'number' | 'date',
-  value: string | number | Date
+  dataType: SearchDataType,
+  value: string | number
 ) {
-  if (table === 'string') {
-    await db
-      .insert(contentStringData)
-      .values({ contentId, fieldId, value: value as string })
-      .onConflictDoUpdate({
-        target: [contentStringData.contentId, contentStringData.fieldId],
-        set: { value: value as string }
-      })
-    return
-  }
-  if (table === 'number') {
-    await db
-      .insert(contentNumberData)
-      .values({ contentId, fieldId, value: value as number })
-      .onConflictDoUpdate({
-        target: [contentNumberData.contentId, contentNumberData.fieldId],
-        set: { value: value as number }
-      })
-    return
-  }
   await db
-    .insert(contentDateData)
-    .values({ contentId, fieldId, value: value as Date })
+    .insert(contentSearchData)
+    .values({
+      contentId,
+      fieldId,
+      dataType,
+      text: dataType === 'text' ? (value as string) : null,
+      value: dataType === 'text' ? null : (value as number)
+    })
     .onConflictDoUpdate({
-      target: [contentDateData.contentId, contentDateData.fieldId],
-      set: { value: value as Date }
+      target: [contentSearchData.contentId, contentSearchData.fieldId],
+      set: {
+        dataType,
+        text: dataType === 'text' ? (value as string) : null,
+        value: dataType === 'text' ? null : (value as number)
+      }
     })
 }
 
@@ -276,30 +277,31 @@ export async function upsertContentSearchData(args: {
   contentId: string
   registry: SchemaRegistry
   extra: Record<string, unknown>
+  content?: ContentSearchBase
   onlyFieldIds?: string[]
 }) {
-  const { db, contentId, registry, extra, onlyFieldIds } = args
+  const { db, contentId, registry, extra, content, onlyFieldIds } = args
   const onlySet = onlyFieldIds ? new Set(onlyFieldIds) : null
 
   for (const field of registry.fields) {
     if (onlySet && !onlySet.has(field.fieldId)) continue
     const config = normalizeSearchConfig(field)
     if (!isSearchEnabled(config)) continue
-    const table = searchTableForKind(field.kind)
-    if (!table) continue
+    const dataType = searchDataTypeForKind(field.kind)
+    if (!dataType) continue
 
-    const rawValue = extra[field.key]
+    const rawValue = isSystemField(field) ? getSystemFieldValue(field.key, content) : extra[field.key]
     const coerced = coerceSearchValue(field, rawValue)
     if (coerced == null || (typeof coerced === 'string' && coerced.trim() === '')) {
-      await deleteSearchValueByContent(db, contentId, field.fieldId, table)
+      await deleteSearchValueByContent(db, contentId, field.fieldId)
       continue
     }
 
-    await upsertSearchValue(db, contentId, field.fieldId, table, coerced as any)
+    await upsertSearchValue(db, contentId, field.fieldId, dataType, coerced as any)
   }
 }
 
-export async function syncContentFields(args: {
+export async function syncContentSearchConfig(args: {
   db: Db
   schemaKey: string
   registry: SchemaRegistry
@@ -311,7 +313,7 @@ export async function syncContentFields(args: {
     const config = normalizeSearchConfig(field)
     desiredIds.add(field.fieldId)
     await db
-      .insert(contentFieldsTable)
+      .insert(contentSearchConfig)
       .values({
         schemaKey,
         fieldId: field.fieldId,
@@ -322,7 +324,7 @@ export async function syncContentFields(args: {
         sortable: config.sortable
       })
       .onConflictDoUpdate({
-        target: [contentFieldsTable.schemaKey, contentFieldsTable.fieldId],
+        target: [contentSearchConfig.schemaKey, contentSearchConfig.fieldId],
         set: {
           fieldKey: field.key,
           kind: field.kind,
@@ -334,15 +336,15 @@ export async function syncContentFields(args: {
   }
 
   const existing = await db
-    .select({ fieldId: contentFieldsTable.fieldId })
-    .from(contentFieldsTable)
-    .where(eq(contentFieldsTable.schemaKey, schemaKey))
+    .select({ fieldId: contentSearchConfig.fieldId })
+    .from(contentSearchConfig)
+    .where(eq(contentSearchConfig.schemaKey, schemaKey))
 
   for (const row of existing) {
     if (desiredIds.has(row.fieldId)) continue
     await db
-      .delete(contentFieldsTable)
-      .where(and(eq(contentFieldsTable.schemaKey, schemaKey), eq(contentFieldsTable.fieldId, row.fieldId)))
+      .delete(contentSearchConfig)
+      .where(and(eq(contentSearchConfig.schemaKey, schemaKey), eq(contentSearchConfig.fieldId, row.fieldId)))
   }
 }
 
@@ -353,24 +355,24 @@ export async function syncSearchIndexForSchema(args: {
   nextRegistry: SchemaRegistry
 }) {
   const { db, schemaKey, previousRegistry, nextRegistry } = args
-  const prevMap = new Map<string, { enabled: boolean; table: string | null; kind: FieldKind }>()
+  const prevMap = new Map<string, { enabled: boolean; dataType: SearchDataType | null; kind: FieldKind }>()
   if (previousRegistry) {
     for (const field of previousRegistry.fields) {
       const config = normalizeSearchConfig(field)
       prevMap.set(field.fieldId, {
         enabled: isSearchEnabled(config),
-        table: searchTableForKind(field.kind),
+        dataType: searchDataTypeForKind(field.kind),
         kind: field.kind
       })
     }
   }
 
-  const nextMap = new Map<string, { enabled: boolean; table: string | null; kind: FieldKind }>()
+  const nextMap = new Map<string, { enabled: boolean; dataType: SearchDataType | null; kind: FieldKind }>()
   for (const field of nextRegistry.fields) {
     const config = normalizeSearchConfig(field)
     nextMap.set(field.fieldId, {
       enabled: isSearchEnabled(config),
-      table: searchTableForKind(field.kind),
+      dataType: searchDataTypeForKind(field.kind),
       kind: field.kind
     })
   }
@@ -381,8 +383,8 @@ export async function syncSearchIndexForSchema(args: {
   for (const [fieldId, prev] of prevMap.entries()) {
     const next = nextMap.get(fieldId)
     const nextEnabled = next?.enabled ?? false
-    const tableChanged = !!next && prev.table !== next.table
-    if (prev.enabled && (!nextEnabled || tableChanged)) fieldsToDisable.push(fieldId)
+    const dataTypeChanged = !!next && prev.dataType !== next.dataType
+    if (prev.enabled && (!nextEnabled || dataTypeChanged)) fieldsToDisable.push(fieldId)
   }
 
   for (const field of nextRegistry.fields) {
@@ -390,9 +392,9 @@ export async function syncSearchIndexForSchema(args: {
     const next = nextMap.get(field.fieldId)
     const prevEnabled = prev?.enabled ?? false
     const nextEnabled = next?.enabled ?? false
-    const tableChanged = !!prev && !!next && prev.table !== next.table
+    const dataTypeChanged = !!prev && !!next && prev.dataType !== next.dataType
     const kindChanged = !!prev && !!next && prev.kind !== next.kind
-    if (nextEnabled && (!prevEnabled || tableChanged || kindChanged)) fieldsToEnable.push(field.fieldId)
+    if (nextEnabled && (!prevEnabled || dataTypeChanged || kindChanged)) fieldsToEnable.push(field.fieldId)
   }
 
   for (const fieldId of fieldsToDisable) {
@@ -402,7 +404,13 @@ export async function syncSearchIndexForSchema(args: {
   if (!fieldsToEnable.length) return { indexed: 0 }
 
   const rows = await db
-    .select({ id: contentTable.id, extraJson: contentTable.extraJson })
+    .select({
+      id: contentTable.id,
+      title: contentTable.title,
+      createdAt: contentTable.createdAt,
+      updatedAt: contentTable.updatedAt,
+      extraJson: contentTable.extraJson
+    })
     .from(contentTable)
     .where(eq(contentTable.schemaKey, schemaKey))
 
@@ -414,6 +422,11 @@ export async function syncSearchIndexForSchema(args: {
       contentId: row.id,
       registry: nextRegistry,
       extra,
+      content: {
+        title: row.title,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt
+      },
       onlyFieldIds: fieldsToEnable
     })
     indexed += 1
