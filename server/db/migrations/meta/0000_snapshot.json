@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "49461040-a01e-4694-97df-88df6e076aa5",
+  "id": "64c4ea81-73c1-40de-a862-1fa82ead3543",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "asset": {
@@ -197,141 +197,6 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "content_date_data": {
-      "name": "content_date_data",
-      "columns": {
-        "content_id": {
-          "name": "content_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "field_id": {
-          "name": "field_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "value": {
-          "name": "value",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "idx_filter_content_date_data": {
-          "name": "idx_filter_content_date_data",
-          "columns": [
-            "field_id",
-            "value",
-            "content_id"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {
-        "content_date_data_content_id_field_id_pk": {
-          "columns": [
-            "content_id",
-            "field_id"
-          ],
-          "name": "content_date_data_content_id_field_id_pk"
-        }
-      },
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "content_fields": {
-      "name": "content_fields",
-      "columns": {
-        "schema_key": {
-          "name": "schema_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "field_id": {
-          "name": "field_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "field_key": {
-          "name": "field_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "search_mode": {
-          "name": "search_mode",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'off'"
-        },
-        "filterable": {
-          "name": "filterable",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": false
-        },
-        "sortable": {
-          "name": "sortable",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": false
-        }
-      },
-      "indexes": {
-        "idx_content_fields_schema": {
-          "name": "idx_content_fields_schema",
-          "columns": [
-            "schema_key"
-          ],
-          "isUnique": false
-        },
-        "idx_content_fields_key": {
-          "name": "idx_content_fields_key",
-          "columns": [
-            "schema_key",
-            "field_key"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {
-        "content_fields_schema_key_field_id_pk": {
-          "columns": [
-            "schema_key",
-            "field_id"
-          ],
-          "name": "content_fields_schema_key_field_id_pk"
-        }
-      },
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
     "content_items": {
       "name": "content_items",
       "columns": {
@@ -420,55 +285,6 @@
       },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "content_number_data": {
-      "name": "content_number_data",
-      "columns": {
-        "content_id": {
-          "name": "content_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "field_id": {
-          "name": "field_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "value": {
-          "name": "value",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "idx_filter_content_number_data": {
-          "name": "idx_filter_content_number_data",
-          "columns": [
-            "field_id",
-            "value",
-            "content_id"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {
-        "content_number_data_content_id_field_id_pk": {
-          "columns": [
-            "content_id",
-            "field_id"
-          ],
-          "name": "content_number_data_content_id_field_id_pk"
-        }
-      },
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
@@ -627,8 +443,94 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "content_string_data": {
-      "name": "content_string_data",
+    "content_search_config": {
+      "name": "content_search_config",
+      "columns": {
+        "schema_key": {
+          "name": "schema_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "field_id": {
+          "name": "field_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "field_key": {
+          "name": "field_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "search_mode": {
+          "name": "search_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'off'"
+        },
+        "filterable": {
+          "name": "filterable",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "sortable": {
+          "name": "sortable",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        }
+      },
+      "indexes": {
+        "idx_content_search_config_schema": {
+          "name": "idx_content_search_config_schema",
+          "columns": [
+            "schema_key"
+          ],
+          "isUnique": false
+        },
+        "idx_content_search_config_key": {
+          "name": "idx_content_search_config_key",
+          "columns": [
+            "schema_key",
+            "field_key"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "content_search_config_schema_key_field_id_pk": {
+          "columns": [
+            "schema_key",
+            "field_id"
+          ],
+          "name": "content_search_config_schema_key_field_id_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "content_search_data": {
+      "name": "content_search_data",
       "columns": {
         "content_id": {
           "name": "content_id",
@@ -644,19 +546,44 @@
           "notNull": true,
           "autoincrement": false
         },
-        "value": {
-          "name": "value",
+        "data_type": {
+          "name": "data_type",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
+        },
+        "text": {
+          "name": "text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "value": {
+          "name": "value",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         }
       },
       "indexes": {
-        "idx_filter_content_string_data": {
-          "name": "idx_filter_content_string_data",
+        "idx_filter_content_search_text": {
+          "name": "idx_filter_content_search_text",
           "columns": [
             "field_id",
+            "data_type",
+            "text",
+            "content_id"
+          ],
+          "isUnique": false
+        },
+        "idx_filter_content_search_value": {
+          "name": "idx_filter_content_search_value",
+          "columns": [
+            "field_id",
+            "data_type",
             "value",
             "content_id"
           ],
@@ -665,12 +592,12 @@
       },
       "foreignKeys": {},
       "compositePrimaryKeys": {
-        "content_string_data_content_id_field_id_pk": {
+        "content_search_data_content_id_field_id_pk": {
           "columns": [
             "content_id",
             "field_id"
           ],
-          "name": "content_string_data_content_id_field_id_pk"
+          "name": "content_search_data_content_id_field_id_pk"
         }
       },
       "uniqueConstraints": {},
@@ -947,6 +874,105 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
+    "settings": {
+      "name": "settings",
+      "columns": {
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'global'"
+        },
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "value": {
+          "name": "value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "value_type": {
+          "name": "value_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'string'"
+        },
+        "is_encrypted": {
+          "name": "is_encrypted",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "group_key": {
+          "name": "group_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_settings_key": {
+          "name": "idx_settings_key",
+          "columns": [
+            "key"
+          ],
+          "isUnique": false
+        },
+        "idx_settings_group": {
+          "name": "idx_settings_group",
+          "columns": [
+            "group_key"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "settings_scope_key_pk": {
+          "columns": [
+            "scope",
+            "key"
+          ],
+          "name": "settings_scope_key_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
     "user": {
       "name": "user",
       "columns": {
@@ -1053,6 +1079,14 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
+        },
+        "level": {
+          "name": "level",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 50
         }
       },
       "indexes": {},

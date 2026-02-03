@@ -2,7 +2,7 @@ import { sql } from 'drizzle-orm'
 import { compileSchemaAst } from '../cms/compiler'
 import { defaultArticleSchemaAst } from '../cms/defaults'
 import { upsertContentItemSnapshot } from '../cms/content-items'
-import { syncContentFields } from '../cms/search-index'
+import { syncContentSearchConfig } from '../cms/search-index'
 import { content, schema, schemaActive, schemaRole, user, userRole } from '../db/schema'
 import { newId } from './ids'
 import { hashPassword } from './password'
@@ -181,7 +181,7 @@ export async function ensureBootstrapSchema(db: any, createdBy: string) {
   })
 
   await ensureAnonymousSchemaRole(db, ast.schemaKey)
-  await syncContentFields({ db, schemaKey: ast.schemaKey, registry: compiled.registry })
+  await syncContentSearchConfig({ db, schemaKey: ast.schemaKey, registry: compiled.registry })
 
   const id = newId()
   const bootstrapExtra = {

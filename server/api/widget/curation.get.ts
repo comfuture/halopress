@@ -2,12 +2,7 @@ import { and, asc, desc, eq, inArray } from 'drizzle-orm'
 import { getQuery, setHeader } from 'h3'
 
 import { getDb } from '../../db/db'
-import {
-  contentFields as contentFieldsTable,
-  contentItems as contentItemsTable,
-  contentRefList,
-  contentStringData
-} from '../../db/schema'
+import { contentItems as contentItemsTable, contentRefList, contentSearchConfig, contentSearchData } from '../../db/schema'
 import { badRequest } from '../../utils/http'
 import { applyWidgetCacheHeaders, resolveWidgetCacheKey, withWidgetCache } from '../../utils/widget-cache'
 
@@ -113,22 +108,23 @@ export default defineEventHandler(async (event) => {
     if (!values.length) throw badRequest('values required')
 
     const field = await db
-      .select({ fieldId: contentFieldsTable.fieldId })
-      .from(contentFieldsTable)
+      .select({ fieldId: contentSearchConfig.fieldId })
+      .from(contentSearchConfig)
       .where(and(
-        eq(contentFieldsTable.schemaKey, schemaKey),
-        eq(contentFieldsTable.fieldKey, fieldKey)
+        eq(contentSearchConfig.schemaKey, schemaKey),
+        eq(contentSearchConfig.fieldKey, fieldKey)
       ))
       .get()
 
     if (!field?.fieldId) return []
 
     const ids = await db
-      .select({ contentId: contentStringData.contentId })
-      .from(contentStringData)
+      .select({ contentId: contentSearchData.contentId })
+      .from(contentSearchData)
       .where(and(
-        eq(contentStringData.fieldId, field.fieldId),
-        inArray(contentStringData.value, values)
+        eq(contentSearchData.fieldId, field.fieldId),
+        eq(contentSearchData.dataType, 'text'),
+        inArray(contentSearchData.text, values)
       )) as Array<{ contentId: string }>
 
     const contentIds = Array.from(new Set(ids.map(row => row.contentId)))
