@@ -20,6 +20,14 @@ type CredentialInput = {
 }
 
 type AuthHandler = ReturnType<typeof NuxtAuthHandler>
+type AuthProviderConfig = {
+  credentialsEnabled: boolean
+  googleConfig: {
+    enabled: boolean
+    clientId?: string | null
+    clientSecret?: string | null
+  }
+}
 
 const authEventStorage = new AsyncLocalStorage<any>()
 
@@ -34,10 +42,30 @@ function resolveTenantKey() {
 }
 
 let cachedAuthHandler: AuthHandler | null = null
+let cachedAuthHandlerKey: string | null = null
 
-async function buildAuthHandler(event: Parameters<AuthHandler>[0]) {
+async function loadAuthProviderConfig(event: Parameters<AuthHandler>[0]): Promise<AuthProviderConfig> {
   const credentialsEnabled = await resolveCredentialsEnabled(event)
   const googleConfig = await resolveOAuthProviderConfig('google', event)
+  return {
+    credentialsEnabled,
+    googleConfig
+  }
+}
+
+function buildAuthHandlerKey(config: AuthProviderConfig) {
+  return JSON.stringify({
+    credentialsEnabled: config.credentialsEnabled,
+    googleConfig: {
+      enabled: config.googleConfig.enabled,
+      clientId: config.googleConfig.clientId,
+      clientSecret: config.googleConfig.clientSecret
+    }
+  })
+}
+
+async function buildAuthHandler(config: AuthProviderConfig) {
+  const { credentialsEnabled, googleConfig } = config
   const oauthProviders: any[] = []
 
   if (googleConfig.enabled) {
@@ -234,8 +262,11 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 503, statusMessage: 'Auth not ready' })
   }
 
-  if (!cachedAuthHandler) {
-    cachedAuthHandler = await buildAuthHandler(event)
+  const config = await loadAuthProviderConfig(event)
+  const configKey = buildAuthHandlerKey(config)
+  if (!cachedAuthHandler || cachedAuthHandlerKey !== configKey) {
+    cachedAuthHandler = await buildAuthHandler(config)
+    cachedAuthHandlerKey = configKey
   }
   return authEventStorage.run(event, () => cachedAuthHandler!(event))
 })
