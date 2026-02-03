@@ -31,6 +31,7 @@ const toast = useToast()
 const { confirm } = useConfirmDialog()
 const route = useRoute()
 const router = useRouter()
+const locale = useDisplayLocale()
 
 const search = ref(typeof route.query.q === 'string' ? route.query.q : '')
 const statusFilter = ref(typeof route.query.status === 'string' ? route.query.status : 'all')
@@ -197,7 +198,7 @@ const columns = computed<TableColumn<UserRow>[]>(() => ([
   {
     accessorKey: 'createdAt',
     header: 'Created',
-    cell: ({ row }) => new Date(row.getValue('createdAt') as string).toLocaleString(undefined, {
+    cell: ({ row }) => formatDateTime(row.getValue('createdAt') as string, locale.value, {
       year: 'numeric',
       month: 'short',
       day: 'numeric',

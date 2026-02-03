@@ -5,6 +5,7 @@ definePageMeta({
 
 const route = useRoute()
 const router = useRouter()
+const locale = useDisplayLocale()
 
 const assetId = computed(() => route.params.assetId as string)
 
@@ -20,6 +21,7 @@ const { data: listData, refresh: refreshList } = await useFetch<{ items: Array<{
 const asset = computed(() => data.value?.asset)
 const isImage = computed(() => asset.value?.kind === 'image')
 const previewUrl = computed(() => asset.value ? `/assets/${asset.value.id}/raw` : '')
+const formatCreatedAt = (value: string) => formatDateTime(value, locale.value)
 
 function formatBytes(bytes?: number) {
   if (!Number.isFinite(bytes)) return ''
@@ -132,7 +134,7 @@ function handleDeleted() {
             </div>
             <div class="flex items-start justify-between gap-3">
               <dt class="text-muted">Created</dt>
-              <dd class="text-right">{{ new Date(asset.createdAt).toLocaleString() }}</dd>
+              <dd class="text-right">{{ formatCreatedAt(asset.createdAt) }}</dd>
             </div>
             <div class="flex items-start justify-between gap-3">
               <dt class="text-muted">URL</dt>

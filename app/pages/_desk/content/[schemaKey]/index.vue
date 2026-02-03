@@ -13,6 +13,7 @@ const status = ref<string>('all')
 const SORT_DEFAULT = '__default__'
 const sortField = ref<string>(SORT_DEFAULT)
 const sortDir = ref<'asc' | 'desc'>('desc')
+const locale = useDisplayLocale()
 
 const { data: schema } = await useFetch<any>(() => `/api/schema/${schemaKey.value}/active`)
 
@@ -240,9 +241,10 @@ function formatSearchValue(field: NormalizedField, value: string | number | null
     return label || String(value)
   }
   if (field.kind === 'date' || field.kind === 'datetime') {
-    const date = typeof value === 'number' ? new Date(value) : new Date(String(value))
-    if (Number.isNaN(date.getTime())) return String(value)
-    return field.kind === 'date' ? date.toLocaleDateString() : date.toLocaleString()
+    const formatted = field.kind === 'date'
+      ? formatDate(value as any, locale.value)
+      : formatDateTime(value as any, locale.value)
+    return formatted || String(value)
   }
   return String(value)
 }
@@ -412,7 +414,7 @@ const columns = computed<TableColumn<ContentRow>[]>(() => {
     {
       accessorKey: 'updatedAt',
       header: 'Updated',
-      cell: ({ row }) => new Date(row.getValue('updatedAt') as string).toLocaleString()
+      cell: ({ row }) => formatDateTime(row.getValue('updatedAt') as string, locale.value)
     }
   ]
 

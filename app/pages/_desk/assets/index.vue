@@ -4,7 +4,9 @@ definePageMeta({
 })
 
 const toast = useToast()
+const locale = useDisplayLocale()
 const { data, refresh } = await useFetch<{ items: Array<{ id: string; kind: string; status: string; mimeType: string; sizeBytes: number; createdAt: string }> }>('/api/assets/list', { query: { limit: 100 } })
+const formatCreatedAt = (value: string) => formatDateTime(value, locale.value)
 
 function formatBytes(bytes: number) {
   if (!Number.isFinite(bytes)) return ''
@@ -102,7 +104,7 @@ watch(files, async (selected) => {
             </div>
             <div class="flex items-end justify-between gap-2 mt-1">
               <span class="text-xs text-muted">
-                {{ new Date(a.createdAt).toLocaleString() }}
+                {{ formatCreatedAt(a.createdAt) }}
               </span>
               <AssetActions :asset="a" :assets="data?.items || []" variant="menu" @updated="refresh()"
                 @deleted="refresh()" />
