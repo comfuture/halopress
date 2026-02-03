@@ -257,7 +257,7 @@ export default defineEventHandler(async (event) => {
     return { items, nextCursor }
   }
 
-  const contentIds = items.map(item => item.id)
+  const contentIds = items.map((item: (typeof items)[number]) => item.id)
   const fieldIdToKey = new Map(fieldConfigs.map(cfg => [cfg.fieldId, cfg.fieldKey]))
   const fieldIds = fieldConfigs.map(cfg => cfg.fieldId)
 
@@ -284,7 +284,7 @@ export default defineEventHandler(async (event) => {
     searchDataByContentId.set(row.contentId, entry)
   }
 
-  const itemsWithSearchData = items.map((item) => ({
+  const itemsWithSearchData = items.map((item: (typeof items)[number]) => ({
     ...item,
     searchData: searchDataByContentId.get(item.id) ?? {}
   }))

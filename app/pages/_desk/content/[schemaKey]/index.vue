@@ -127,11 +127,15 @@ const displayFieldKeys = computed(() => displayFields.value.map(field => field.k
 
 const filterState = reactive<Record<string, FieldState>>({})
 
-watch(filterableFields, (fields) => {
-  for (const field of fields) {
-    if (filterState[field.key]) continue
+function ensureFieldState(field: NormalizedField): FieldState {
+  if (!filterState[field.key]) {
     filterState[field.key] = { value: '', values: '', min: '', max: '', bool: '', enumValues: [] }
   }
+  return filterState[field.key]!
+}
+
+watch(filterableFields, (fields) => {
+  for (const field of fields) ensureFieldState(field)
 }, { immediate: true })
 
 const appliedFilters = ref<FilterInput[]>([])
@@ -183,23 +187,29 @@ const booleanOptions = [
   { label: 'False', value: 'false' }
 ]
 
-function enumOptions(fieldKey: string) {
+type EnumOption = { label: string; value: string }
+
+function enumOptions(fieldKey: string): EnumOption[] {
   const astField = (schema.value?.ast?.fields ?? []).find((f: any) => f?.key === fieldKey)
   const fromAst = Array.isArray(astField?.enumValues) ? astField.enumValues : null
   if (fromAst?.length) {
-    return fromAst.map((opt: any) => ({
-      label: opt?.label || opt?.value || String(opt ?? ''),
-      value: String(opt?.value ?? opt ?? '')
-    })).filter((opt: any) => opt.value)
+    return fromAst
+      .map((opt: any) => ({
+        label: opt?.label || opt?.value || String(opt ?? ''),
+        value: String(opt?.value ?? opt ?? '')
+      }))
+      .filter((opt: EnumOption) => opt.value)
   }
 
   const regField = (schema.value?.registry?.fields ?? []).find((f: any) => f?.key === fieldKey)
   const fromRegistry = Array.isArray(regField?.enumValues) ? regField.enumValues : null
   if (fromRegistry?.length) {
-    return fromRegistry.map((opt: any) => ({
-      label: opt?.label || opt?.value || String(opt ?? ''),
-      value: String(opt?.value ?? opt ?? '')
-    })).filter((opt: any) => opt.value)
+    return fromRegistry
+      .map((opt: any) => ({
+        label: opt?.label || opt?.value || String(opt ?? ''),
+        value: String(opt?.value ?? opt ?? '')
+      }))
+      .filter((opt: EnumOption) => opt.value)
   }
 
   const enums = schema.value?.jsonSchema?.properties?.[fieldKey]?.enum
@@ -212,7 +222,7 @@ const enumLabelMap = computed(() => {
   for (const field of normalizedFields.value) {
     if (field.kind !== 'enum') continue
     const options = enumOptions(field.key)
-    map.set(field.key, new Map(options.map(opt => [String(opt.value), opt.label])))
+    map.set(field.key, new Map(options.map((opt) => [String(opt.value), opt.label])))
   }
   return map
 })
@@ -262,8 +272,7 @@ function buildExactSetValues(field: NormalizedField, raw: string) {
 function buildFilters(): FilterInput[] {
   const filters: FilterInput[] = []
   for (const field of filterableFields.value) {
-    const state = filterState[field.key]
-    if (!state) continue
+    const state = ensureFieldState(field)
 
     if (field.kind === 'boolean' && field.searchMode !== 'range') {
       if (state.bool === 'true') {
@@ -310,6 +319,10 @@ function buildFilters(): FilterInput[] {
     filters.push({ field: field.key, op: 'exact', value })
   }
   return filters
+}
+
+function fieldState(field: NormalizedField): FieldState {
+  return ensureFieldState(field)
 }
 
 function applySearch() {
@@ -370,13 +383,14 @@ const columns = computed<TableColumn<ContentRow>[]>(() => {
     }
   ]
 
-  const dynamic: TableColumn<ContentRow>[] = displayFields.value.map(field => ({
+  const dynamic: TableColumn<ContentRow>[] = displayFields.value.map((field) => ({
     id: `field-${field.key}`,
     header: field.title || field.key,
     meta: { class: { td: 'max-w-[14rem] truncate' } },
     cell: ({ row }) => {
-      const value = row.original.searchData?.[field.key]
-      const label = formatSearchValue(field, value ?? null)
+      const searchData = row.original.searchData ?? {}
+      const value = searchData[field.key] ?? null
+      const label = formatSearchValue(field, value)
       return h('span', { class: 'text-sm text-muted truncate' }, label)
     }
   }))
@@ -459,10 +473,10 @@ const columns = computed<TableColumn<ContentRow>[]>(() => {
               :key="field.fieldId"
               class="flex min-w-[12rem] flex-col gap-1"
             >
-              <UFormField v-if="filterState[field.key]" :label="field.title || field.key">
+              <UFormField :label="field.title || field.key">
                 <template v-if="field.kind === 'boolean' && field.searchMode !== 'range'">
                   <USelect
-                    v-model="filterState[field.key].bool"
+                    v-model="fieldState(field).bool"
                     :items="booleanOptions"
                     class="w-full"
                   />
@@ -470,14 +484,14 @@ const columns = computed<TableColumn<ContentRow>[]>(() => {
                 <template v-else-if="isRangeField(field)">
                   <div class="flex items-center gap-2">
                     <UInput
-                      v-model="filterState[field.key].min"
+                      v-model="fieldState(field).min"
                       :type="inputTypeForField(field)"
                       placeholder="Min"
                       class="w-28"
                     />
                     <span class="text-muted">~</span>
                     <UInput
-                      v-model="filterState[field.key].max"
+                      v-model="fieldState(field).max"
                       :type="inputTypeForField(field)"
                       placeholder="Max"
                       class="w-28"
@@ -486,7 +500,7 @@ const columns = computed<TableColumn<ContentRow>[]>(() => {
                 </template>
                 <template v-else-if="field.kind === 'enum'">
                   <UCheckboxGroup
-                    v-model="filterState[field.key].enumValues"
+                    v-model="fieldState(field).enumValues"
                     :items="enumOptions(field.key)"
                     value-key="value"
                     label-key="label"
@@ -496,7 +510,7 @@ const columns = computed<TableColumn<ContentRow>[]>(() => {
                 </template>
                 <template v-else-if="isExactSetField(field)">
                   <UInput
-                    v-model="filterState[field.key].values"
+                    v-model="fieldState(field).values"
                     :type="inputTypeForField(field, true)"
                     placeholder="Comma-separated"
                     class="w-full"
@@ -504,7 +518,7 @@ const columns = computed<TableColumn<ContentRow>[]>(() => {
                 </template>
                 <template v-else>
                   <UInput
-                    v-model="filterState[field.key].value"
+                    v-model="fieldState(field).value"
                     :type="inputTypeForField(field)"
                     placeholder="Value"
                     class="w-full"
