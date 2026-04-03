@@ -16,7 +16,7 @@ if (permissionError.value || !permission.value?.canRead) {
 
 const { content: doc, schema } = await useHalopressContent(schemaKey, { id })
 
-const fields = computed(() => schema.value?.registry?.fields ?? [])
+const fields = computed(() => (schema.value?.registry?.fields ?? []).filter((field: any) => field?.key !== 'title'))
 
 type TocLink = { label: string; to: string }
 

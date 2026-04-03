@@ -26,7 +26,7 @@ const schemaKey = computed(() => String(route.params.schemaKey))
 const { data: schema } = await useFetch<any>(() => `/api/schema/${schemaKey.value}/active`)
 const titleRequired = computed(() => {
   const fields = schema.value?.registry?.fields ?? []
-  return fields.some((field: any) => field?.system && field?.key === 'title' && field?.required)
+  return fields.some((field: any) => field?.key === 'title' && field?.required)
 })
 
 const breadcrumbItems = computed<BreadcrumbItem[]>(() => ([

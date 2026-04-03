@@ -64,7 +64,7 @@ type FieldState = {
 const SEARCH_MODES_BY_KIND: Record<string, SearchMode[]> = {
   string: ['off', 'exact', 'exact_set'],
   text: ['off', 'exact', 'exact_set'],
-  richtext: ['off', 'exact', 'exact_set'],
+  richtext: ['off'],
   url: ['off', 'exact', 'exact_set'],
   enum: ['off', 'exact', 'exact_set'],
   boolean: ['off', 'exact', 'exact_set'],
@@ -79,7 +79,6 @@ const SEARCH_MODES_BY_KIND: Record<string, SearchMode[]> = {
 const FILTERABLE_KINDS = new Set([
   'string',
   'text',
-  'richtext',
   'url',
   'enum',
   'boolean',

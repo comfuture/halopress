@@ -29,7 +29,7 @@ const { data: schema } = await useFetch<any>(() => `/api/schema/${schemaKey.valu
 const { data: doc, refresh: refreshDoc } = await useFetch<any>(() => `/api/content/${schemaKey.value}/${id.value}`)
 const titleRequired = computed(() => {
   const fields = schema.value?.registry?.fields ?? []
-  return fields.some((field: any) => field?.system && field?.key === 'title' && field?.required)
+  return fields.some((field: any) => field?.key === 'title' && field?.required)
 })
 
 const breadcrumbItems = computed<BreadcrumbItem[]>(() => ([

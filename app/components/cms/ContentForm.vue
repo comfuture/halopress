@@ -23,9 +23,14 @@ watchEffect(() => {
   const fields = props.schema?.registry?.fields
   if (!Array.isArray(fields)) return
   for (const field of fields) {
+    if (field?.key === 'title') continue
     if (field?.kind === 'richtext') ensureRichtextDoc(field.key)
   }
 })
+
+const editableFields = computed(() =>
+  (props.schema?.registry?.fields ?? []).filter((field: any) => !field?.system && field?.key !== 'title')
+)
 
 function normalizeEnumOptions(options: any[]) {
   return options
@@ -81,7 +86,7 @@ function requiredMessage(label: string) {
 
 const formSchema = computed(() => {
   const shape: Record<string, z.ZodTypeAny> = {}
-  const fields = props.schema?.registry?.fields ?? []
+  const fields = editableFields.value
 
   for (const field of fields) {
     if (field?.system) continue
@@ -189,7 +194,7 @@ defineExpose({
     class="flex flex-col gap-4"
   >
     <UFormField
-      v-for="field in schema.registry.fields.filter((f: any) => !f?.system)"
+      v-for="field in editableFields"
       :key="field.fieldId"
       :label="field.title || field.key"
       :name="field.key"
