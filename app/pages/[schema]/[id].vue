@@ -69,29 +69,29 @@ function asExtraRecord(value: unknown): ExtraRecord | null {
 }
 
 const richtextMeta = computed(() => {
-  const rawExtra = doc.value?.extra ?? null
-  const extra = asExtraRecord(rawExtra)
-  if (!extra) {
-    return { extra: rawExtra ?? null, toc: [] as TocLink[] }
+  const rawContent = doc.value?.content ?? doc.value?.extra ?? null
+  const content = asExtraRecord(rawContent)
+  if (!content) {
+    return { content: rawContent ?? null, toc: [] as TocLink[] }
   }
 
   const usedIds = new Map<string, number>()
   const toc: TocLink[] = []
-  const patchedExtra: ExtraRecord = { ...extra }
+  const patchedContent: ExtraRecord = { ...content }
 
   for (const field of fields.value) {
     if (field.kind !== 'richtext') continue
-    const value = extra[field.key]
+    const value = content[field.key]
     if (!value) continue
-    patchedExtra[field.key] = patchRichText(value, usedIds, toc)
+    patchedContent[field.key] = patchRichText(value, usedIds, toc)
   }
 
-  return { extra: patchedExtra, toc }
+  return { content: patchedContent, toc }
 })
 
 const renderedExtra = computed<ExtraRecord | null>(() => {
-  const extra = richtextMeta.value.extra
-  return asExtraRecord(extra)
+  const content = richtextMeta.value.content
+  return asExtraRecord(content)
 })
 
 function asEditorContent(value: unknown): Content | undefined {
@@ -111,7 +111,7 @@ const tocLinks = computed(() => richtextMeta.value.toc)
       </template>
 
       <UPageHeader
-        :title="doc?.title || doc?.id || id"
+        :title="doc?.content?.title || doc?.title || doc?.id || id"
         :description="schema ? `${schemaKey} · v${schema.version}` : schemaKey"
       />
 

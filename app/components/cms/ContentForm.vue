@@ -23,13 +23,12 @@ watchEffect(() => {
   const fields = props.schema?.registry?.fields
   if (!Array.isArray(fields)) return
   for (const field of fields) {
-    if (field?.key === 'title') continue
     if (field?.kind === 'richtext') ensureRichtextDoc(field.key)
   }
 })
 
 const editableFields = computed(() =>
-  (props.schema?.registry?.fields ?? []).filter((field: any) => !field?.system && field?.key !== 'title')
+  (props.schema?.registry?.fields ?? []).filter((field: any) => !field?.system)
 )
 
 function normalizeEnumOptions(options: any[]) {

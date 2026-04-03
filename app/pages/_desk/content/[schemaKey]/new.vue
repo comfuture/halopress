@@ -24,10 +24,6 @@ const toast = useToast()
 const schemaKey = computed(() => String(route.params.schemaKey))
 
 const { data: schema } = await useFetch<any>(() => `/api/schema/${schemaKey.value}/active`)
-const titleRequired = computed(() => {
-  const fields = schema.value?.registry?.fields ?? []
-  return fields.some((field: any) => field?.key === 'title' && field?.required)
-})
 
 const breadcrumbItems = computed<BreadcrumbItem[]>(() => ([
   { label: schema.value?.title || schemaKey.value, icon: 'i-lucide-files', to: `/_desk/content/${schemaKey.value}` },
@@ -35,16 +31,14 @@ const breadcrumbItems = computed<BreadcrumbItem[]>(() => ([
 ]))
 
 const state = reactive({
-  title: '',
-  extra: {} as Record<string, any>
+  content: {} as Record<string, any>
 })
 
 const contentFormRef = ref<any>(null)
 
 function buildContentSnapshot() {
   return {
-    title: state.title || '',
-    extra: state.extra
+    content: state.content
   }
 }
 
@@ -53,9 +47,9 @@ watchEffect(() => {
   const next: Record<string, any> = {}
   for (const f of schema.value.registry.fields) {
     if (f?.system) continue
-    next[f.key] = state.extra[f.key] ?? (f.kind === 'richtext' ? { type: 'doc', content: [{ type: 'paragraph' }] } : null)
+    next[f.key] = state.content[f.key] ?? (f.kind === 'richtext' ? { type: 'doc', content: [{ type: 'paragraph' }] } : null)
   }
-  state.extra = next
+  state.content = next
 })
 
 const savingDraft = ref(false)
@@ -64,8 +58,8 @@ const publishing = ref(false)
 const lastSavedContentJson = ref('')
 const baselineReady = ref(false)
 const currentContentJson = computed(() => stableStringify(buildContentSnapshot()))
-const expectedFieldCount = computed(() => schema.value?.registry?.fields?.length ?? 0)
-const baselineReadyByFields = computed(() => !!schema.value?.registry && Object.keys(state.extra).length === expectedFieldCount.value)
+const expectedFieldCount = computed(() => (schema.value?.registry?.fields ?? []).filter((field: any) => !field?.system).length)
+const baselineReadyByFields = computed(() => !!schema.value?.registry && Object.keys(state.content).length === expectedFieldCount.value)
 
 watchEffect(() => {
   if (baselineReady.value) return
@@ -80,19 +74,16 @@ const canPublish = computed(() => isDirty.value && !publishing.value)
 
 async function saveDraft() {
   if (!isDirty.value) return
-  if (titleRequired.value && !state.title.trim()) {
-    toast.add({ title: 'Title is required', color: 'error' })
-    return
-  }
   if (!(await contentFormRef.value?.validate?.())) {
     toast.add({ title: 'Fix validation errors', color: 'error' })
     return
   }
   savingDraft.value = true
   try {
+    const title = typeof state.content.title === 'string' ? state.content.title.trim() : ''
     const res = await $fetch<{ id: string }>(`/api/content/${schemaKey.value}`, {
       method: 'POST',
-      body: { title: state.title, status: 'draft', extra: state.extra }
+      body: { title, status: 'draft', content: state.content, extra: state.content }
     })
     toast.add({ title: 'Created', description: res.id })
     await navigateTo(`/_desk/content/${schemaKey.value}/${res.id}`)
@@ -105,19 +96,16 @@ async function saveDraft() {
 
 async function publish() {
   if (!isDirty.value) return
-  if (titleRequired.value && !state.title.trim()) {
-    toast.add({ title: 'Title is required', color: 'error' })
-    return
-  }
   if (!(await contentFormRef.value?.validate?.())) {
     toast.add({ title: 'Fix validation errors', color: 'error' })
     return
   }
   publishing.value = true
   try {
+    const title = typeof state.content.title === 'string' ? state.content.title.trim() : ''
     await $fetch<{ id: string }>(`/api/content/${schemaKey.value}`, {
       method: 'POST',
-      body: { title: state.title, status: 'published', extra: state.extra }
+      body: { title, status: 'published', content: state.content, extra: state.content }
     })
     toast.add({ title: 'Published' })
     await navigateTo(`/_desk/content/${schemaKey.value}`)
@@ -166,11 +154,7 @@ async function publish() {
     <template #body>
       <UCard v-if="schema?.registry" class="shrink-0">
         <div class="flex flex-col gap-4">
-          <UFormField label="Title" class="w-full" :required="titleRequired">
-            <UInput v-model="state.title" placeholder="Optional title" class="w-full" />
-          </UFormField>
-
-          <CmsContentForm ref="contentFormRef" :schema="schema" :model="state.extra" />
+          <CmsContentForm ref="contentFormRef" :schema="schema" :model="state.content" />
         </div>
       </UCard>
     </template>
