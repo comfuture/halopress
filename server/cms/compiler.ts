@@ -1,4 +1,5 @@
 import type { SchemaAst, SchemaRegistry } from './types'
+import { inferListingSelection } from './listing'
 
 function relTargetToKind(target: string): { kind: 'content' | 'user' | 'asset'; schemaKey?: string } {
   if (target.startsWith('system:User')) return { kind: 'user' }
@@ -107,10 +108,35 @@ export function compileSchemaAst(ast: SchemaAst, version: number) {
     })
   }
 
+  const listingDefaults = inferListingSelection({
+    schemaKey: ast.schemaKey,
+    version,
+    title: ast.title,
+    fields: ast.fields.map(f => ({
+      fieldId: f.id,
+      key: f.key,
+      kind: f.kind,
+      title: f.title,
+      description: f.description,
+      required: f.required,
+      enumValues: f.enumValues,
+      ui: f.ui,
+      search: f.search,
+      rel: f.rel,
+      system: f.system
+    })),
+    relations
+  })
+
   const registry: SchemaRegistry = {
     schemaKey: ast.schemaKey,
     version,
     title: ast.title,
+    listing: {
+      titleFieldKey: ast.listing?.titleFieldKey ?? listingDefaults.titleFieldKey,
+      descriptionFieldKey: ast.listing?.descriptionFieldKey ?? listingDefaults.descriptionFieldKey,
+      imageFieldKey: ast.listing?.imageFieldKey ?? listingDefaults.imageFieldKey
+    },
     fields: ast.fields.map(f => ({
       fieldId: f.id,
       key: f.key,

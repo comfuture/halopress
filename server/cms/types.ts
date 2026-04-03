@@ -15,6 +15,12 @@ export type SearchConfig = {
   sortable?: boolean
 }
 
+export type ListingConfig = {
+  titleFieldKey?: string | null
+  descriptionFieldKey?: string | null
+  imageFieldKey?: string | null
+}
+
 export type RelConfig = {
   kind: 'ref' | 'ref_list' | 'poly_ref' | 'asset_ref'
   target: string // system:User | system:Asset | content:SchemaKey
@@ -62,12 +68,14 @@ export type SchemaAst = {
   title: string
   description?: string
   fields: FieldNode[]
+  listing?: ListingConfig
 }
 
 export type SchemaRegistry = {
   schemaKey: string
   version: number
   title: string
+  listing?: ListingConfig
   fields: Array<{
     fieldId: string
     key: string

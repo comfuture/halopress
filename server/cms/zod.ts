@@ -17,6 +17,12 @@ const searchConfig = z.object({
   sortable: z.boolean().optional()
 }).strict()
 
+const listingConfig = z.object({
+  titleFieldKey: z.string().nullable().optional(),
+  descriptionFieldKey: z.string().nullable().optional(),
+  imageFieldKey: z.string().nullable().optional()
+}).strict()
+
 const relConfig = z.object({
   kind: z.enum(['ref', 'ref_list', 'poly_ref', 'asset_ref']),
   target: z.string(),
@@ -64,5 +70,6 @@ export const schemaAstSchema = z.object({
   schemaKey: z.string().min(1).regex(/^[a-z0-9][a-z0-9_]*$/),
   title: z.string().min(1),
   description: z.string().optional(),
-  fields: z.array(fieldNodeSchema)
+  fields: z.array(fieldNodeSchema),
+  listing: listingConfig.optional()
 }).strict()

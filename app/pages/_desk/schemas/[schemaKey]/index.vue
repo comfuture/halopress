@@ -46,6 +46,11 @@ type FieldNode = {
 
 type SchemaAst = {
   fields: FieldNode[]
+  listing?: {
+    titleFieldKey?: string | null
+    descriptionFieldKey?: string | null
+    imageFieldKey?: string | null
+  }
 }
 
 function stableStringify(value: any): string {
@@ -117,19 +122,15 @@ const state = reactive({
   schemaKey: isNew.value ? '' : routeKey.value,
   title: '',
   description: '',
-  fields: [] as FieldNode[]
+  fields: [] as FieldNode[],
+  listing: {
+    titleFieldKey: null as string | null,
+    descriptionFieldKey: null as string | null,
+    imageFieldKey: null as string | null
+  }
 })
 
 const SYSTEM_FIELDS: FieldNode[] = [
-  {
-    id: '__system_title',
-    key: 'title',
-    kind: 'string',
-    title: 'Title',
-    required: false,
-    search: { mode: 'off', filterable: false, sortable: false },
-    system: true
-  },
   {
     id: '__system_created_at',
     key: 'created_at',
@@ -152,6 +153,46 @@ const SYSTEM_FIELDS: FieldNode[] = [
 
 const SYSTEM_FIELD_KEYS = new Set(SYSTEM_FIELDS.map(field => field.key))
 
+function createDefaultTitleField(): FieldNode {
+  return {
+    id: ulid(),
+    key: 'title',
+    kind: 'string',
+    title: 'Title',
+    required: false,
+    search: { mode: 'off', filterable: false, sortable: false },
+    system: false
+  }
+}
+
+function inferListingSelection(fields: FieldNode[]) {
+  const contentFields = fields.filter(field => !field.system)
+
+  const findByExactKey = (keys: string[], allowedKinds: FieldKind[]) => {
+    for (const key of keys) {
+      const match = contentFields.find(field => field.key === key && allowedKinds.includes(field.kind))
+      if (match) return match.key
+    }
+    return null
+  }
+
+  const findFirstByKind = (allowedKinds: FieldKind[]) => {
+    const match = contentFields.find(field => allowedKinds.includes(field.kind))
+    return match?.key ?? null
+  }
+
+  return {
+    titleFieldKey: findByExactKey(['title'], ['string', 'text'])
+      ?? findFirstByKind(['string'])
+      ?? findFirstByKind(['text']),
+    descriptionFieldKey: findByExactKey(['description', 'summary', 'excerpt'], ['text', 'richtext'])
+      ?? findFirstByKind(['text'])
+      ?? findFirstByKind(['richtext']),
+    imageFieldKey: findByExactKey(['image', 'thumbnail', 'cover'], ['asset'])
+      ?? findFirstByKind(['asset'])
+  }
+}
+
 function applySystemFields(fields: FieldNode[]) {
   const byKey = new Map(fields.map(field => [field.key, field]))
   const systemFields = SYSTEM_FIELDS.map((sys) => {
@@ -162,12 +203,23 @@ function applySystemFields(fields: FieldNode[]) {
       system: true
     }
   })
-  const nonSystem = fields.filter(field => !SYSTEM_FIELD_KEYS.has(field.key))
-  return [...systemFields, ...nonSystem]
+  const legacyTitle = fields.find(field => field.key === 'title' && !SYSTEM_FIELD_KEYS.has(field.key))
+    ?? fields.find(field => field.key === 'title')
+  const normalizedTitle = legacyTitle
+    ? {
+        ...legacyTitle,
+        system: false,
+        id: legacyTitle.id || ulid(),
+        kind: 'string' as const
+      }
+    : createDefaultTitleField()
+  const nonSystem = fields.filter(field => !SYSTEM_FIELD_KEYS.has(field.key) && field.key !== 'title')
+  return [...systemFields, normalizedTitle, ...nonSystem]
 }
 
 if (isNew.value) {
   state.fields = applySystemFields([])
+  Object.assign(state.listing, inferListingSelection(state.fields))
 }
 
 const breadcrumbItems = computed<BreadcrumbItem[]>(() => ([
@@ -188,7 +240,12 @@ function buildAstFromState() {
     schemaKey: state.schemaKey,
     title: state.title || state.schemaKey,
     description: state.description || undefined,
-    fields: state.fields
+    fields: state.fields,
+    listing: {
+      titleFieldKey: state.listing.titleFieldKey,
+      descriptionFieldKey: state.listing.descriptionFieldKey,
+      imageFieldKey: state.listing.imageFieldKey
+    }
   }
 }
 
@@ -269,7 +326,31 @@ watch(
     state.title = next.ast?.title ?? next.title ?? next.schemaKey
     state.description = next.ast?.description ?? ''
     state.fields = applySystemFields(deepClone(next.ast?.fields ?? []))
+    Object.assign(state.listing, {
+      titleFieldKey: next.ast?.listing?.titleFieldKey ?? null,
+      descriptionFieldKey: next.ast?.listing?.descriptionFieldKey ?? null,
+      imageFieldKey: next.ast?.listing?.imageFieldKey ?? null
+    })
     lastSavedAstJson.value = stableStringify(buildAstFromState())
+  },
+  { immediate: true }
+)
+
+watch(
+  () => state.fields.map(field => `${field.key}:${field.kind}:${field.system ? '1' : '0'}`),
+  () => {
+    const inferred = inferListingSelection(state.fields)
+    const fieldKeys = new Set(state.fields.filter(field => !field.system).map(field => field.key))
+
+    if (!state.listing.titleFieldKey || !fieldKeys.has(state.listing.titleFieldKey)) {
+      state.listing.titleFieldKey = inferred.titleFieldKey
+    }
+    if (!state.listing.descriptionFieldKey || !fieldKeys.has(state.listing.descriptionFieldKey)) {
+      state.listing.descriptionFieldKey = inferred.descriptionFieldKey
+    }
+    if (!state.listing.imageFieldKey || !fieldKeys.has(state.listing.imageFieldKey)) {
+      state.listing.imageFieldKey = inferred.imageFieldKey
+    }
   },
   { immediate: true }
 )
@@ -392,9 +473,7 @@ const searchModeOptionsByKind: Record<string, Array<{ label: string; value: stri
     { label: 'Exact set', value: 'exact_set' }
   ],
   richtext: [
-    { label: 'Off', value: 'off' },
-    { label: 'Exact', value: 'exact' },
-    { label: 'Exact set', value: 'exact_set' }
+    { label: 'Off', value: 'off' }
   ],
   url: [
     { label: 'Off', value: 'off' },
@@ -433,8 +512,33 @@ const searchModeOptionsByKind: Record<string, Array<{ label: string; value: stri
   ]
 }
 
-const filterableKinds = new Set(['string', 'text', 'richtext', 'url', 'enum', 'boolean', 'number', 'integer', 'date', 'datetime'])
+const filterableKinds = new Set(['string', 'text', 'url', 'enum', 'boolean', 'number', 'integer', 'date', 'datetime'])
 const sortableKinds = new Set(['string', 'url', 'enum', 'boolean', 'number', 'integer', 'date', 'datetime'])
+
+function fieldOptionsByKind(kinds: FieldKind[]) {
+  return state.fields
+    .filter(field => !field.system && kinds.includes(field.kind))
+    .map(field => ({
+      label: field.title || field.key,
+      value: field.key,
+      description: field.title && field.title !== field.key ? field.key : field.kind
+    }))
+}
+
+const listingFieldOptions = computed(() => ({
+  title: fieldOptionsByKind(['string', 'text']),
+  description: fieldOptionsByKind(['text', 'richtext']),
+  image: fieldOptionsByKind(['asset'])
+}))
+
+const listingPreview = computed(() => {
+  const inferred = inferListingSelection(state.fields)
+  return {
+    titleFieldKey: state.listing.titleFieldKey ?? inferred.titleFieldKey,
+    descriptionFieldKey: state.listing.descriptionFieldKey ?? inferred.descriptionFieldKey,
+    imageFieldKey: state.listing.imageFieldKey ?? inferred.imageFieldKey
+  }
+})
 
 function getSearchModeOptions(kind: string) {
   return searchModeOptionsByKind[kind] ?? [{ label: 'Off', value: 'off' }]
@@ -845,6 +949,64 @@ async function confirmPublish() {
             <UInput v-model="state.description" placeholder="Optional" class="w-full" />
           </UFormField>
         </UForm>
+      </UCard>
+
+      <UCard>
+        <template #header>
+          <div>
+            <p class="font-medium">Listing Cache</p>
+            <p class="text-sm text-muted">
+              Choose which fields should populate the normalized listing projection. Defaults are inferred from common field names.
+            </p>
+          </div>
+        </template>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <UFormField label="Title field">
+            <USelectMenu
+              :model-value="state.listing.titleFieldKey ?? undefined"
+              :items="listingFieldOptions.title"
+              value-key="value"
+              label-key="label"
+              clear
+              placeholder="Select a title field"
+              class="w-full"
+              @update:model-value="state.listing.titleFieldKey = $event || null"
+            />
+          </UFormField>
+          <UFormField label="Description field">
+            <USelectMenu
+              :model-value="state.listing.descriptionFieldKey ?? undefined"
+              :items="listingFieldOptions.description"
+              value-key="value"
+              label-key="label"
+              clear
+              placeholder="Select a description field"
+              class="w-full"
+              @update:model-value="state.listing.descriptionFieldKey = $event || null"
+            />
+          </UFormField>
+          <UFormField label="Image field">
+            <USelectMenu
+              :model-value="state.listing.imageFieldKey ?? undefined"
+              :items="listingFieldOptions.image"
+              value-key="value"
+              label-key="label"
+              clear
+              placeholder="Select an image field"
+              class="w-full"
+              @update:model-value="state.listing.imageFieldKey = $event || null"
+            />
+          </UFormField>
+        </div>
+
+        <UAlert
+          class="mt-4"
+          icon="i-lucide-sparkles"
+          variant="subtle"
+          title="Resolved defaults"
+          :description="`title=${listingPreview.titleFieldKey || 'none'} · description=${listingPreview.descriptionFieldKey || 'none'} · image=${listingPreview.imageFieldKey || 'none'}`"
+        />
       </UCard>
 
       <UCard>

@@ -20,6 +20,7 @@ describe('normalizeSearchMode', () => {
   it('drops unsupported modes for a field kind', () => {
     expect(normalizeSearchMode('number', 'exact')).toBe('exact')
     expect(normalizeSearchMode('number', 'exact_set')).toBe('off')
+    expect(normalizeSearchMode('richtext', 'exact')).toBe('off')
   })
 })
 
