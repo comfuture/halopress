@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm'
 import type { Db } from '../db/db'
 import { content as contentTable } from '../db/schema'
 import type { FieldKind, FieldNode, SchemaAst, SchemaRegistry } from './types'
+import { parseContentJson } from './content-json'
 import { syncContentRefs } from './ref-sync'
 import { upsertContentItemSnapshot } from './content-items'
 
@@ -185,49 +186,48 @@ export async function migrateSchemaContent(args: {
   const rows = await db
     .select({
       id: contentTable.id,
-      title: contentTable.title,
       status: contentTable.status,
       createdAt: contentTable.createdAt,
-      extraJson: contentTable.extraJson
+      contentJson: contentTable.contentJson
     })
     .from(contentTable)
     .where(eq(contentTable.schemaKey, schemaKey))
 
   let updated = 0
   for (const row of rows) {
-    const extra = JSON.parse(row.extraJson || '{}') as Record<string, unknown>
+    const content = parseContentJson(row.contentJson)
     let mutated = false
 
     for (const change of changes) {
       const fromKey = change.fromKey
       const toKey = change.toKey
-      let currentValue: unknown = extra[fromKey]
+      let currentValue: unknown = content[fromKey]
       if (currentValue === undefined && fromKey !== toKey) {
-        currentValue = extra[toKey]
+        currentValue = content[toKey]
       }
       if (currentValue === undefined) continue
 
       const nextValue = coerceValue(currentValue, change.toField)
 
       if (nextValue == null || (Array.isArray(nextValue) && nextValue.length === 0)) {
-        if (fromKey in extra) {
-          delete extra[fromKey]
+        if (fromKey in content) {
+          delete content[fromKey]
           mutated = true
         }
-        if (toKey in extra) {
-          delete extra[toKey]
+        if (toKey in content) {
+          delete content[toKey]
           mutated = true
         }
         continue
       }
 
-      if (fromKey !== toKey && fromKey in extra) {
-        delete extra[fromKey]
+      if (fromKey !== toKey && fromKey in content) {
+        delete content[fromKey]
         mutated = true
       }
 
-      if (!valuesEqual(extra[toKey], nextValue)) {
-        extra[toKey] = nextValue
+      if (!valuesEqual(content[toKey], nextValue)) {
+        content[toKey] = nextValue
         mutated = true
       }
     }
@@ -237,22 +237,21 @@ export async function migrateSchemaContent(args: {
       schemaVersion: nextVersion,
       updatedAt: now
     }
-    if (mutated) updatePayload.extraJson = JSON.stringify(extra)
+    if (mutated) updatePayload.contentJson = JSON.stringify(content)
 
     await db
       .update(contentTable)
       .set(updatePayload)
       .where(eq(contentTable.id, row.id))
 
-    await syncContentRefs({ db, contentId: row.id, registry, extra })
+    await syncContentRefs({ db, contentId: row.id, registry, content })
     await upsertContentItemSnapshot({
       db,
       registry,
-      extra,
+      content,
       contentId: row.id,
       schemaKey,
       schemaVersion: nextVersion,
-      title: row.title ?? null,
       status: row.status,
       createdAt: row.createdAt,
       updatedAt: now

@@ -2,6 +2,7 @@ import { and, eq } from 'drizzle-orm'
 import type { Db } from '../db/db'
 import { content as contentTable, contentSearchConfig, contentSearchData } from '../db/schema'
 import type { FieldKind, SchemaRegistry } from './types'
+import { getContentTitle, parseContentJson } from './content-json'
 import {
   coerceSearchValue,
   isSearchEnabled,
@@ -70,11 +71,11 @@ export async function upsertContentSearchData(args: {
   db: Db
   contentId: string
   registry: SchemaRegistry
-  extra: Record<string, unknown>
-  content?: ContentSearchBase
+  content: Record<string, unknown>
+  systemContent?: ContentSearchBase
   onlyFieldIds?: string[]
 }) {
-  const { db, contentId, registry, extra, content, onlyFieldIds } = args
+  const { db, contentId, registry, content, onlyFieldIds } = args
   const onlySet = onlyFieldIds ? new Set(onlyFieldIds) : null
 
   for (const field of registry.fields) {
@@ -84,7 +85,7 @@ export async function upsertContentSearchData(args: {
     const dataType = searchDataTypeForKind(field.kind)
     if (!dataType) continue
 
-    const rawValue = isSystemField(field) ? getSystemFieldValue(field.key, content) : extra[field.key]
+    const rawValue = isSystemField(field) ? getSystemFieldValue(field.key, args.systemContent) : content[field.key]
     const coerced = coerceSearchValue(field, rawValue)
     if (coerced == null || (typeof coerced === 'string' && coerced.trim() === '')) {
       await deleteSearchValueByContent(db, contentId, field.fieldId)
@@ -200,24 +201,23 @@ export async function syncSearchIndexForSchema(args: {
   const rows = await db
     .select({
       id: contentTable.id,
-      title: contentTable.title,
       createdAt: contentTable.createdAt,
       updatedAt: contentTable.updatedAt,
-      extraJson: contentTable.extraJson
+      contentJson: contentTable.contentJson
     })
     .from(contentTable)
     .where(eq(contentTable.schemaKey, schemaKey))
 
   let indexed = 0
   for (const row of rows) {
-    const extra = JSON.parse(row.extraJson || '{}') as Record<string, unknown>
+    const content = parseContentJson(row.contentJson)
     await upsertContentSearchData({
       db,
       contentId: row.id,
       registry: nextRegistry,
-      extra,
-      content: {
-        title: row.title,
+      content,
+      systemContent: {
+        title: getContentTitle(content),
         createdAt: row.createdAt,
         updatedAt: row.updatedAt
       },

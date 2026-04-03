@@ -34,7 +34,7 @@ export default defineEventHandler(async (event) => {
       id: contentTable.id,
       schemaKey: contentTable.schemaKey,
       schemaVersion: contentTable.schemaVersion,
-      title: contentTable.title,
+      title: contentItemsTable.title,
       description: contentItemsTable.description,
       image: contentItemsTable.image,
       status: contentTable.status,

@@ -9,6 +9,13 @@ export function defaultArticleSchemaAst(): SchemaAst {
     fields: [
       {
         id: ulid(),
+        key: 'title',
+        kind: 'string',
+        title: 'Title',
+        required: true
+      },
+      {
+        id: ulid(),
         key: 'body',
         kind: 'richtext',
         title: 'Body',
@@ -18,4 +25,3 @@ export function defaultArticleSchemaAst(): SchemaAst {
     ]
   }
 }
-

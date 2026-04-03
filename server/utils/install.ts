@@ -184,7 +184,8 @@ export async function ensureBootstrapSchema(db: any, createdBy: string) {
   await syncContentSearchConfig({ db, schemaKey: ast.schemaKey, registry: compiled.registry })
 
   const id = newId()
-  const bootstrapExtra = {
+  const bootstrapContent = {
+    title: 'Welcome guide',
     body: {
       type: 'doc',
       content: [
@@ -212,9 +213,8 @@ export async function ensureBootstrapSchema(db: any, createdBy: string) {
     id,
     schemaKey: ast.schemaKey,
     schemaVersion: 1,
-    title: 'Welcome guide',
     status: 'published',
-    extraJson: JSON.stringify(bootstrapExtra),
+    contentJson: JSON.stringify(bootstrapContent),
     createdBy,
     createdAt: now,
     updatedAt: now
@@ -223,11 +223,10 @@ export async function ensureBootstrapSchema(db: any, createdBy: string) {
   await upsertContentItemSnapshot({
     db,
     registry: compiled.registry,
-    extra: bootstrapExtra,
+    content: bootstrapContent,
     contentId: id,
     schemaKey: ast.schemaKey,
     schemaVersion: 1,
-    title: 'Welcome guide',
     status: 'published',
     createdAt: now,
     updatedAt: now

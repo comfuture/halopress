@@ -26,12 +26,12 @@ type ReplaceOptions = {
   event: H3Event
   db: any
   createdBy?: string | null
-  extra: Record<string, unknown>
+  content: Record<string, unknown>
   urlPrefix?: string
 }
 
-export async function replaceBase64ImagesInExtra(options: ReplaceOptions) {
-  const { event, db, createdBy, extra } = options
+export async function replaceBase64ImagesInContent(options: ReplaceOptions) {
+  const { event, db, createdBy, content } = options
   const urlPrefix = options.urlPrefix ?? '/assets'
   const cache = new Map<string, string>()
   let replaced = 0
@@ -88,7 +88,7 @@ export async function replaceBase64ImagesInExtra(options: ReplaceOptions) {
     return node
   }
 
-  await walk(extra)
+  await walk(content)
 
-  return { extra, replaced }
+  return { content, replaced }
 }

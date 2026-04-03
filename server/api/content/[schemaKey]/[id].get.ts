@@ -2,6 +2,7 @@ import { and, asc, desc, eq, gt, lt, or } from 'drizzle-orm'
 import { getQuery } from 'h3'
 
 import { getDb } from '../../../db/db'
+import { parseContentJson } from '../../../cms/content-json'
 import { notFound, unauthorized } from '../../../utils/http'
 import { content as contentTable, contentItems as contentItemsTable } from '../../../db/schema'
 import { buildContentItemSnapshot } from '../../../cms/content-items'
@@ -29,7 +30,7 @@ export default defineEventHandler(async (event) => {
     throw unauthorized()
   }
 
-  const extra = JSON.parse(row.extraJson)
+  const content = parseContentJson(row.contentJson)
   let item = await db
     .select({
       id: contentItemsTable.contentId,
@@ -50,11 +51,10 @@ export default defineEventHandler(async (event) => {
     const active = await getActiveSchema(db, schemaKey)
     item = buildContentItemSnapshot({
       registry: active?.registry ?? null,
-      extra,
+      content,
       contentId: row.id,
       schemaKey: row.schemaKey,
       schemaVersion: row.schemaVersion,
-      title: row.title,
       status: row.status,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt
@@ -144,11 +144,11 @@ export default defineEventHandler(async (event) => {
     id: row.id,
     schemaKey: row.schemaKey,
     schemaVersion: row.schemaVersion,
-    title: row.title,
+    title: item.title ?? null,
     status: row.status,
     description: item.description ?? null,
     image: item.image ?? null,
-    extra,
+    content,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt
   }

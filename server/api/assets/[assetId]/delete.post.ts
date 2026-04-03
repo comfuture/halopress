@@ -5,6 +5,7 @@ import { getDb } from '../../../db/db'
 import { asset as assetTable, content as contentTable, contentRef, contentRefList } from '../../../db/schema'
 import { deleteObject } from '../../../storage/assets'
 import { requireAdmin } from '../../../utils/auth'
+import { parseContentJson } from '../../../cms/content-json'
 import { badRequest, notFound } from '../../../utils/http'
 import { getActiveSchema } from '../../../cms/repo'
 import { upsertContentItemSnapshot } from '../../../cms/content-items'
@@ -151,11 +152,10 @@ export default defineEventHandler(async (event) => {
         id: contentTable.id,
         schemaKey: contentTable.schemaKey,
         schemaVersion: contentTable.schemaVersion,
-        title: contentTable.title,
         status: contentTable.status,
         createdAt: contentTable.createdAt,
         updatedAt: contentTable.updatedAt,
-        extraJson: contentTable.extraJson
+        contentJson: contentTable.contentJson
       })
       .from(contentTable)
       .where(inArray(contentTable.id, contentIds))
@@ -163,14 +163,14 @@ export default defineEventHandler(async (event) => {
     const registryCache = new Map<string, any>()
     for (const row of contents) {
       try {
-        const extra = JSON.parse(row.extraJson)
-        const result = replaceAssetRefs(extra, assetId, hasReplacement ? replacementId : null)
+        const content = parseContentJson(row.contentJson)
+        const result = replaceAssetRefs(content, assetId, hasReplacement ? replacementId : null)
         if (result.changed) {
           changedSchemas.add(row.schemaKey)
           const nextUpdatedAt = new Date()
           await db
             .update(contentTable)
-            .set({ extraJson: JSON.stringify(result.value), updatedAt: nextUpdatedAt })
+            .set({ contentJson: JSON.stringify(result.value), updatedAt: nextUpdatedAt })
             .where(eq(contentTable.id, row.id))
 
           if (!registryCache.has(row.schemaKey)) {
@@ -181,11 +181,10 @@ export default defineEventHandler(async (event) => {
           await upsertContentItemSnapshot({
             db,
             registry: registryCache.get(row.schemaKey) ?? null,
-            extra: result.value as Record<string, unknown>,
+            content: result.value as Record<string, unknown>,
             contentId: row.id,
             schemaKey: row.schemaKey,
             schemaVersion: row.schemaVersion,
-            title: row.title ?? null,
             status: row.status,
             createdAt: row.createdAt,
             updatedAt: nextUpdatedAt
