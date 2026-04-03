@@ -10,16 +10,19 @@ const emptyDoc = { type: 'doc', content: [{ type: 'paragraph' }] }
 
 function normalizeContent(value: unknown) {
   if (value == null) return emptyDoc
+  let parsed = value
   if (typeof value === 'string') {
     try {
-      const parsed = JSON.parse(value)
-      if (parsed && typeof parsed === 'object') return parsed
+      parsed = JSON.parse(value)
     } catch {
       throw badRequest('Invalid content JSON')
     }
-    throw badRequest('Invalid content JSON')
   }
-  if (typeof value === 'object') return value
+
+  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+    return parsed
+  }
+
   throw badRequest('Invalid content JSON')
 }
 
