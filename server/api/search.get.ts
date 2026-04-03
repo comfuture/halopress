@@ -2,7 +2,7 @@ import { getQuery } from 'h3'
 import { and, asc, desc, eq, exists, inArray, lt, gte, lte, sql } from 'drizzle-orm'
 
 import { getDb } from '../db/db'
-import { content as contentTable, contentItems as contentItemsTable, contentSearchConfig, contentSearchData } from '../db/schema'
+import { content as contentTable, contentListing as contentListingTable, contentSearchConfig, contentSearchData } from '../db/schema'
 import { badRequest } from '../utils/http'
 import { coerceSearchValue, searchDataTypeForKind } from '../cms/search-helpers'
 
@@ -212,15 +212,15 @@ export default defineEventHandler(async (event) => {
       id: contentTable.id,
       schemaKey: contentTable.schemaKey,
       schemaVersion: contentTable.schemaVersion,
-      title: contentItemsTable.title,
-      description: contentItemsTable.description,
-      image: contentItemsTable.image,
+      title: contentListingTable.title,
+      description: contentListingTable.description,
+      image: contentListingTable.image,
       status: contentTable.status,
       createdAt: contentTable.createdAt,
       updatedAt: contentTable.updatedAt
     })
     .from(contentTable)
-    .leftJoin(contentItemsTable, eq(contentItemsTable.contentId, contentTable.id))
+    .leftJoin(contentListingTable, eq(contentListingTable.contentId, contentTable.id))
     .where(and(...whereParts))
     .limit(limit)
 

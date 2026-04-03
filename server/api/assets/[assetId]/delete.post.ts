@@ -8,7 +8,7 @@ import { requireAdmin } from '../../../utils/auth'
 import { parseContentJson } from '../../../cms/content-json'
 import { badRequest, notFound } from '../../../utils/http'
 import { getActiveSchema } from '../../../cms/repo'
-import { upsertContentItemSnapshot } from '../../../cms/content-items'
+import { upsertContentListingSnapshot } from '../../../cms/content-listing'
 import { queueWidgetCacheInvalidation } from '../../../utils/widget-cache'
 
 function replaceAssetRefs(value: unknown, fromId: string, toId?: string | null): { value: unknown; changed: boolean } {
@@ -178,14 +178,13 @@ export default defineEventHandler(async (event) => {
             registryCache.set(row.schemaKey, active?.registry ?? null)
           }
 
-          await upsertContentItemSnapshot({
+          await upsertContentListingSnapshot({
             db,
             registry: registryCache.get(row.schemaKey) ?? null,
             content: result.value as Record<string, unknown>,
             contentId: row.id,
             schemaKey: row.schemaKey,
             schemaVersion: row.schemaVersion,
-            status: row.status,
             createdAt: row.createdAt,
             updatedAt: nextUpdatedAt
           })

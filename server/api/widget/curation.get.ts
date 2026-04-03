@@ -2,7 +2,7 @@ import { and, asc, desc, eq, inArray } from 'drizzle-orm'
 import { getQuery, setHeader } from 'h3'
 
 import { getDb } from '../../db/db'
-import { contentItems as contentItemsTable, contentRefList, contentSearchConfig, contentSearchData } from '../../db/schema'
+import { content as contentTable, contentListing as contentListingTable, contentRefList, contentSearchConfig, contentSearchData } from '../../db/schema'
 import { badRequest } from '../../utils/http'
 import { applyWidgetCacheHeaders, resolveWidgetCacheKey, withWidgetCache } from '../../utils/widget-cache'
 
@@ -79,24 +79,25 @@ export default defineEventHandler(async (event) => {
       if (!orderedIds.length) return []
 
       const whereParts = [
-        eq(contentItemsTable.schemaKey, schemaKey),
-        inArray(contentItemsTable.contentId, orderedIds)
+        eq(contentListingTable.schemaKey, schemaKey),
+        inArray(contentListingTable.contentId, orderedIds)
       ] as any[]
-      if (whereStatus) whereParts.push(eq(contentItemsTable.status, status))
+      if (whereStatus) whereParts.push(eq(contentTable.status, status))
 
       const items = await db
         .select({
-          id: contentItemsTable.contentId,
-          schemaKey: contentItemsTable.schemaKey,
-          schemaVersion: contentItemsTable.schemaVersion,
-          title: contentItemsTable.title,
-          description: contentItemsTable.description,
-          image: contentItemsTable.image,
-          status: contentItemsTable.status,
-          createdAt: contentItemsTable.createdAt,
-          updatedAt: contentItemsTable.updatedAt
+          id: contentListingTable.contentId,
+          schemaKey: contentListingTable.schemaKey,
+          schemaVersion: contentListingTable.schemaVersion,
+          title: contentListingTable.title,
+          description: contentListingTable.description,
+          image: contentListingTable.image,
+          status: contentTable.status,
+          createdAt: contentListingTable.createdAt,
+          updatedAt: contentListingTable.updatedAt
         })
-        .from(contentItemsTable)
+        .from(contentListingTable)
+        .innerJoin(contentTable, eq(contentTable.id, contentListingTable.contentId))
         .where(and(...whereParts)) as ContentItem[]
 
       const byId = new Map(items.map(item => [item.id, item]))
@@ -131,26 +132,27 @@ export default defineEventHandler(async (event) => {
     if (!contentIds.length) return []
 
     const whereParts = [
-      eq(contentItemsTable.schemaKey, schemaKey),
-      inArray(contentItemsTable.contentId, contentIds)
+      eq(contentListingTable.schemaKey, schemaKey),
+      inArray(contentListingTable.contentId, contentIds)
     ] as any[]
-    if (whereStatus) whereParts.push(eq(contentItemsTable.status, status))
+    if (whereStatus) whereParts.push(eq(contentTable.status, status))
 
     const items = await db
       .select({
-        id: contentItemsTable.contentId,
-        schemaKey: contentItemsTable.schemaKey,
-        schemaVersion: contentItemsTable.schemaVersion,
-        title: contentItemsTable.title,
-        description: contentItemsTable.description,
-        image: contentItemsTable.image,
-        status: contentItemsTable.status,
-        createdAt: contentItemsTable.createdAt,
-        updatedAt: contentItemsTable.updatedAt
+        id: contentListingTable.contentId,
+        schemaKey: contentListingTable.schemaKey,
+        schemaVersion: contentListingTable.schemaVersion,
+        title: contentListingTable.title,
+        description: contentListingTable.description,
+        image: contentListingTable.image,
+        status: contentTable.status,
+        createdAt: contentListingTable.createdAt,
+        updatedAt: contentListingTable.updatedAt
       })
-      .from(contentItemsTable)
+      .from(contentListingTable)
+      .innerJoin(contentTable, eq(contentTable.id, contentListingTable.contentId))
       .where(and(...whereParts))
-      .orderBy(desc(contentItemsTable.updatedAt), desc(contentItemsTable.contentId))
+      .orderBy(desc(contentListingTable.updatedAt), desc(contentListingTable.contentId))
       .limit(limit) as ContentItem[]
 
     return items

@@ -4,8 +4,8 @@ import { getQuery } from 'h3'
 import { getDb } from '../../../db/db'
 import { parseContentJson } from '../../../cms/content-json'
 import { notFound, unauthorized } from '../../../utils/http'
-import { content as contentTable, contentItems as contentItemsTable } from '../../../db/schema'
-import { buildContentItemSnapshot } from '../../../cms/content-items'
+import { content as contentTable, contentListing as contentListingTable } from '../../../db/schema'
+import { buildContentListingSnapshot } from '../../../cms/content-listing'
 import { getActiveSchema } from '../../../cms/repo'
 import { requireSchemaPermission } from '../../../utils/schema-permission'
 
@@ -33,29 +33,27 @@ export default defineEventHandler(async (event) => {
   const content = parseContentJson(row.contentJson)
   let item = await db
     .select({
-      id: contentItemsTable.contentId,
-      schemaKey: contentItemsTable.schemaKey,
-      schemaVersion: contentItemsTable.schemaVersion,
-      title: contentItemsTable.title,
-      description: contentItemsTable.description,
-      image: contentItemsTable.image,
-      status: contentItemsTable.status,
-      createdAt: contentItemsTable.createdAt,
-      updatedAt: contentItemsTable.updatedAt
+      id: contentListingTable.contentId,
+      schemaKey: contentListingTable.schemaKey,
+      schemaVersion: contentListingTable.schemaVersion,
+      title: contentListingTable.title,
+      description: contentListingTable.description,
+      image: contentListingTable.image,
+      createdAt: contentListingTable.createdAt,
+      updatedAt: contentListingTable.updatedAt
     })
-    .from(contentItemsTable)
-    .where(eq(contentItemsTable.contentId, id))
+    .from(contentListingTable)
+    .where(eq(contentListingTable.contentId, id))
     .get()
 
   if (!item) {
     const active = await getActiveSchema(db, schemaKey)
-    item = buildContentItemSnapshot({
+    item = buildContentListingSnapshot({
       registry: active?.registry ?? null,
       content,
       contentId: row.id,
       schemaKey: row.schemaKey,
       schemaVersion: row.schemaVersion,
-      status: row.status,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt
     })
@@ -71,69 +69,71 @@ export default defineEventHandler(async (event) => {
     const baseUpdatedAt = item.updatedAt
     const baseId = item.contentId ?? item.id ?? row.id
     const whereParts = [
-      eq(contentItemsTable.schemaKey, schemaKey)
+      eq(contentListingTable.schemaKey, schemaKey)
     ] as any[]
     if (status !== 'all') {
-      whereParts.push(eq(contentItemsTable.status, status))
+      whereParts.push(eq(contentTable.status, status))
     }
 
     const prevCondition = order === 'asc'
       ? or(
-          lt(contentItemsTable.updatedAt, baseUpdatedAt),
-          and(eq(contentItemsTable.updatedAt, baseUpdatedAt), lt(contentItemsTable.contentId, baseId))
+          lt(contentListingTable.updatedAt, baseUpdatedAt),
+          and(eq(contentListingTable.updatedAt, baseUpdatedAt), lt(contentListingTable.contentId, baseId))
         )
       : or(
-          gt(contentItemsTable.updatedAt, baseUpdatedAt),
-          and(eq(contentItemsTable.updatedAt, baseUpdatedAt), gt(contentItemsTable.contentId, baseId))
+          gt(contentListingTable.updatedAt, baseUpdatedAt),
+          and(eq(contentListingTable.updatedAt, baseUpdatedAt), gt(contentListingTable.contentId, baseId))
         )
 
     const nextCondition = order === 'asc'
       ? or(
-          gt(contentItemsTable.updatedAt, baseUpdatedAt),
-          and(eq(contentItemsTable.updatedAt, baseUpdatedAt), gt(contentItemsTable.contentId, baseId))
+          gt(contentListingTable.updatedAt, baseUpdatedAt),
+          and(eq(contentListingTable.updatedAt, baseUpdatedAt), gt(contentListingTable.contentId, baseId))
         )
       : or(
-          lt(contentItemsTable.updatedAt, baseUpdatedAt),
-          and(eq(contentItemsTable.updatedAt, baseUpdatedAt), lt(contentItemsTable.contentId, baseId))
+          lt(contentListingTable.updatedAt, baseUpdatedAt),
+          and(eq(contentListingTable.updatedAt, baseUpdatedAt), lt(contentListingTable.contentId, baseId))
         )
 
     const prev = await db
       .select({
-        id: contentItemsTable.contentId,
-        schemaKey: contentItemsTable.schemaKey,
-        schemaVersion: contentItemsTable.schemaVersion,
-        title: contentItemsTable.title,
-        description: contentItemsTable.description,
-        image: contentItemsTable.image,
-        status: contentItemsTable.status,
-        createdAt: contentItemsTable.createdAt,
-        updatedAt: contentItemsTable.updatedAt
+        id: contentListingTable.contentId,
+        schemaKey: contentListingTable.schemaKey,
+        schemaVersion: contentListingTable.schemaVersion,
+        title: contentListingTable.title,
+        description: contentListingTable.description,
+        image: contentListingTable.image,
+        status: contentTable.status,
+        createdAt: contentListingTable.createdAt,
+        updatedAt: contentListingTable.updatedAt
       })
-      .from(contentItemsTable)
+      .from(contentListingTable)
+      .innerJoin(contentTable, eq(contentTable.id, contentListingTable.contentId))
       .where(and(...whereParts, prevCondition))
       .orderBy(
-        order === 'asc' ? desc(contentItemsTable.updatedAt) : asc(contentItemsTable.updatedAt),
-        order === 'asc' ? desc(contentItemsTable.contentId) : asc(contentItemsTable.contentId)
+        order === 'asc' ? desc(contentListingTable.updatedAt) : asc(contentListingTable.updatedAt),
+        order === 'asc' ? desc(contentListingTable.contentId) : asc(contentListingTable.contentId)
       )
       .limit(1)
 
     const next = await db
       .select({
-        id: contentItemsTable.contentId,
-        schemaKey: contentItemsTable.schemaKey,
-        schemaVersion: contentItemsTable.schemaVersion,
-        title: contentItemsTable.title,
-        description: contentItemsTable.description,
-        image: contentItemsTable.image,
-        status: contentItemsTable.status,
-        createdAt: contentItemsTable.createdAt,
-        updatedAt: contentItemsTable.updatedAt
+        id: contentListingTable.contentId,
+        schemaKey: contentListingTable.schemaKey,
+        schemaVersion: contentListingTable.schemaVersion,
+        title: contentListingTable.title,
+        description: contentListingTable.description,
+        image: contentListingTable.image,
+        status: contentTable.status,
+        createdAt: contentListingTable.createdAt,
+        updatedAt: contentListingTable.updatedAt
       })
-      .from(contentItemsTable)
+      .from(contentListingTable)
+      .innerJoin(contentTable, eq(contentTable.id, contentListingTable.contentId))
       .where(and(...whereParts, nextCondition))
       .orderBy(
-        order === 'asc' ? asc(contentItemsTable.updatedAt) : desc(contentItemsTable.updatedAt),
-        order === 'asc' ? asc(contentItemsTable.contentId) : desc(contentItemsTable.contentId)
+        order === 'asc' ? asc(contentListingTable.updatedAt) : desc(contentListingTable.updatedAt),
+        order === 'asc' ? asc(contentListingTable.contentId) : desc(contentListingTable.contentId)
       )
       .limit(1)
 

@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm'
 import { compileSchemaAst } from '../cms/compiler'
 import { defaultArticleSchemaAst } from '../cms/defaults'
-import { upsertContentItemSnapshot } from '../cms/content-items'
+import { upsertContentListingSnapshot } from '../cms/content-listing'
 import { syncContentSearchConfig } from '../cms/search-index'
 import { content, schema, schemaActive, schemaRole, user, userRole } from '../db/schema'
 import { newId } from './ids'
@@ -220,14 +220,13 @@ export async function ensureBootstrapSchema(db: any, createdBy: string) {
     updatedAt: now
   })
 
-  await upsertContentItemSnapshot({
+  await upsertContentListingSnapshot({
     db,
     registry: compiled.registry,
     content: bootstrapContent,
     contentId: id,
     schemaKey: ast.schemaKey,
     schemaVersion: 1,
-    status: 'published',
     createdAt: now,
     updatedAt: now
   })

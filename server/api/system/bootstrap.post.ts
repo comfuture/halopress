@@ -4,7 +4,7 @@ import { defaultArticleSchemaAst } from '../../cms/defaults'
 import { schema as schemaTable, schemaActive as schemaActiveTable, content as contentTable } from '../../db/schema'
 import { requireAdmin } from '../../utils/auth'
 import { newId } from '../../utils/ids'
-import { upsertContentItemSnapshot } from '../../cms/content-items'
+import { upsertContentListingSnapshot } from '../../cms/content-listing'
 import { ensureAnonymousSchemaRole } from '../../utils/install'
 import { syncContentSearchConfig } from '../../cms/search-index'
 
@@ -71,14 +71,13 @@ export default defineEventHandler(async (event) => {
     updatedAt: now
   })
 
-  await upsertContentItemSnapshot({
+  await upsertContentListingSnapshot({
     db,
     registry: compiled.registry,
     content: bootstrapContent,
     contentId: id,
     schemaKey: ast.schemaKey,
     schemaVersion: 1,
-    status: 'published',
     createdAt: now,
     updatedAt: now
   })
