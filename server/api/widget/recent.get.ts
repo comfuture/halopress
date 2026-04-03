@@ -2,7 +2,7 @@ import { and, asc, desc, eq } from 'drizzle-orm'
 import { getQuery, setHeader } from 'h3'
 
 import { getDb } from '../../db/db'
-import { contentItems as contentItemsTable } from '../../db/schema'
+import { content as contentTable, contentListing as contentListingTable } from '../../db/schema'
 import { badRequest } from '../../utils/http'
 import { applyWidgetCacheHeaders, resolveWidgetCacheKey, withWidgetCache } from '../../utils/widget-cache'
 
@@ -35,26 +35,27 @@ export default defineEventHandler(async (event) => {
 
   const { data, status: cacheStatus, backend } = await withWidgetCache(event, cacheKey, POLICY, async () => {
     const db = await getDb(event)
-    const whereParts = [eq(contentItemsTable.schemaKey, schemaKey)] as any[]
-    if (status && status !== 'all') whereParts.push(eq(contentItemsTable.status, status))
+    const whereParts = [eq(contentListingTable.schemaKey, schemaKey)] as any[]
+    if (status && status !== 'all') whereParts.push(eq(contentTable.status, status))
 
-    const orderField = sortField === 'updatedAt' ? contentItemsTable.updatedAt : contentItemsTable.createdAt
-    const orderTie = sortDesc ? desc(contentItemsTable.contentId) : asc(contentItemsTable.contentId)
+    const orderField = sortField === 'updatedAt' ? contentListingTable.updatedAt : contentListingTable.createdAt
+    const orderTie = sortDesc ? desc(contentListingTable.contentId) : asc(contentListingTable.contentId)
     const orderPrimary = sortDesc ? desc(orderField) : asc(orderField)
 
     return db
       .select({
-        id: contentItemsTable.contentId,
-        schemaKey: contentItemsTable.schemaKey,
-        schemaVersion: contentItemsTable.schemaVersion,
-        title: contentItemsTable.title,
-        description: contentItemsTable.description,
-        image: contentItemsTable.image,
-        status: contentItemsTable.status,
-        createdAt: contentItemsTable.createdAt,
-        updatedAt: contentItemsTable.updatedAt
+        id: contentListingTable.contentId,
+        schemaKey: contentListingTable.schemaKey,
+        schemaVersion: contentListingTable.schemaVersion,
+        title: contentListingTable.title,
+        description: contentListingTable.description,
+        image: contentListingTable.image,
+        status: contentTable.status,
+        createdAt: contentListingTable.createdAt,
+        updatedAt: contentListingTable.updatedAt
       })
-      .from(contentItemsTable)
+      .from(contentListingTable)
+      .innerJoin(contentTable, eq(contentTable.id, contentListingTable.contentId))
       .where(and(...whereParts))
       .orderBy(orderPrimary, orderTie)
       .limit(limit)

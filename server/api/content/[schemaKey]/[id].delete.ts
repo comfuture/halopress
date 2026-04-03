@@ -2,7 +2,7 @@ import { and, eq } from 'drizzle-orm'
 
 import { getDb } from '../../../db/db'
 import { notFound } from '../../../utils/http'
-import { content as contentTable, contentItems as contentItemsTable } from '../../../db/schema'
+import { content as contentTable, contentListing as contentListingTable } from '../../../db/schema'
 import { queueWidgetCacheInvalidation } from '../../../utils/widget-cache'
 import { requireSchemaPermission } from '../../../utils/schema-permission'
 
@@ -27,9 +27,8 @@ export default defineEventHandler(async (event) => {
       .where(eq(contentTable.id, id))
 
     await tx
-      .update(contentItemsTable)
-      .set({ status: 'deleted', updatedAt: now })
-      .where(eq(contentItemsTable.contentId, id))
+      .delete(contentListingTable)
+      .where(eq(contentListingTable.contentId, id))
   })
 
   queueWidgetCacheInvalidation(event, `schema:${schemaKey}`)

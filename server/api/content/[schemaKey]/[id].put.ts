@@ -9,7 +9,7 @@ import { content as contentTable } from '../../../db/schema'
 import { getActiveSchema } from '../../../cms/repo'
 import { syncContentRefs } from '../../../cms/ref-sync'
 import { upsertContentSearchData } from '../../../cms/search-index'
-import { upsertContentItemSnapshot } from '../../../cms/content-items'
+import { upsertContentListingSnapshot } from '../../../cms/content-listing'
 import { replaceBase64ImagesInContent } from '../../../utils/asset-data-url'
 import { queueWidgetCacheInvalidation } from '../../../utils/widget-cache'
 import { requireSchemaPermission } from '../../../utils/schema-permission'
@@ -64,14 +64,13 @@ export default defineEventHandler(async (event) => {
         updatedAt: now
       }
     })
-    await upsertContentItemSnapshot({
+    await upsertContentListingSnapshot({
       db: tx,
       registry,
       content,
       contentId: id,
       schemaKey,
       schemaVersion: active.version,
-      status,
       createdAt: existing.createdAt,
       updatedAt: now
     })

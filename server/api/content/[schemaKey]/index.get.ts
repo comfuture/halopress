@@ -2,7 +2,7 @@ import { and, asc, desc, eq, gt, lt, sql } from 'drizzle-orm'
 import { getQuery } from 'h3'
 
 import { getDb } from '../../../db/db'
-import { content as contentTable, contentItems as contentItemsTable, contentRef as contentRefTable } from '../../../db/schema'
+import { content as contentTable, contentListing as contentListingTable, contentRef as contentRefTable } from '../../../db/schema'
 import { requireSchemaPermission } from '../../../utils/schema-permission'
 
 export default defineEventHandler(async (event) => {
@@ -34,16 +34,16 @@ export default defineEventHandler(async (event) => {
       id: contentTable.id,
       schemaKey: contentTable.schemaKey,
       schemaVersion: contentTable.schemaVersion,
-      title: contentItemsTable.title,
-      description: contentItemsTable.description,
-      image: contentItemsTable.image,
+      title: contentListingTable.title,
+      description: contentListingTable.description,
+      image: contentListingTable.image,
       status: contentTable.status,
       createdAt: contentTable.createdAt,
       updatedAt: contentTable.updatedAt,
       assetId: assetIdSubquery
     })
     .from(contentTable)
-    .leftJoin(contentItemsTable, eq(contentItemsTable.contentId, contentTable.id))
+    .leftJoin(contentListingTable, eq(contentListingTable.contentId, contentTable.id))
 
   const fetchSize = pageSize + 1
 

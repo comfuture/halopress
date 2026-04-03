@@ -1,22 +1,21 @@
 import { eq } from 'drizzle-orm'
 import type { Db } from '../db/db'
-import { content as contentTable, contentItems } from '../db/schema'
+import { content as contentTable, contentListing } from '../db/schema'
 import type { SchemaRegistry } from './types'
 import { getActiveSchema } from './repo'
 import { parseContentJson } from './content-json'
 import { buildListingProjection } from './listing'
 
-export function buildContentItemSnapshot(args: {
+export function buildContentListingSnapshot(args: {
   registry: SchemaRegistry | null
   content: Record<string, unknown>
   contentId: string
   schemaKey: string
   schemaVersion: number
-  status: string
   createdAt: Date
   updatedAt: Date
 }) {
-  const { registry, content, contentId, schemaKey, schemaVersion, status, createdAt, updatedAt } = args
+  const { registry, content, contentId, schemaKey, schemaVersion, createdAt, updatedAt } = args
   const listing = buildListingProjection({ registry, content })
 
   return {
@@ -26,43 +25,40 @@ export function buildContentItemSnapshot(args: {
     title: listing.title,
     description: listing.description,
     image: listing.image,
-    status,
     createdAt,
     updatedAt
   }
 }
 
-export async function upsertContentItemSnapshot(args: {
+export async function upsertContentListingSnapshot(args: {
   db: Db
   registry: SchemaRegistry | null
   content: Record<string, unknown>
   contentId: string
   schemaKey: string
   schemaVersion: number
-  status: string
   createdAt: Date
   updatedAt: Date
 }) {
-  const snapshot = buildContentItemSnapshot(args)
+  const snapshot = buildContentListingSnapshot(args)
   await args.db
-    .insert(contentItems)
+    .insert(contentListing)
     .values(snapshot)
     .onConflictDoUpdate({
-      target: contentItems.contentId,
+      target: contentListing.contentId,
       set: {
         schemaKey: snapshot.schemaKey,
         schemaVersion: snapshot.schemaVersion,
         title: snapshot.title,
         description: snapshot.description,
         image: snapshot.image,
-        status: snapshot.status,
         createdAt: snapshot.createdAt,
         updatedAt: snapshot.updatedAt
       }
     })
 }
 
-export async function syncContentItems(args: {
+export async function syncContentListing(args: {
   db: Db
   schemaKey?: string
   onlyMissing?: boolean
@@ -72,8 +68,8 @@ export async function syncContentItems(args: {
 
   if (onlyMissing) {
     const existingRows = await (schemaKey
-      ? db.select({ contentId: contentItems.contentId }).from(contentItems).where(eq(contentItems.schemaKey, schemaKey))
-      : db.select({ contentId: contentItems.contentId }).from(contentItems))
+      ? db.select({ contentId: contentListing.contentId }).from(contentListing).where(eq(contentListing.schemaKey, schemaKey))
+      : db.select({ contentId: contentListing.contentId }).from(contentListing))
     existingIds = new Set(existingRows.map((row: any) => row.contentId as string))
   }
 
@@ -83,7 +79,6 @@ export async function syncContentItems(args: {
         id: contentTable.id,
         schemaKey: contentTable.schemaKey,
         schemaVersion: contentTable.schemaVersion,
-        status: contentTable.status,
         contentJson: contentTable.contentJson,
         createdAt: contentTable.createdAt,
         updatedAt: contentTable.updatedAt
@@ -95,7 +90,6 @@ export async function syncContentItems(args: {
         id: contentTable.id,
         schemaKey: contentTable.schemaKey,
         schemaVersion: contentTable.schemaVersion,
-        status: contentTable.status,
         contentJson: contentTable.contentJson,
         createdAt: contentTable.createdAt,
         updatedAt: contentTable.updatedAt
@@ -124,14 +118,13 @@ export async function syncContentItems(args: {
     const updatedAt = row.updatedAt instanceof Date ? row.updatedAt : new Date(row.updatedAt)
 
     try {
-      await upsertContentItemSnapshot({
+      await upsertContentListingSnapshot({
         db,
         registry: registryCache.get(row.schemaKey) ?? null,
         content,
         contentId: row.id,
         schemaKey: row.schemaKey,
         schemaVersion: row.schemaVersion,
-        status: row.status,
         createdAt,
         updatedAt
       })

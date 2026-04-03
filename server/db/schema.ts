@@ -1,4 +1,4 @@
-import { index, integer, primaryKey, real, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { foreignKey, index, integer, primaryKey, real, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
 export const userRole = sqliteTable('user_role', {
   roleKey: text('role_key').notNull(),
@@ -115,20 +115,29 @@ export const page = sqliteTable('page', {
   byUpdatedAt: index('idx_page_updated_at').on(t.updatedAt)
 }))
 
-export const contentItems = sqliteTable('content_items', {
+export const contentListing = sqliteTable('content_listing', {
   contentId: text('content_id').notNull(),
   schemaKey: text('schema_key').notNull(),
   schemaVersion: integer('schema_version').notNull(),
   title: text('title'),
   description: text('description'),
   image: text('image'),
-  status: text('status').notNull(),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull()
 }, t => ({
   pk: primaryKey({ columns: [t.contentId] }),
-  bySchemaUpdated: index('idx_content_items_schema_updated').on(t.schemaKey, t.updatedAt),
-  byStatus: index('idx_content_items_status').on(t.schemaKey, t.status, t.updatedAt)
+  bySchemaUpdated: index('idx_content_listing_schema_updated').on(t.schemaKey, t.updatedAt),
+  byContent: index('idx_content_listing_content').on(t.contentId),
+  contentFk: foreignKey({
+    columns: [t.contentId],
+    foreignColumns: [content.id],
+    name: 'fk_content_listing_content'
+  }),
+  schemaFk: foreignKey({
+    columns: [t.schemaKey, t.schemaVersion],
+    foreignColumns: [schema.schemaKey, schema.version],
+    name: 'fk_content_listing_schema'
+  })
 }))
 
 export const contentSearchConfig = sqliteTable('content_search_config', {
