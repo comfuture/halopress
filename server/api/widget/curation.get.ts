@@ -1,8 +1,9 @@
-import { and, asc, desc, eq, inArray } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm'
 import { getQuery, setHeader } from 'h3'
 
 import { getDb } from '../../db/db'
-import { content as contentTable, contentListing as contentListingTable, contentRefList, contentSearchConfig, contentSearchData } from '../../db/schema'
+import { content as contentTable, contentListing as contentListingTable, contentRefList, searchConfig } from '../../db/schema'
+import { coerceSearchValue, jsonPathForFieldKey, searchDataTypeForKind } from '../../cms/search-helpers'
 import { badRequest } from '../../utils/http'
 import { applyWidgetCacheHeaders, resolveWidgetCacheKey, withWidgetCache } from '../../utils/widget-cache'
 
@@ -22,6 +23,24 @@ const POLICY = {
   softTtl: 300,
   hardTtl: 7200,
   staleIfError: 86400
+}
+
+function jsonValueExpression(fieldKey: string, kind: string) {
+  const path = jsonPathForFieldKey(fieldKey)
+
+  if (kind === 'number') {
+    return sql<number | null>`CAST(json_extract(${contentTable.contentJson}, ${path}) AS REAL)`
+  }
+
+  if (kind === 'integer' || kind === 'boolean') {
+    return sql<number | null>`CAST(json_extract(${contentTable.contentJson}, ${path}) AS INTEGER)`
+  }
+
+  if (kind === 'date' || kind === 'datetime') {
+    return sql<number | null>`(unixepoch(json_extract(${contentTable.contentJson}, ${path})) * 1000)`
+  }
+
+  return sql<string | null>`json_extract(${contentTable.contentJson}, ${path})`
 }
 
 export default defineEventHandler(async (event) => {
@@ -109,31 +128,32 @@ export default defineEventHandler(async (event) => {
     if (!values.length) throw badRequest('values required')
 
     const field = await db
-      .select({ fieldId: contentSearchConfig.fieldId })
-      .from(contentSearchConfig)
+      .select({
+        fieldKey: searchConfig.fieldKey,
+        kind: searchConfig.kind
+      })
+      .from(searchConfig)
       .where(and(
-        eq(contentSearchConfig.schemaKey, schemaKey),
-        eq(contentSearchConfig.fieldKey, fieldKey)
+        eq(searchConfig.schemaKey, schemaKey),
+        eq(searchConfig.fieldKey, fieldKey)
       ))
       .get()
 
-    if (!field?.fieldId) return []
+    if (!field) return []
 
-    const ids = await db
-      .select({ contentId: contentSearchData.contentId })
-      .from(contentSearchData)
-      .where(and(
-        eq(contentSearchData.fieldId, field.fieldId),
-        eq(contentSearchData.dataType, 'text'),
-        inArray(contentSearchData.text, values)
-      )) as Array<{ contentId: string }>
+    const dataType = searchDataTypeForKind(field.kind as any)
+    if (!dataType) return []
 
-    const contentIds = Array.from(new Set(ids.map(row => row.contentId)))
-    if (!contentIds.length) return []
+    const expr = jsonValueExpression(field.fieldKey, field.kind)
+    const coercedValues = values
+      .map(value => coerceSearchValue({ kind: field.kind as any, enumValues: [] } as any, value))
+      .filter((value): value is string | number => typeof value === 'string' || typeof value === 'number')
+    if (!coercedValues.length) return []
 
     const whereParts = [
       eq(contentListingTable.schemaKey, schemaKey),
-      inArray(contentListingTable.contentId, contentIds)
+      inArray(expr, coercedValues),
+      eq(contentListingTable.contentId, contentTable.id)
     ] as any[]
     if (whereStatus) whereParts.push(eq(contentTable.status, status))
 

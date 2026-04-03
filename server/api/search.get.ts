@@ -1,10 +1,16 @@
 import { getQuery } from 'h3'
-import { and, asc, desc, eq, exists, inArray, lt, gte, lte, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, inArray, lt, lte, sql } from 'drizzle-orm'
 
 import { getDb } from '../db/db'
-import { content as contentTable, contentListing as contentListingTable, contentSearchConfig, contentSearchData } from '../db/schema'
+import { content as contentTable, contentListing as contentListingTable, searchConfig } from '../db/schema'
+import { parseContentJson } from '../cms/content-json'
+import {
+  buildSearchDataRecord,
+  coerceSearchValue,
+  jsonPathForFieldKey,
+  searchDataTypeForKind
+} from '../cms/search-helpers'
 import { badRequest } from '../utils/http'
-import { coerceSearchValue, searchDataTypeForKind } from '../cms/search-helpers'
 
 type FilterInput = {
   field: string
@@ -15,7 +21,7 @@ type FilterInput = {
   max?: unknown
 }
 
-type ContentFieldRow = typeof contentSearchConfig.$inferSelect
+type ContentFieldRow = typeof searchConfig.$inferSelect
 
 function parseFilters(raw: unknown) {
   if (!raw) return []
@@ -42,6 +48,24 @@ function ensureArray(value: unknown) {
   }
   if (value == null) return []
   return [value]
+}
+
+function jsonValueExpression(fieldKey: string, kind: ContentFieldRow['kind']) {
+  const path = jsonPathForFieldKey(fieldKey)
+
+  if (kind === 'number') {
+    return sql<number | null>`CAST(json_extract(${contentTable.contentJson}, ${path}) AS REAL)`
+  }
+
+  if (kind === 'integer' || kind === 'boolean') {
+    return sql<number | null>`CAST(json_extract(${contentTable.contentJson}, ${path}) AS INTEGER)`
+  }
+
+  if (kind === 'date' || kind === 'datetime') {
+    return sql<number | null>`(unixepoch(json_extract(${contentTable.contentJson}, ${path})) * 1000)`
+  }
+
+  return sql<string | null>`json_extract(${contentTable.contentJson}, ${path})`
 }
 
 export default defineEventHandler(async (event) => {
@@ -71,8 +95,8 @@ export default defineEventHandler(async (event) => {
 
   const fieldRows = await db
     .select()
-    .from(contentSearchConfig)
-    .where(eq(contentSearchConfig.schemaKey, schemaKey)) as ContentFieldRow[]
+    .from(searchConfig)
+    .where(eq(searchConfig.schemaKey, schemaKey)) as ContentFieldRow[]
 
   const fieldByKey = new Map(fieldRows.map(row => [row.fieldKey, row]))
 
@@ -86,128 +110,64 @@ export default defineEventHandler(async (event) => {
     if (!config) throw badRequest(`Unknown field: ${filter.field}`)
     if (!config.filterable) throw badRequest(`Field not filterable: ${filter.field}`)
 
-    const kind = config.kind as any
-    const dataType = searchDataTypeForKind(kind)
+    const kind = config.kind as ContentFieldRow['kind']
+    const dataType = searchDataTypeForKind(kind as any)
     if (!dataType) throw badRequest(`Unsupported field type: ${filter.field}`)
 
     const op = filter.op ?? (config.searchMode as 'exact' | 'range' | 'exact_set' | 'off')
     if (!op || op === 'off') throw badRequest(`Search mode disabled: ${filter.field}`)
-
     if (op === 'range' && dataType === 'text') throw badRequest(`Range not supported: ${filter.field}`)
 
-    let existsQuery: any = null
+    const expr = jsonValueExpression(config.fieldKey, kind)
 
     if (dataType === 'text') {
-      const baseConditions = [
-        eq(contentSearchData.contentId, contentTable.id),
-        eq(contentSearchData.fieldId, config.fieldId),
-        eq(contentSearchData.dataType, dataType)
-      ]
-
       if (op === 'exact') {
         const value = coerceSearchValue({ kind, enumValues: [] } as any, filter.value)
         if (value == null) throw badRequest(`Invalid value: ${filter.field}`)
-        existsQuery = db
-          .select({ one: sql`1` })
-          .from(contentSearchData)
-          .where(and(...baseConditions, eq(contentSearchData.text, value as string)))
+        whereParts.push(eq(expr, value as string))
       } else if (op === 'exact_set') {
         const values = ensureArray(filter.values ?? filter.value)
           .map(v => coerceSearchValue({ kind, enumValues: [] } as any, v))
-          .filter(v => v != null) as string[]
+          .filter((value): value is string => typeof value === 'string')
         if (!values.length) throw badRequest(`Invalid values: ${filter.field}`)
-        existsQuery = db
-          .select({ one: sql`1` })
-          .from(contentSearchData)
-          .where(and(...baseConditions, inArray(contentSearchData.text, values)))
+        whereParts.push(inArray(expr, values))
+      } else {
+        throw badRequest(`Unsupported filter: ${filter.field}`)
       }
-      if (!existsQuery) throw badRequest(`Unsupported filter: ${filter.field}`)
-      whereParts.push(exists(existsQuery))
       continue
     }
 
-    if (dataType === 'integer' || dataType === 'float') {
-      const baseConditions = [
-        eq(contentSearchData.contentId, contentTable.id),
-        eq(contentSearchData.fieldId, config.fieldId),
-        eq(contentSearchData.dataType, dataType)
-      ]
-
-      if (op === 'exact') {
-        const value = coerceSearchValue({ kind } as any, filter.value)
-        if (value == null) throw badRequest(`Invalid value: ${filter.field}`)
-        existsQuery = db
-          .select({ one: sql`1` })
-          .from(contentSearchData)
-          .where(and(...baseConditions, eq(contentSearchData.value, value as number)))
-      } else if (op === 'exact_set') {
-        const values = ensureArray(filter.values ?? filter.value)
-          .map(v => coerceSearchValue({ kind } as any, v))
-          .filter(v => typeof v === 'number') as number[]
-        if (!values.length) throw badRequest(`Invalid values: ${filter.field}`)
-        existsQuery = db
-          .select({ one: sql`1` })
-          .from(contentSearchData)
-          .where(and(...baseConditions, inArray(contentSearchData.value, values)))
-      } else if (op === 'range') {
-        const min = filter.min != null ? coerceSearchValue({ kind } as any, filter.min) : null
-        const max = filter.max != null ? coerceSearchValue({ kind } as any, filter.max) : null
-        if (min == null && max == null) throw badRequest(`Range requires min or max: ${filter.field}`)
-        const rangeParts = [] as any[]
-        if (min != null) rangeParts.push(gte(contentSearchData.value, min as number))
-        if (max != null) rangeParts.push(lte(contentSearchData.value, max as number))
-        existsQuery = db
-          .select({ one: sql`1` })
-          .from(contentSearchData)
-          .where(and(...baseConditions, ...rangeParts))
-      }
-      if (!existsQuery) throw badRequest(`Unsupported filter: ${filter.field}`)
-      whereParts.push(exists(existsQuery))
+    if (op === 'exact') {
+      const value = coerceSearchValue({ kind } as any, filter.value)
+      if (typeof value !== 'number') throw badRequest(`Invalid value: ${filter.field}`)
+      whereParts.push(eq(expr, value))
       continue
     }
 
-    if (dataType === 'date') {
-      const baseConditions = [
-        eq(contentSearchData.contentId, contentTable.id),
-        eq(contentSearchData.fieldId, config.fieldId),
-        eq(contentSearchData.dataType, dataType)
-      ]
-
-      if (op === 'exact') {
-        const value = coerceSearchValue({ kind } as any, filter.value)
-        if (value == null) throw badRequest(`Invalid value: ${filter.field}`)
-        existsQuery = db
-          .select({ one: sql`1` })
-          .from(contentSearchData)
-          .where(and(...baseConditions, eq(contentSearchData.value, value as number)))
-      } else if (op === 'range') {
-        const min = filter.min != null ? coerceSearchValue({ kind } as any, filter.min) : null
-        const max = filter.max != null ? coerceSearchValue({ kind } as any, filter.max) : null
-        if (min == null && max == null) throw badRequest(`Range requires min or max: ${filter.field}`)
-        const rangeParts = [] as any[]
-        if (min != null) rangeParts.push(gte(contentSearchData.value, min as number))
-        if (max != null) rangeParts.push(lte(contentSearchData.value, max as number))
-        existsQuery = db
-          .select({ one: sql`1` })
-          .from(contentSearchData)
-          .where(and(...baseConditions, ...rangeParts))
-      } else if (op === 'exact_set') {
-        const values = ensureArray(filter.values ?? filter.value)
-          .map(v => coerceSearchValue({ kind } as any, v))
-          .filter(v => typeof v === 'number') as number[]
-        if (!values.length) throw badRequest(`Invalid values: ${filter.field}`)
-        existsQuery = db
-          .select({ one: sql`1` })
-          .from(contentSearchData)
-          .where(and(...baseConditions, inArray(contentSearchData.value, values)))
-      }
-      if (!existsQuery) throw badRequest(`Unsupported filter: ${filter.field}`)
-      whereParts.push(exists(existsQuery))
+    if (op === 'exact_set') {
+      const values = ensureArray(filter.values ?? filter.value)
+        .map(v => coerceSearchValue({ kind } as any, v))
+        .filter((value): value is number => typeof value === 'number')
+      if (!values.length) throw badRequest(`Invalid values: ${filter.field}`)
+      whereParts.push(inArray(expr, values))
       continue
     }
+
+    if (op === 'range') {
+      const min = filter.min != null ? coerceSearchValue({ kind } as any, filter.min) : null
+      const max = filter.max != null ? coerceSearchValue({ kind } as any, filter.max) : null
+      if (typeof min !== 'number' && typeof max !== 'number') {
+        throw badRequest(`Range requires min or max: ${filter.field}`)
+      }
+      if (typeof min === 'number') whereParts.push(gte(expr, min))
+      if (typeof max === 'number') whereParts.push(lte(expr, max))
+      continue
+    }
+
+    throw badRequest(`Unsupported filter: ${filter.field}`)
   }
 
-  const base = db
+  let query = db
     .select({
       id: contentTable.id,
       schemaKey: contentTable.schemaKey,
@@ -217,81 +177,65 @@ export default defineEventHandler(async (event) => {
       image: contentListingTable.image,
       status: contentTable.status,
       createdAt: contentTable.createdAt,
-      updatedAt: contentTable.updatedAt
+      updatedAt: contentTable.updatedAt,
+      contentJson: contentTable.contentJson
     })
     .from(contentTable)
     .leftJoin(contentListingTable, eq(contentListingTable.contentId, contentTable.id))
     .where(and(...whereParts))
     .limit(limit)
 
-  let query = base
-
   if (sortKey) {
     const config = fieldByKey.get(sortKey)
     if (!config) throw badRequest(`Unknown sort field: ${sortKey}`)
     if (!config.sortable) throw badRequest(`Field not sortable: ${sortKey}`)
 
-    const dataType = searchDataTypeForKind(config.kind as any)
-    if (!dataType) throw badRequest(`Unsupported sort field: ${sortKey}`)
-
-    if (dataType === 'text') {
-      const sortExpr = sql`(select ${contentSearchData.text} from ${contentSearchData} where ${contentSearchData.contentId} = ${contentTable.id} and ${contentSearchData.fieldId} = ${config.fieldId} and ${contentSearchData.dataType} = ${dataType})`
-      query = query.orderBy(sortDir === 'desc' ? desc(sortExpr) : asc(sortExpr), desc(contentTable.updatedAt))
-    } else {
-      const sortExpr = sql`(select ${contentSearchData.value} from ${contentSearchData} where ${contentSearchData.contentId} = ${contentTable.id} and ${contentSearchData.fieldId} = ${config.fieldId} and ${contentSearchData.dataType} = ${dataType})`
-      query = query.orderBy(sortDir === 'desc' ? desc(sortExpr) : asc(sortExpr), desc(contentTable.updatedAt))
-    }
+    const sortExpr = jsonValueExpression(config.fieldKey, config.kind)
+    query = query.orderBy(
+      sortDir === 'desc' ? desc(sortExpr) : asc(sortExpr),
+      desc(contentTable.updatedAt),
+      desc(contentTable.id)
+    )
   } else {
-    query = query.orderBy(desc(contentTable.updatedAt))
+    query = query.orderBy(desc(contentTable.updatedAt), desc(contentTable.id))
   }
 
-  const items = await query
-  const fieldConfigs = requestedFields
-    .map((fieldKey) => fieldByKey.get(fieldKey))
-    .filter((field): field is ContentFieldRow => Boolean(field))
-
-  if (!items.length || !fieldConfigs.length) {
-    const nextCursor = !sortKey && items.length
-      ? String(new Date(items[items.length - 1]!.updatedAt).getTime())
-      : null
-    return { items, nextCursor }
-  }
-
-  const contentIds = items.map((item: (typeof items)[number]) => item.id)
-  const fieldIdToKey = new Map(fieldConfigs.map(cfg => [cfg.fieldId, cfg.fieldKey]))
-  const fieldIds = fieldConfigs.map(cfg => cfg.fieldId)
-
-  const rows = await db
-    .select({
-      contentId: contentSearchData.contentId,
-      fieldId: contentSearchData.fieldId,
-      dataType: contentSearchData.dataType,
-      text: contentSearchData.text,
-      value: contentSearchData.value
-    })
-    .from(contentSearchData)
-    .where(and(
-      inArray(contentSearchData.contentId, contentIds),
-      inArray(contentSearchData.fieldId, fieldIds)
-    ))
-
-  const searchDataByContentId = new Map<string, Record<string, string | number | null>>()
-  for (const row of rows) {
-    const fieldKey = fieldIdToKey.get(row.fieldId)
-    if (!fieldKey) continue
-    const entry = searchDataByContentId.get(row.contentId) ?? {}
-    entry[fieldKey] = row.dataType === 'text' ? (row.text ?? null) : (row.value ?? null)
-    searchDataByContentId.set(row.contentId, entry)
-  }
-
-  const itemsWithSearchData = items.map((item: (typeof items)[number]) => ({
-    ...item,
-    searchData: searchDataByContentId.get(item.id) ?? {}
-  }))
-
-  const nextCursor = !sortKey && items.length
-    ? String(new Date(items[items.length - 1]!.updatedAt).getTime())
+  const rows = await query
+  const nextCursor = !sortKey && rows.length
+    ? String(new Date(rows[rows.length - 1]!.updatedAt).getTime())
     : null
 
-  return { items: itemsWithSearchData, nextCursor }
+  const fieldConfigs = requestedFields
+    .map(fieldKey => fieldByKey.get(String(fieldKey)))
+    .filter((field): field is ContentFieldRow => Boolean(field))
+
+  const items = rows.map((row: (typeof rows)[number]) => {
+    const content = fieldConfigs.length ? parseContentJson(row.contentJson) : null
+    const item = {
+      id: row.id,
+      schemaKey: row.schemaKey,
+      schemaVersion: row.schemaVersion,
+      title: row.title,
+      description: row.description,
+      image: row.image,
+      status: row.status,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt
+    }
+
+    if (!content) return item
+
+    return {
+      ...item,
+      searchData: buildSearchDataRecord(
+        fieldConfigs.map(field => ({
+          key: field.fieldKey,
+          kind: field.kind as any
+        })),
+        content
+      )
+    }
+  })
+
+  return { items, nextCursor }
 })
