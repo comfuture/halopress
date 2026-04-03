@@ -1,6 +1,18 @@
 import type { SchemaAst, SchemaRegistry } from './types'
 import { inferListingSelection } from './listing'
 
+function resolveListingFieldKey(
+  listing: SchemaAst['listing'],
+  key: 'titleFieldKey' | 'descriptionFieldKey' | 'imageFieldKey',
+  fallback: string | null
+) {
+  if (listing && Object.prototype.hasOwnProperty.call(listing, key)) {
+    return listing[key] ?? null
+  }
+
+  return fallback
+}
+
 function relTargetToKind(target: string): { kind: 'content' | 'user' | 'asset'; schemaKey?: string } {
   if (target.startsWith('system:User')) return { kind: 'user' }
   if (target.startsWith('system:Asset')) return { kind: 'asset' }
@@ -133,9 +145,9 @@ export function compileSchemaAst(ast: SchemaAst, version: number) {
     version,
     title: ast.title,
     listing: {
-      titleFieldKey: ast.listing?.titleFieldKey ?? listingDefaults.titleFieldKey,
-      descriptionFieldKey: ast.listing?.descriptionFieldKey ?? listingDefaults.descriptionFieldKey,
-      imageFieldKey: ast.listing?.imageFieldKey ?? listingDefaults.imageFieldKey
+      titleFieldKey: resolveListingFieldKey(ast.listing, 'titleFieldKey', listingDefaults.titleFieldKey),
+      descriptionFieldKey: resolveListingFieldKey(ast.listing, 'descriptionFieldKey', listingDefaults.descriptionFieldKey),
+      imageFieldKey: resolveListingFieldKey(ast.listing, 'imageFieldKey', listingDefaults.imageFieldKey)
     },
     fields: ast.fields.map(f => ({
       fieldId: f.id,
