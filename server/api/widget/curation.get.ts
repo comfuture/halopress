@@ -1,9 +1,10 @@
-import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray } from 'drizzle-orm'
 import { getQuery, setHeader } from 'h3'
 
+import type { FieldKind } from '../../cms/types'
 import { getDb } from '../../db/db'
 import { content as contentTable, contentListing as contentListingTable, contentRefList, searchConfig } from '../../db/schema'
-import { coerceSearchValue, jsonPathForFieldKey, searchDataTypeForKind } from '../../cms/search-helpers'
+import { coerceSearchValue, jsonValueExpression, searchDataTypeForKind } from '../../cms/search-helpers'
 import { badRequest } from '../../utils/http'
 import { applyWidgetCacheHeaders, resolveWidgetCacheKey, withWidgetCache } from '../../utils/widget-cache'
 
@@ -23,24 +24,6 @@ const POLICY = {
   softTtl: 300,
   hardTtl: 7200,
   staleIfError: 86400
-}
-
-function jsonValueExpression(fieldKey: string, kind: string) {
-  const path = jsonPathForFieldKey(fieldKey)
-
-  if (kind === 'number') {
-    return sql<number | null>`CAST(json_extract(${contentTable.contentJson}, ${path}) AS REAL)`
-  }
-
-  if (kind === 'integer' || kind === 'boolean') {
-    return sql<number | null>`CAST(json_extract(${contentTable.contentJson}, ${path}) AS INTEGER)`
-  }
-
-  if (kind === 'date' || kind === 'datetime') {
-    return sql<number | null>`(unixepoch(json_extract(${contentTable.contentJson}, ${path})) * 1000)`
-  }
-
-  return sql<string | null>`json_extract(${contentTable.contentJson}, ${path})`
 }
 
 export default defineEventHandler(async (event) => {
@@ -144,7 +127,7 @@ export default defineEventHandler(async (event) => {
     const dataType = searchDataTypeForKind(field.kind as any)
     if (!dataType) return []
 
-    const expr = jsonValueExpression(field.fieldKey, field.kind)
+    const expr = jsonValueExpression(contentTable.contentJson, field.fieldKey, field.kind as FieldKind)
     const coercedValues = values
       .map(value => coerceSearchValue({ kind: field.kind as any, enumValues: [] } as any, value))
       .filter((value): value is string | number => typeof value === 'string' || typeof value === 'number')

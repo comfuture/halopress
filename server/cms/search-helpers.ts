@@ -1,4 +1,6 @@
 import type { FieldKind, SearchConfig, SchemaRegistry } from './types'
+import { sql } from 'drizzle-orm'
+import type { SQLWrapper } from 'drizzle-orm'
 import { Node, generateHTML, generateText, mergeAttributes } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
 import TextAlign from '@tiptap/extension-text-align'
@@ -110,6 +112,29 @@ export function jsonPathForFieldKey(fieldKey: string) {
     .replaceAll('\\', '\\\\')
     .replaceAll('"', '\\"')
   return `$."${escaped}"`
+}
+
+export function jsonValueExpression(jsonColumn: SQLWrapper, fieldKey: string, kind: FieldKind) {
+  const path = jsonPathForFieldKey(fieldKey)
+  const jsonValue = sql`json_extract(${jsonColumn}, ${path})`
+
+  if (kind === 'number') {
+    return sql<number | null>`CAST(${jsonValue} AS REAL)`
+  }
+
+  if (kind === 'integer' || kind === 'boolean') {
+    return sql<number | null>`CAST(${jsonValue} AS INTEGER)`
+  }
+
+  if (kind === 'date' || kind === 'datetime') {
+    const jsonType = sql<string | null>`json_type(${jsonColumn}, ${path})`
+    return sql<number | null>`CASE
+      WHEN ${jsonType} IN ('integer', 'real') THEN CAST(${jsonValue} AS REAL)
+      ELSE (unixepoch(${jsonValue}) * 1000)
+    END`
+  }
+
+  return sql<string | null>`${jsonValue}`
 }
 
 function toStringValue(value: unknown): string | null {

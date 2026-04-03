@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest'
+import { SQLiteSyncDialect } from 'drizzle-orm/sqlite-core'
 import {
   buildSearchDataRecord,
   coerceSearchValue,
   jsonPathForFieldKey,
+  jsonValueExpression,
   normalizeSearchConfig,
   normalizeSearchMode,
   searchDataTypeForKind
 } from '../server/cms/search-helpers'
+import { content as contentTable } from '../server/db/schema'
 
 describe('searchDataTypeForKind', () => {
   it('maps field kinds to supported query data types', () => {
@@ -30,6 +33,18 @@ describe('jsonPathForFieldKey', () => {
   it('escapes field keys for sqlite json paths', () => {
     expect(jsonPathForFieldKey('title')).toBe('$."title"')
     expect(jsonPathForFieldKey('hero"image')).toBe('$."hero\\"image"')
+  })
+})
+
+describe('jsonValueExpression', () => {
+  it('normalizes numeric json timestamps for date queries', () => {
+    const dialect = new SQLiteSyncDialect()
+    const query = dialect.sqlToQuery(jsonValueExpression(contentTable.contentJson, 'publishedAt', 'datetime'))
+
+    expect(query.sql).toContain('json_type(')
+    expect(query.sql).toContain('IN (\'integer\', \'real\')')
+    expect(query.sql).toContain('CAST(json_extract(')
+    expect(query.sql).toContain('unixepoch(json_extract(')
   })
 })
 
@@ -65,6 +80,7 @@ describe('coerceSearchValue', () => {
     expect(coerceSearchValue({ kind: 'integer' }, '12.9')).toBe(12)
     expect(coerceSearchValue({ kind: 'boolean' }, true)).toBe(1)
     expect(coerceSearchValue({ kind: 'date' }, '2025-01-01')).toBeTypeOf('number')
+    expect(coerceSearchValue({ kind: 'datetime' }, 1735689600000)).toBe(1735689600000)
   })
 
   it('accepts only configured enum values', () => {
