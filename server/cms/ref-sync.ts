@@ -9,9 +9,9 @@ export async function syncContentRefs(args: {
   db: Db
   contentId: string
   registry: SchemaRegistry
-  extra: Record<string, unknown>
+  content: Record<string, unknown>
 }) {
-  const { db, contentId, registry, extra } = args
+  const { db, contentId, registry, content } = args
 
   const relations = registry.relations
   if (!relations.length) return
@@ -30,7 +30,7 @@ export async function syncContentRefs(args: {
 
   // Insert current refs (MVP: top-level fields only).
   for (const rel of relations) {
-    const value = (extra as any)?.[rel.fieldKey]
+    const value = (content as any)?.[rel.fieldKey]
     if (!value) continue
 
     const targetKind = rel.targetKind as TargetKind
@@ -68,4 +68,3 @@ export async function syncContentRefs(args: {
     }
   }
 }
-

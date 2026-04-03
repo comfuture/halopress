@@ -90,9 +90,8 @@ export const content = sqliteTable('content', {
   id: text('id').notNull(),
   schemaKey: text('schema_key').notNull(),
   schemaVersion: integer('schema_version').notNull(),
-  title: text('title'),
   status: text('status').notNull(),
-  extraJson: text('extra_json').notNull(),
+  contentJson: text('content_json').notNull(),
   createdBy: text('created_by'),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull()
@@ -100,6 +99,20 @@ export const content = sqliteTable('content', {
   pk: primaryKey({ columns: [t.id] }),
   bySchemaUpdated: index('idx_content_schema_updated').on(t.schemaKey, t.updatedAt),
   byStatus: index('idx_content_status').on(t.schemaKey, t.status, t.updatedAt)
+}))
+
+export const page = sqliteTable('page', {
+  id: text('id').notNull(),
+  title: text('title'),
+  status: text('status').notNull().default('draft'),
+  contentJson: text('content_json').notNull(),
+  createdBy: text('created_by'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull()
+}, t => ({
+  pk: primaryKey({ columns: [t.id] }),
+  byStatus: index('idx_page_status').on(t.status, t.updatedAt),
+  byUpdatedAt: index('idx_page_updated_at').on(t.updatedAt)
 }))
 
 export const contentItems = sqliteTable('content_items', {

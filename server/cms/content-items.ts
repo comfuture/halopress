@@ -3,27 +3,27 @@ import type { Db } from '../db/db'
 import { content as contentTable, contentItems } from '../db/schema'
 import type { SchemaRegistry } from './types'
 import { getActiveSchema } from './repo'
+import { parseContentJson } from './content-json'
 import { buildListingProjection } from './listing'
 
 export function buildContentItemSnapshot(args: {
   registry: SchemaRegistry | null
-  extra: Record<string, unknown>
+  content: Record<string, unknown>
   contentId: string
   schemaKey: string
   schemaVersion: number
-  title: string | null
   status: string
   createdAt: Date
   updatedAt: Date
 }) {
-  const { registry, extra, contentId, schemaKey, schemaVersion, title, status, createdAt, updatedAt } = args
-  const listing = buildListingProjection({ registry, content: extra })
+  const { registry, content, contentId, schemaKey, schemaVersion, status, createdAt, updatedAt } = args
+  const listing = buildListingProjection({ registry, content })
 
   return {
     contentId,
     schemaKey,
     schemaVersion,
-    title: title ?? listing.title,
+    title: listing.title,
     description: listing.description,
     image: listing.image,
     status,
@@ -35,11 +35,10 @@ export function buildContentItemSnapshot(args: {
 export async function upsertContentItemSnapshot(args: {
   db: Db
   registry: SchemaRegistry | null
-  extra: Record<string, unknown>
+  content: Record<string, unknown>
   contentId: string
   schemaKey: string
   schemaVersion: number
-  title: string | null
   status: string
   createdAt: Date
   updatedAt: Date
@@ -84,9 +83,8 @@ export async function syncContentItems(args: {
         id: contentTable.id,
         schemaKey: contentTable.schemaKey,
         schemaVersion: contentTable.schemaVersion,
-        title: contentTable.title,
         status: contentTable.status,
-        extraJson: contentTable.extraJson,
+        contentJson: contentTable.contentJson,
         createdAt: contentTable.createdAt,
         updatedAt: contentTable.updatedAt
       })
@@ -97,9 +95,8 @@ export async function syncContentItems(args: {
         id: contentTable.id,
         schemaKey: contentTable.schemaKey,
         schemaVersion: contentTable.schemaVersion,
-        title: contentTable.title,
         status: contentTable.status,
-        extraJson: contentTable.extraJson,
+        contentJson: contentTable.contentJson,
         createdAt: contentTable.createdAt,
         updatedAt: contentTable.updatedAt
       })
@@ -116,15 +113,7 @@ export async function syncContentItems(args: {
       continue
     }
 
-    let extra: Record<string, unknown> = {}
-    try {
-      const parsed = JSON.parse(row.extraJson)
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        extra = parsed as Record<string, unknown>
-      }
-    } catch {
-      extra = {}
-    }
+    const content = parseContentJson(row.contentJson)
 
     if (!registryCache.has(row.schemaKey)) {
       const active = await getActiveSchema(db, row.schemaKey)
@@ -138,11 +127,10 @@ export async function syncContentItems(args: {
       await upsertContentItemSnapshot({
         db,
         registry: registryCache.get(row.schemaKey) ?? null,
-        extra,
+        content,
         contentId: row.id,
         schemaKey: row.schemaKey,
         schemaVersion: row.schemaVersion,
-        title: row.title ?? null,
         status: row.status,
         createdAt,
         updatedAt

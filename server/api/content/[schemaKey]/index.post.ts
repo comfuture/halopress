@@ -2,6 +2,7 @@ import { readBody } from 'h3'
 
 import { getDb } from '../../../db/db'
 import { getAuthSession } from '../../../utils/auth'
+import { getContentTitle } from '../../../cms/content-json'
 import { badRequest, notFound } from '../../../utils/http'
 import { newId } from '../../../utils/ids'
 import { content as contentTable } from '../../../db/schema'
@@ -9,7 +10,7 @@ import { getActiveSchema } from '../../../cms/repo'
 import { syncContentRefs } from '../../../cms/ref-sync'
 import { upsertContentSearchData } from '../../../cms/search-index'
 import { upsertContentItemSnapshot } from '../../../cms/content-items'
-import { replaceBase64ImagesInExtra } from '../../../utils/asset-data-url'
+import { replaceBase64ImagesInContent } from '../../../utils/asset-data-url'
 import { queueWidgetCacheInvalidation } from '../../../utils/widget-cache'
 import { requireSchemaPermission } from '../../../utils/schema-permission'
 
@@ -18,7 +19,7 @@ export default defineEventHandler(async (event) => {
   await requireSchemaPermission(event, schemaKey, 'write')
   const session = await getAuthSession(event)
   const actorId = (session?.user as any)?.id ?? null
-  const body = await readBody<{ title?: string; status?: string; extra?: Record<string, unknown> }>(event)
+  const body = await readBody<{ status?: string; content?: Record<string, unknown> }>(event)
 
   const db = await getDb(event)
   const active = await getActiveSchema(db, schemaKey)
@@ -27,34 +28,32 @@ export default defineEventHandler(async (event) => {
 
   const id = newId()
   const now = new Date()
-  const title = body?.title?.trim() || null
   const status = body?.status || 'draft'
-  const extra = body?.extra ?? {}
-  if (typeof extra !== 'object' || Array.isArray(extra) || !extra) throw badRequest('Invalid extra')
+  const content = body?.content ?? {}
+  if (typeof content !== 'object' || Array.isArray(content) || !content) throw badRequest('Invalid content')
 
   await db.transaction(async (tx: any) => {
-    await replaceBase64ImagesInExtra({ event, db: tx, createdBy: actorId, extra })
+    await replaceBase64ImagesInContent({ event, db: tx, createdBy: actorId, content })
 
     await tx.insert(contentTable).values({
       id,
       schemaKey,
       schemaVersion: active.version,
-      title,
       status,
-      extraJson: JSON.stringify(extra),
+      contentJson: JSON.stringify(content),
       createdBy: actorId,
       createdAt: now,
       updatedAt: now
     })
 
-    await syncContentRefs({ db: tx, contentId: id, registry, extra })
+    await syncContentRefs({ db: tx, contentId: id, registry, content })
     await upsertContentSearchData({
       db: tx,
       contentId: id,
       registry,
-      extra,
-      content: {
-        title,
+      content,
+      systemContent: {
+        title: getContentTitle(content),
         createdAt: now,
         updatedAt: now
       }
@@ -62,11 +61,10 @@ export default defineEventHandler(async (event) => {
     await upsertContentItemSnapshot({
       db: tx,
       registry,
-      extra,
+      content,
       contentId: id,
       schemaKey,
       schemaVersion: active.version,
-      title,
       status,
       createdAt: now,
       updatedAt: now
