@@ -92,4 +92,60 @@ describe('buildListingProjection', () => {
     expect(projection.description).toBe(`${'a'.repeat(200)}...`)
     expect(projection.image).toBeNull()
   })
+
+  it('uses explicit registry listing mappings instead of inferred defaults', () => {
+    const registry = createRegistry([
+      { fieldId: '1', key: 'title', kind: 'string' },
+      { fieldId: '2', key: 'headline', kind: 'string' },
+      { fieldId: '3', key: 'summary', kind: 'text' }
+    ])
+    registry.listing = {
+      titleFieldKey: 'headline',
+      descriptionFieldKey: 'summary',
+      imageFieldKey: null
+    }
+
+    expect(buildListingProjection({
+      registry,
+      content: {
+        title: 'Default title',
+        headline: 'Mapped title',
+        summary: 'Mapped summary'
+      }
+    })).toMatchObject({
+      title: 'Mapped title',
+      description: 'Mapped summary',
+      image: null,
+      titleFieldKey: 'headline',
+      descriptionFieldKey: 'summary',
+      imageFieldKey: null
+    })
+  })
+
+  it('preserves explicit null listing mappings instead of falling back', () => {
+    const registry = createRegistry([
+      { fieldId: '1', key: 'title', kind: 'string' },
+      { fieldId: '2', key: 'summary', kind: 'text' }
+    ])
+    registry.listing = {
+      titleFieldKey: null,
+      descriptionFieldKey: null,
+      imageFieldKey: null
+    }
+
+    expect(buildListingProjection({
+      registry,
+      content: {
+        title: 'Default title',
+        summary: 'Default summary'
+      }
+    })).toMatchObject({
+      title: null,
+      description: null,
+      image: null,
+      titleFieldKey: null,
+      descriptionFieldKey: null,
+      imageFieldKey: null
+    })
+  })
 })

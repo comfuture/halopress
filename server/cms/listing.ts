@@ -8,6 +8,10 @@ export type ListingSelection = {
   imageFieldKey: string | null
 }
 
+function hasOwn<T extends object, K extends keyof T>(value: T | null | undefined, key: K): value is T & Required<Pick<T, K>> {
+  return !!value && Object.prototype.hasOwnProperty.call(value, key)
+}
+
 export function normalizeText(value: string) {
   return value.replace(/\s+/g, ' ').trim()
 }
@@ -75,9 +79,22 @@ export function buildListingProjection(args: {
   imageFieldKey?: string | null
 }) {
   const inferred = inferListingSelection(args.registry)
-  const titleFieldKey = args.titleFieldKey ?? inferred.titleFieldKey
-  const descriptionFieldKey = args.descriptionFieldKey ?? inferred.descriptionFieldKey
-  const imageFieldKey = args.imageFieldKey ?? inferred.imageFieldKey
+  const configured = args.registry?.listing
+  const titleFieldKey = args.titleFieldKey !== undefined
+    ? args.titleFieldKey
+    : hasOwn(configured, 'titleFieldKey')
+      ? (configured.titleFieldKey ?? null)
+      : inferred.titleFieldKey
+  const descriptionFieldKey = args.descriptionFieldKey !== undefined
+    ? args.descriptionFieldKey
+    : hasOwn(configured, 'descriptionFieldKey')
+      ? (configured.descriptionFieldKey ?? null)
+      : inferred.descriptionFieldKey
+  const imageFieldKey = args.imageFieldKey !== undefined
+    ? args.imageFieldKey
+    : hasOwn(configured, 'imageFieldKey')
+      ? (configured.imageFieldKey ?? null)
+      : inferred.imageFieldKey
 
   const rawTitle = titleFieldKey ? args.content[titleFieldKey] : null
   const title = typeof rawTitle === 'string' && rawTitle.trim().length
