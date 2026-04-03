@@ -1,13 +1,14 @@
 import { getQuery } from 'h3'
-import { and, asc, desc, eq, gte, inArray, lt, lte, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, inArray, lt, lte } from 'drizzle-orm'
 
+import type { FieldKind } from '../cms/types'
 import { getDb } from '../db/db'
 import { content as contentTable, contentListing as contentListingTable, searchConfig } from '../db/schema'
 import { parseContentJson } from '../cms/content-json'
 import {
   buildSearchDataRecord,
   coerceSearchValue,
-  jsonPathForFieldKey,
+  jsonValueExpression,
   searchDataTypeForKind
 } from '../cms/search-helpers'
 import { badRequest } from '../utils/http'
@@ -48,24 +49,6 @@ function ensureArray(value: unknown) {
   }
   if (value == null) return []
   return [value]
-}
-
-function jsonValueExpression(fieldKey: string, kind: ContentFieldRow['kind']) {
-  const path = jsonPathForFieldKey(fieldKey)
-
-  if (kind === 'number') {
-    return sql<number | null>`CAST(json_extract(${contentTable.contentJson}, ${path}) AS REAL)`
-  }
-
-  if (kind === 'integer' || kind === 'boolean') {
-    return sql<number | null>`CAST(json_extract(${contentTable.contentJson}, ${path}) AS INTEGER)`
-  }
-
-  if (kind === 'date' || kind === 'datetime') {
-    return sql<number | null>`(unixepoch(json_extract(${contentTable.contentJson}, ${path})) * 1000)`
-  }
-
-  return sql<string | null>`json_extract(${contentTable.contentJson}, ${path})`
 }
 
 export default defineEventHandler(async (event) => {
@@ -110,7 +93,7 @@ export default defineEventHandler(async (event) => {
     if (!config) throw badRequest(`Unknown field: ${filter.field}`)
     if (!config.filterable) throw badRequest(`Field not filterable: ${filter.field}`)
 
-    const kind = config.kind as ContentFieldRow['kind']
+    const kind = config.kind as FieldKind
     const dataType = searchDataTypeForKind(kind as any)
     if (!dataType) throw badRequest(`Unsupported field type: ${filter.field}`)
 
@@ -118,7 +101,7 @@ export default defineEventHandler(async (event) => {
     if (!op || op === 'off') throw badRequest(`Search mode disabled: ${filter.field}`)
     if (op === 'range' && dataType === 'text') throw badRequest(`Range not supported: ${filter.field}`)
 
-    const expr = jsonValueExpression(config.fieldKey, kind)
+    const expr = jsonValueExpression(contentTable.contentJson, config.fieldKey, kind)
 
     if (dataType === 'text') {
       if (op === 'exact') {
@@ -190,7 +173,7 @@ export default defineEventHandler(async (event) => {
     if (!config) throw badRequest(`Unknown sort field: ${sortKey}`)
     if (!config.sortable) throw badRequest(`Field not sortable: ${sortKey}`)
 
-    const sortExpr = jsonValueExpression(config.fieldKey, config.kind)
+    const sortExpr = jsonValueExpression(contentTable.contentJson, config.fieldKey, config.kind as FieldKind)
     query = query.orderBy(
       sortDir === 'desc' ? desc(sortExpr) : asc(sortExpr),
       desc(contentTable.updatedAt),
