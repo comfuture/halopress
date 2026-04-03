@@ -3,50 +3,7 @@ import type { Db } from '../db/db'
 import { content as contentTable, contentItems } from '../db/schema'
 import type { SchemaRegistry } from './types'
 import { getActiveSchema } from './repo'
-
-const DESCRIPTION_LIMIT = 200
-
-function normalizeText(value: string) {
-  return value.replace(/\s+/g, ' ').trim()
-}
-
-function extractText(node: any): string {
-  if (!node) return ''
-  if (typeof node === 'string') return node
-  if (typeof node.text === 'string') return node.text
-  if (Array.isArray(node)) return node.map(extractText).join(' ')
-  if (Array.isArray(node.content)) return node.content.map(extractText).join(' ')
-  return ''
-}
-
-function extractRichText(value: unknown) {
-  if (value == null) return ''
-  if (typeof value === 'string') return value
-  if (Array.isArray(value)) return value.map(extractText).join(' ')
-  if (typeof value === 'object') return extractText(value)
-  return ''
-}
-
-function buildDescription(registry: SchemaRegistry | null, extra: Record<string, unknown>) {
-  if (!registry) return null
-  for (const field of registry.fields) {
-    if (field.kind !== 'richtext') continue
-    const text = normalizeText(extractRichText(extra[field.key]))
-    if (!text) continue
-    return text.length > DESCRIPTION_LIMIT ? `${text.slice(0, DESCRIPTION_LIMIT)}...` : text
-  }
-  return null
-}
-
-function buildImageUrl(registry: SchemaRegistry | null, extra: Record<string, unknown>) {
-  if (!registry) return null
-  for (const field of registry.fields) {
-    if (field.kind !== 'asset') continue
-    const assetId = extra[field.key]
-    if (typeof assetId === 'string' && assetId.length) return `/assets/${assetId}/raw`
-  }
-  return null
-}
+import { buildListingProjection } from './listing'
 
 export function buildContentItemSnapshot(args: {
   registry: SchemaRegistry | null
@@ -60,16 +17,15 @@ export function buildContentItemSnapshot(args: {
   updatedAt: Date
 }) {
   const { registry, extra, contentId, schemaKey, schemaVersion, title, status, createdAt, updatedAt } = args
-  const description = buildDescription(registry, extra)
-  const image = buildImageUrl(registry, extra)
+  const listing = buildListingProjection({ registry, content: extra })
 
   return {
     contentId,
     schemaKey,
     schemaVersion,
-    title,
-    description,
-    image,
+    title: title ?? listing.title,
+    description: listing.description,
+    image: listing.image,
     status,
     createdAt,
     updatedAt
