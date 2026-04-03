@@ -124,9 +124,9 @@ const state = reactive({
   description: '',
   fields: [] as FieldNode[],
   listing: {
-    titleFieldKey: null as string | null,
-    descriptionFieldKey: null as string | null,
-    imageFieldKey: null as string | null
+    titleFieldKey: undefined as string | null | undefined,
+    descriptionFieldKey: undefined as string | null | undefined,
+    imageFieldKey: undefined as string | null | undefined
   }
 })
 
@@ -193,6 +193,14 @@ function inferListingSelection(fields: FieldNode[]) {
   }
 }
 
+function toListingStateValue(value: string | null) {
+  return value ?? undefined
+}
+
+function resolveListingPreviewValue(current: string | null | undefined, fallback: string | null) {
+  return current === undefined ? fallback : current
+}
+
 function applySystemFields(fields: FieldNode[]) {
   const byKey = new Map(fields.map(field => [field.key, field]))
   const systemFields = SYSTEM_FIELDS.map((sys) => {
@@ -219,7 +227,12 @@ function applySystemFields(fields: FieldNode[]) {
 
 if (isNew.value) {
   state.fields = applySystemFields([])
-  Object.assign(state.listing, inferListingSelection(state.fields))
+  const inferred = inferListingSelection(state.fields)
+  Object.assign(state.listing, {
+    titleFieldKey: toListingStateValue(inferred.titleFieldKey),
+    descriptionFieldKey: toListingStateValue(inferred.descriptionFieldKey),
+    imageFieldKey: toListingStateValue(inferred.imageFieldKey)
+  })
 }
 
 const breadcrumbItems = computed<BreadcrumbItem[]>(() => ([
@@ -326,10 +339,11 @@ watch(
     state.title = next.ast?.title ?? next.title ?? next.schemaKey
     state.description = next.ast?.description ?? ''
     state.fields = applySystemFields(deepClone(next.ast?.fields ?? []))
+    const nextListing = next.ast?.listing
     Object.assign(state.listing, {
-      titleFieldKey: next.ast?.listing?.titleFieldKey ?? null,
-      descriptionFieldKey: next.ast?.listing?.descriptionFieldKey ?? null,
-      imageFieldKey: next.ast?.listing?.imageFieldKey ?? null
+      titleFieldKey: nextListing?.titleFieldKey,
+      descriptionFieldKey: nextListing?.descriptionFieldKey,
+      imageFieldKey: nextListing?.imageFieldKey
     })
     lastSavedAstJson.value = stableStringify(buildAstFromState())
   },
@@ -342,14 +356,14 @@ watch(
     const inferred = inferListingSelection(state.fields)
     const fieldKeys = new Set(state.fields.filter(field => !field.system).map(field => field.key))
 
-    if (!state.listing.titleFieldKey || !fieldKeys.has(state.listing.titleFieldKey)) {
-      state.listing.titleFieldKey = inferred.titleFieldKey
+    if (state.listing.titleFieldKey !== null && (!state.listing.titleFieldKey || !fieldKeys.has(state.listing.titleFieldKey))) {
+      state.listing.titleFieldKey = toListingStateValue(inferred.titleFieldKey)
     }
-    if (!state.listing.descriptionFieldKey || !fieldKeys.has(state.listing.descriptionFieldKey)) {
-      state.listing.descriptionFieldKey = inferred.descriptionFieldKey
+    if (state.listing.descriptionFieldKey !== null && (!state.listing.descriptionFieldKey || !fieldKeys.has(state.listing.descriptionFieldKey))) {
+      state.listing.descriptionFieldKey = toListingStateValue(inferred.descriptionFieldKey)
     }
-    if (!state.listing.imageFieldKey || !fieldKeys.has(state.listing.imageFieldKey)) {
-      state.listing.imageFieldKey = inferred.imageFieldKey
+    if (state.listing.imageFieldKey !== null && (!state.listing.imageFieldKey || !fieldKeys.has(state.listing.imageFieldKey))) {
+      state.listing.imageFieldKey = toListingStateValue(inferred.imageFieldKey)
     }
   },
   { immediate: true }
@@ -534,9 +548,9 @@ const listingFieldOptions = computed(() => ({
 const listingPreview = computed(() => {
   const inferred = inferListingSelection(state.fields)
   return {
-    titleFieldKey: state.listing.titleFieldKey ?? inferred.titleFieldKey,
-    descriptionFieldKey: state.listing.descriptionFieldKey ?? inferred.descriptionFieldKey,
-    imageFieldKey: state.listing.imageFieldKey ?? inferred.imageFieldKey
+    titleFieldKey: resolveListingPreviewValue(state.listing.titleFieldKey, inferred.titleFieldKey),
+    descriptionFieldKey: resolveListingPreviewValue(state.listing.descriptionFieldKey, inferred.descriptionFieldKey),
+    imageFieldKey: resolveListingPreviewValue(state.listing.imageFieldKey, inferred.imageFieldKey)
   }
 })
 
