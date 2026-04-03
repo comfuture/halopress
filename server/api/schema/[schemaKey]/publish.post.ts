@@ -2,6 +2,7 @@ import { readBody } from 'h3'
 import { desc, eq } from 'drizzle-orm'
 import { getDb } from '../../../db/db'
 import { compileSchemaAst } from '../../../cms/compiler'
+import { syncContentListing } from '../../../cms/content-listing'
 import { getActiveSchema, getDraft } from '../../../cms/repo'
 import { getKindChanges, migrateSchemaContent } from '../../../cms/migrate'
 import { syncSearchConfig } from '../../../cms/search-config'
@@ -10,6 +11,7 @@ import { requireAdmin } from '../../../utils/auth'
 import { badRequest, notFound } from '../../../utils/http'
 import { schemaAstSchema } from '../../../cms/zod'
 import { ensureAnonymousSchemaRole } from '../../../utils/install'
+import { queueWidgetCacheInvalidation } from '../../../utils/widget-cache'
 
 export default defineEventHandler(async (event) => {
   const session = await requireAdmin(event)
@@ -41,6 +43,7 @@ export default defineEventHandler(async (event) => {
   const compiled = compileSchemaAst(ast, nextVersion)
   const active = await getActiveSchema(db, schemaKey)
   const kindChanges = getKindChanges(active?.ast ?? null, ast)
+  const listingChanged = JSON.stringify(active?.registry?.listing ?? null) !== JSON.stringify(compiled.registry.listing ?? null)
 
   const now = new Date()
 
@@ -88,6 +91,14 @@ export default defineEventHandler(async (event) => {
   }
 
   await syncSearchConfig({ db, schemaKey, registry: compiled.registry })
+
+  if (listingChanged && !(body?.migrate && kindChanges.length)) {
+    await syncContentListing({ db, schemaKey, onlyMissing: false })
+  }
+
+  if (listingChanged || migrated > 0) {
+    queueWidgetCacheInvalidation(event, `schema:${schemaKey}`)
+  }
 
   return { ok: true, schemaKey, version: nextVersion, migrated, searchIndexed: 0 }
 })
