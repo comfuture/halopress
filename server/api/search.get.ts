@@ -4,7 +4,7 @@ import { and, asc, desc, eq, exists, inArray, lt, gte, lte, sql } from 'drizzle-
 import { getDb } from '../db/db'
 import { content as contentTable, contentItems as contentItemsTable, contentSearchConfig, contentSearchData } from '../db/schema'
 import { badRequest } from '../utils/http'
-import { coerceSearchValue, searchDataTypeForKind } from '../cms/search-index'
+import { coerceSearchValue, searchDataTypeForKind } from '../cms/search-helpers'
 
 type FilterInput = {
   field: string
