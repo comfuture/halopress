@@ -2,13 +2,11 @@ import { readBody } from 'h3'
 
 import { getDb } from '../../../db/db'
 import { getAuthSession } from '../../../utils/auth'
-import { getContentTitle } from '../../../cms/content-json'
 import { badRequest, notFound } from '../../../utils/http'
 import { newId } from '../../../utils/ids'
 import { content as contentTable } from '../../../db/schema'
 import { getActiveSchema } from '../../../cms/repo'
 import { syncContentRefs } from '../../../cms/ref-sync'
-import { upsertContentSearchData } from '../../../cms/search-index'
 import { upsertContentListingSnapshot } from '../../../cms/content-listing'
 import { replaceBase64ImagesInContent } from '../../../utils/asset-data-url'
 import { queueWidgetCacheInvalidation } from '../../../utils/widget-cache'
@@ -47,17 +45,6 @@ export default defineEventHandler(async (event) => {
     })
 
     await syncContentRefs({ db: tx, contentId: id, registry, content })
-    await upsertContentSearchData({
-      db: tx,
-      contentId: id,
-      registry,
-      content,
-      systemContent: {
-        title: getContentTitle(content),
-        createdAt: now,
-        updatedAt: now
-      }
-    })
     await upsertContentListingSnapshot({
       db: tx,
       registry,

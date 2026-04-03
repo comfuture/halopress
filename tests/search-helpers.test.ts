@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildSearchDataRecord,
   coerceSearchValue,
+  jsonPathForFieldKey,
   normalizeSearchConfig,
   normalizeSearchMode,
   searchDataTypeForKind
@@ -21,6 +23,13 @@ describe('normalizeSearchMode', () => {
     expect(normalizeSearchMode('number', 'exact')).toBe('exact')
     expect(normalizeSearchMode('number', 'exact_set')).toBe('off')
     expect(normalizeSearchMode('richtext', 'exact')).toBe('off')
+  })
+})
+
+describe('jsonPathForFieldKey', () => {
+  it('escapes field keys for sqlite json paths', () => {
+    expect(jsonPathForFieldKey('title')).toBe('$."title"')
+    expect(jsonPathForFieldKey('hero"image')).toBe('$."hero\\"image"')
   })
 })
 
@@ -68,5 +77,23 @@ describe('coerceSearchValue', () => {
       kind: 'enum',
       enumValues: [{ label: 'Draft', value: 'draft' }]
     }, 'published')).toBeNull()
+  })
+})
+
+describe('buildSearchDataRecord', () => {
+  it('coerces stored content values into search response values', () => {
+    expect(buildSearchDataRecord([
+      { key: 'featured', kind: 'boolean' },
+      { key: 'publishedAt', kind: 'datetime' },
+      { key: 'headline', kind: 'string' }
+    ], {
+      featured: true,
+      publishedAt: '2025-01-01T00:00:00.000Z',
+      headline: 'Hello'
+    })).toEqual({
+      featured: 1,
+      publishedAt: 1735689600000,
+      headline: 'Hello'
+    })
   })
 })

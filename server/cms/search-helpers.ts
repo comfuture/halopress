@@ -105,6 +105,13 @@ export function isSearchEnabled(config: NormalizedSearchConfig) {
   return config.mode !== 'off' || config.filterable || config.sortable
 }
 
+export function jsonPathForFieldKey(fieldKey: string) {
+  const escaped = fieldKey
+    .replaceAll('\\', '\\\\')
+    .replaceAll('"', '\\"')
+  return `$."${escaped}"`
+}
+
 function toStringValue(value: unknown): string | null {
   if (value == null) return null
   if (typeof value === 'string') return value
@@ -210,4 +217,18 @@ export function coerceSearchValue(field: Pick<SchemaRegistry['fields'][number], 
     default:
       return null
   }
+}
+
+export function buildSearchDataRecord(
+  fields: Array<Pick<SchemaRegistry['fields'][number], 'key' | 'kind' | 'enumValues'>>,
+  content: Record<string, unknown>
+) {
+  const record: Record<string, string | number | null> = {}
+
+  for (const field of fields) {
+    const value = coerceSearchValue(field, content[field.key])
+    record[field.key] = typeof value === 'string' || typeof value === 'number' ? value : null
+  }
+
+  return record
 }

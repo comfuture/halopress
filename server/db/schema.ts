@@ -1,4 +1,4 @@
-import { foreignKey, index, integer, primaryKey, real, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { foreignKey, index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
 export const userRole = sqliteTable('user_role', {
   roleKey: text('role_key').notNull(),
@@ -140,30 +140,17 @@ export const contentListing = sqliteTable('content_listing', {
   })
 }))
 
-export const contentSearchConfig = sqliteTable('content_search_config', {
+export const searchConfig = sqliteTable('search_config', {
   schemaKey: text('schema_key').notNull(),
-  fieldId: text('field_id').notNull(),
   fieldKey: text('field_key').notNull(),
   kind: text('kind').notNull(),
   searchMode: text('search_mode').notNull().default('off'),
   filterable: integer('filterable', { mode: 'boolean' }).notNull().default(false),
   sortable: integer('sortable', { mode: 'boolean' }).notNull().default(false)
 }, t => ({
-  pk: primaryKey({ columns: [t.schemaKey, t.fieldId] }),
-  bySchema: index('idx_content_search_config_schema').on(t.schemaKey),
-  byFieldKey: index('idx_content_search_config_key').on(t.schemaKey, t.fieldKey)
-}))
-
-export const contentSearchData = sqliteTable('content_search_data', {
-  contentId: text('content_id').notNull(),
-  fieldId: text('field_id').notNull(),
-  dataType: text('data_type').notNull(),
-  text: text('text'),
-  value: real('value')
-}, t => ({
-  pk: primaryKey({ columns: [t.contentId, t.fieldId] }),
-  idxFilterText: index('idx_filter_content_search_text').on(t.fieldId, t.dataType, t.text, t.contentId),
-  idxFilterValue: index('idx_filter_content_search_value').on(t.fieldId, t.dataType, t.value, t.contentId)
+  pk: primaryKey({ columns: [t.schemaKey, t.fieldKey] }),
+  bySchema: index('idx_search_config_schema').on(t.schemaKey),
+  byFieldKey: index('idx_search_config_key').on(t.schemaKey, t.fieldKey)
 }))
 
 export const contentRef = sqliteTable('content_ref', {

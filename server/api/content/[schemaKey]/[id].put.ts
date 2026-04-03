@@ -3,12 +3,11 @@ import { and, eq } from 'drizzle-orm'
 
 import { getDb } from '../../../db/db'
 import { getAuthSession } from '../../../utils/auth'
-import { getContentTitle, parseContentJson } from '../../../cms/content-json'
+import { parseContentJson } from '../../../cms/content-json'
 import { badRequest, notFound } from '../../../utils/http'
 import { content as contentTable } from '../../../db/schema'
 import { getActiveSchema } from '../../../cms/repo'
 import { syncContentRefs } from '../../../cms/ref-sync'
-import { upsertContentSearchData } from '../../../cms/search-index'
 import { upsertContentListingSnapshot } from '../../../cms/content-listing'
 import { replaceBase64ImagesInContent } from '../../../utils/asset-data-url'
 import { queueWidgetCacheInvalidation } from '../../../utils/widget-cache'
@@ -53,17 +52,6 @@ export default defineEventHandler(async (event) => {
       .where(eq(contentTable.id, id))
 
     await syncContentRefs({ db: tx, contentId: id, registry, content })
-    await upsertContentSearchData({
-      db: tx,
-      contentId: id,
-      registry,
-      content,
-      systemContent: {
-        title: getContentTitle(content),
-        createdAt: existing.createdAt,
-        updatedAt: now
-      }
-    })
     await upsertContentListingSnapshot({
       db: tx,
       registry,
