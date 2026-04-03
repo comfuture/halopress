@@ -17,6 +17,7 @@ const isUsersRoute = computed(() => route.path === '/_desk/users' || route.path.
 
 const isContentRoute = computed(() => activeContentBase.value !== null)
 const isAssetsRoute = computed(() => route.path === '/_desk/assets' || route.path.startsWith('/_desk/assets/'))
+const isPagesRoute = computed(() => route.path === '/_desk/pages' || route.path.startsWith('/_desk/pages/'))
 
 const contentChildren = computed(() => {
   const items = schemaList.value?.items ?? []
@@ -58,6 +59,12 @@ const navItems = computed(() => ([
     to: '/_desk/assets',
     icon: 'i-lucide-image',
     active: isAssetsRoute.value
+  },
+  {
+    label: 'Pages',
+    to: '/_desk/pages',
+    icon: 'i-lucide-panels-top-left',
+    active: isPagesRoute.value
   },
   {
     label: 'Viewer',
