@@ -27,34 +27,27 @@ const id = computed(() => String(route.params.id))
 
 const { data: schema } = await useFetch<any>(() => `/api/schema/${schemaKey.value}/active`)
 const { data: doc, refresh: refreshDoc } = await useFetch<any>(() => `/api/content/${schemaKey.value}/${id.value}`)
-const titleRequired = computed(() => {
-  const fields = schema.value?.registry?.fields ?? []
-  return fields.some((field: any) => field?.key === 'title' && field?.required)
-})
 
 const breadcrumbItems = computed<BreadcrumbItem[]>(() => ([
   { label: schema.value?.title || schemaKey.value, icon: 'i-lucide-files', to: `/_desk/content/${schemaKey.value}` },
-  { label: doc.value?.title || doc.value?.id || id.value }
+  { label: doc.value?.content?.title || doc.value?.title || doc.value?.id || id.value }
 ]))
 
 const state = reactive({
-  title: '',
-  extra: {} as Record<string, any>
+  content: {} as Record<string, any>
 })
 
 const contentFormRef = ref<any>(null)
 
 function buildContentSnapshot() {
   return {
-    title: state.title || '',
-    extra: state.extra
+    content: state.content
   }
 }
 
 function buildContentSnapshotFromDoc(source: any) {
   return {
-    title: source?.title || '',
-    extra: source?.extra || {}
+    content: source?.content || source?.extra || {}
   }
 }
 
@@ -71,8 +64,7 @@ watch(
   () => doc.value,
   (next) => {
     if (!next) return
-    state.title = next.title || ''
-    state.extra = { ...(next.extra || {}) }
+    state.content = { ...(next.content || next.extra || {}) }
     lastSavedContentJson.value = stableStringify(buildContentSnapshotFromDoc(next))
   },
   { immediate: true }
@@ -80,19 +72,16 @@ watch(
 
 async function saveDraft() {
   if (!isDirty.value) return
-  if (titleRequired.value && !state.title.trim()) {
-    toast.add({ title: 'Title is required', color: 'error' })
-    return
-  }
   if (!(await contentFormRef.value?.validate?.())) {
     toast.add({ title: 'Fix validation errors', color: 'error' })
     return
   }
   savingDraft.value = true
   try {
+    const title = typeof state.content.title === 'string' ? state.content.title.trim() : ''
     await $fetch(`/api/content/${schemaKey.value}/${id.value}`, {
       method: 'PUT',
-      body: { title: state.title, status: 'draft', extra: state.extra }
+      body: { title, status: 'draft', content: state.content, extra: state.content }
     })
     toast.add({ title: 'Saved draft' })
     await refreshDoc()
@@ -105,19 +94,16 @@ async function saveDraft() {
 
 async function publish() {
   if (!isDirty.value && doc.value?.status !== 'draft') return
-  if (titleRequired.value && !state.title.trim()) {
-    toast.add({ title: 'Title is required', color: 'error' })
-    return
-  }
   if (!(await contentFormRef.value?.validate?.())) {
     toast.add({ title: 'Fix validation errors', color: 'error' })
     return
   }
   publishing.value = true
   try {
+    const title = typeof state.content.title === 'string' ? state.content.title.trim() : ''
     await $fetch(`/api/content/${schemaKey.value}/${id.value}`, {
       method: 'PUT',
-      body: { title: state.title, status: 'published', extra: state.extra }
+      body: { title, status: 'published', content: state.content, extra: state.content }
     })
     toast.add({ title: 'Published' })
     await navigateTo(`/_desk/content/${schemaKey.value}`)
@@ -154,7 +140,7 @@ async function remove() {
   <UDashboardPanel id="desk-content-edit">
     <template #header>
       <DeskNavbar
-        :title="doc?.title || doc?.id || id"
+        :title="doc?.content?.title || doc?.title || doc?.id || id"
       >
         <template #title>
           <div class="flex flex-col min-w-0">
@@ -200,11 +186,7 @@ async function remove() {
     <template #body>
       <UCard v-if="schema?.registry" class="shrink-0">
         <div class="flex flex-col gap-4">
-          <UFormField label="Title" class="w-full" :required="titleRequired">
-            <UInput v-model="state.title" placeholder="Optional title" class="w-full" />
-          </UFormField>
-
-          <CmsContentForm ref="contentFormRef" :schema="schema" :model="state.extra" />
+          <CmsContentForm ref="contentFormRef" :schema="schema" :model="state.content" />
         </div>
       </UCard>
     </template>

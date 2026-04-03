@@ -3,8 +3,9 @@ import type { MaybeRef } from 'vue'
 import { convertJsonSchemaToZod } from 'zod-from-json-schema'
 import type { HalopressItem } from './useHalopressQuery'
 
-export type HalopressContent<TExtra = Record<string, unknown>> = HalopressItem & {
-  extra: TExtra
+export type HalopressContent<TContent = Record<string, unknown>> = HalopressItem & {
+  content: TContent
+  extra?: TContent
 }
 
 export type HalopressSurroundings = {
@@ -18,7 +19,7 @@ export type HalopressContentOptions = {
   status?: MaybeRef<string>
 }
 
-type HalopressContentResponse<TExtra = Record<string, unknown>> = HalopressContent<TExtra> & {
+type HalopressContentResponse<TContent = Record<string, unknown>> = HalopressContent<TContent> & {
   surroundings?: HalopressSurroundings
 }
 
@@ -70,16 +71,25 @@ export async function useHalopressContent(schemaOrPath: MaybeRef<string>, option
     if (!data.value) return null
     const { surroundings: _surroundings, ...base } = data.value
     if (!base) return null
+    const rawContent = (base as any).content ?? (base as any).extra ?? {}
     const zodSchema = schemaZod.value
     if (!zodSchema) return base
-    const result = zodSchema.safeParse(base.extra)
+    const result = zodSchema.safeParse(rawContent)
     if (result.success) {
-      return { ...base, extra: result.data }
+      return {
+        ...base,
+        content: result.data,
+        extra: result.data
+      }
     }
     if (import.meta.dev) {
-      console.warn(`[halopress] Content extra failed schema validation for ${schemaKey.value}/${contentId.value}`, result.error)
+      console.warn(`[halopress] Content payload failed schema validation for ${schemaKey.value}/${contentId.value}`, result.error)
     }
-    return base
+    return {
+      ...base,
+      content: rawContent,
+      extra: rawContent
+    }
   })
 
   const surroundings = computed(() => data.value?.surroundings ?? { prev: null, next: null })
