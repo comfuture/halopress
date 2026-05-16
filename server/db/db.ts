@@ -43,6 +43,9 @@ export async function getDb(event?: H3Event): Promise<Db> {
     const { drizzle } = await import('drizzle-orm/d1')
     return drizzle(d1, { schema: tables }) as unknown as Db
   }
+  if (cf) {
+    throw new Error('Missing Cloudflare D1 binding: DB')
+  }
 
   // Local dev path: Node 22 built-in SQLite (node:sqlite) via drizzle sqlite-proxy.
   const sqlite = await getLocalDb()
