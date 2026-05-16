@@ -185,6 +185,7 @@ export default defineEventHandler(async (event) => {
             contentId: row.id,
             schemaKey: row.schemaKey,
             schemaVersion: row.schemaVersion,
+            status: row.status,
             createdAt: row.createdAt,
             updatedAt: nextUpdatedAt
           })

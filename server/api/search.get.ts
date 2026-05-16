@@ -1,14 +1,11 @@
 import { getQuery } from 'h3'
-import { and, asc, desc, eq, gte, inArray, lt, lte } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, inArray, lt, lte, sql, type SQL, type SQLWrapper } from 'drizzle-orm'
 
 import type { FieldKind } from '../cms/types'
 import { getDb } from '../db/db'
-import { content as contentTable, contentListing as contentListingTable, searchConfig } from '../db/schema'
-import { parseContentJson } from '../cms/content-json'
+import { contentListing as contentListingTable, contentSearchData, searchConfig } from '../db/schema'
 import {
-  buildSearchDataRecord,
   coerceSearchValue,
-  jsonValueExpression,
   searchDataTypeForKind
 } from '../cms/search-helpers'
 import { badRequest } from '../utils/http'
@@ -51,6 +48,42 @@ function ensureArray(value: unknown) {
   return [value]
 }
 
+function sqlValueList(values: Array<string | number>) {
+  return sql.join(values.map(value => sql`${value}`), sql`, `)
+}
+
+function searchColumnForDataType(dataType: string) {
+  return dataType === 'text' ? sql.raw('csd.text') : sql.raw('csd.value')
+}
+
+function searchMatchCondition(args: {
+  contentIdColumn: SQLWrapper
+  fieldId: string
+  dataType: string
+  condition: SQL | undefined
+}) {
+  return sql`exists (
+    select 1
+    from content_search_data csd
+    where csd.content_id = ${args.contentIdColumn}
+      and csd.field_id = ${args.fieldId}
+      and csd.data_type = ${args.dataType}
+      and ${args.condition}
+  )`
+}
+
+function searchSortExpression(fieldId: string, dataType: string) {
+  const column = searchColumnForDataType(dataType)
+  return sql`(
+    select ${column}
+    from content_search_data csd
+    where csd.content_id = ${contentListingTable.contentId}
+      and csd.field_id = ${fieldId}
+      and csd.data_type = ${dataType}
+    limit 1
+  )`
+}
+
 export default defineEventHandler(async (event) => {
   const q = getQuery(event)
   const schemaKey = typeof q.schemaKey === 'string' ? q.schemaKey : null
@@ -83,9 +116,9 @@ export default defineEventHandler(async (event) => {
 
   const fieldByKey = new Map(fieldRows.map(row => [row.fieldKey, row]))
 
-  const whereParts = [eq(contentTable.schemaKey, schemaKey)] as any[]
-  if (status) whereParts.push(eq(contentTable.status, status))
-  if (cursor && !sortKey) whereParts.push(lt(contentTable.updatedAt, cursor))
+  const whereParts = [eq(contentListingTable.schemaKey, schemaKey)] as any[]
+  if (status) whereParts.push(eq(contentListingTable.status, status))
+  if (cursor && !sortKey) whereParts.push(lt(contentListingTable.updatedAt, cursor))
 
   for (const filter of filters) {
     if (!filter?.field || typeof filter.field !== 'string') throw badRequest('Filter field required')
@@ -101,19 +134,27 @@ export default defineEventHandler(async (event) => {
     if (!op || op === 'off') throw badRequest(`Search mode disabled: ${filter.field}`)
     if (op === 'range' && dataType === 'text') throw badRequest(`Range not supported: ${filter.field}`)
 
-    const expr = jsonValueExpression(contentTable.contentJson, config.fieldKey, kind)
-
     if (dataType === 'text') {
       if (op === 'exact') {
         const value = coerceSearchValue({ kind, enumValues: [] } as any, filter.value)
         if (value == null) throw badRequest(`Invalid value: ${filter.field}`)
-        whereParts.push(eq(expr, value as string))
+        whereParts.push(searchMatchCondition({
+          contentIdColumn: contentListingTable.contentId,
+          fieldId: config.fieldId,
+          dataType,
+          condition: sql`${searchColumnForDataType(dataType)} = ${value as string}`
+        }))
       } else if (op === 'exact_set') {
         const values = ensureArray(filter.values ?? filter.value)
           .map(v => coerceSearchValue({ kind, enumValues: [] } as any, v))
           .filter((value): value is string => typeof value === 'string')
         if (!values.length) throw badRequest(`Invalid values: ${filter.field}`)
-        whereParts.push(inArray(expr, values))
+        whereParts.push(searchMatchCondition({
+          contentIdColumn: contentListingTable.contentId,
+          fieldId: config.fieldId,
+          dataType,
+          condition: sql`${searchColumnForDataType(dataType)} in (${sqlValueList(values)})`
+        }))
       } else {
         throw badRequest(`Unsupported filter: ${filter.field}`)
       }
@@ -123,7 +164,12 @@ export default defineEventHandler(async (event) => {
     if (op === 'exact') {
       const value = coerceSearchValue({ kind } as any, filter.value)
       if (typeof value !== 'number') throw badRequest(`Invalid value: ${filter.field}`)
-      whereParts.push(eq(expr, value))
+      whereParts.push(searchMatchCondition({
+        contentIdColumn: contentListingTable.contentId,
+        fieldId: config.fieldId,
+        dataType,
+        condition: sql`${searchColumnForDataType(dataType)} = ${value}`
+      }))
       continue
     }
 
@@ -132,7 +178,12 @@ export default defineEventHandler(async (event) => {
         .map(v => coerceSearchValue({ kind } as any, v))
         .filter((value): value is number => typeof value === 'number')
       if (!values.length) throw badRequest(`Invalid values: ${filter.field}`)
-      whereParts.push(inArray(expr, values))
+      whereParts.push(searchMatchCondition({
+        contentIdColumn: contentListingTable.contentId,
+        fieldId: config.fieldId,
+        dataType,
+        condition: sql`${searchColumnForDataType(dataType)} in (${sqlValueList(values)})`
+      }))
       continue
     }
 
@@ -142,8 +193,15 @@ export default defineEventHandler(async (event) => {
       if (typeof min !== 'number' && typeof max !== 'number') {
         throw badRequest(`Range requires min or max: ${filter.field}`)
       }
-      if (typeof min === 'number') whereParts.push(gte(expr, min))
-      if (typeof max === 'number') whereParts.push(lte(expr, max))
+      const rangeParts = [] as any[]
+      if (typeof min === 'number') rangeParts.push(gte(sql.raw('csd.value'), min))
+      if (typeof max === 'number') rangeParts.push(lte(sql.raw('csd.value'), max))
+      whereParts.push(searchMatchCondition({
+        contentIdColumn: contentListingTable.contentId,
+        fieldId: config.fieldId,
+        dataType,
+        condition: and(...rangeParts)
+      }))
       continue
     }
 
@@ -152,19 +210,17 @@ export default defineEventHandler(async (event) => {
 
   let query = db
     .select({
-      id: contentTable.id,
-      schemaKey: contentTable.schemaKey,
-      schemaVersion: contentTable.schemaVersion,
+      id: contentListingTable.contentId,
+      schemaKey: contentListingTable.schemaKey,
+      schemaVersion: contentListingTable.schemaVersion,
       title: contentListingTable.title,
       description: contentListingTable.description,
       image: contentListingTable.image,
-      status: contentTable.status,
-      createdAt: contentTable.createdAt,
-      updatedAt: contentTable.updatedAt,
-      contentJson: contentTable.contentJson
+      status: contentListingTable.status,
+      createdAt: contentListingTable.createdAt,
+      updatedAt: contentListingTable.updatedAt
     })
-    .from(contentTable)
-    .leftJoin(contentListingTable, eq(contentListingTable.contentId, contentTable.id))
+    .from(contentListingTable)
     .where(and(...whereParts))
     .limit(limit)
 
@@ -173,14 +229,16 @@ export default defineEventHandler(async (event) => {
     if (!config) throw badRequest(`Unknown sort field: ${sortKey}`)
     if (!config.sortable) throw badRequest(`Field not sortable: ${sortKey}`)
 
-    const sortExpr = jsonValueExpression(contentTable.contentJson, config.fieldKey, config.kind as FieldKind)
+    const dataType = searchDataTypeForKind(config.kind as FieldKind)
+    if (!dataType) throw badRequest(`Unsupported sort field: ${sortKey}`)
+    const sortExpr = searchSortExpression(config.fieldId, dataType)
     query = query.orderBy(
       sortDir === 'desc' ? desc(sortExpr) : asc(sortExpr),
-      desc(contentTable.updatedAt),
-      desc(contentTable.id)
+      desc(contentListingTable.updatedAt),
+      desc(contentListingTable.contentId)
     )
   } else {
-    query = query.orderBy(desc(contentTable.updatedAt), desc(contentTable.id))
+    query = query.orderBy(desc(contentListingTable.updatedAt), desc(contentListingTable.contentId))
   }
 
   const rows = await query
@@ -192,8 +250,35 @@ export default defineEventHandler(async (event) => {
     .map(fieldKey => fieldByKey.get(String(fieldKey)))
     .filter((field): field is ContentFieldRow => Boolean(field))
 
+  const searchDataByContentId = new Map<string, Record<string, string | number | null>>()
+  if (rows.length && fieldConfigs.length) {
+    const contentIds = rows.map((row: (typeof rows)[number]) => row.id)
+    const fieldIds = fieldConfigs.map(field => field.fieldId)
+    const fieldKeyById = new Map(fieldConfigs.map(field => [field.fieldId, field.fieldKey]))
+    const searchRows = await db
+      .select({
+        contentId: contentSearchData.contentId,
+        fieldId: contentSearchData.fieldId,
+        dataType: contentSearchData.dataType,
+        text: contentSearchData.text,
+        value: contentSearchData.value
+      })
+      .from(contentSearchData)
+      .where(and(
+        inArray(contentSearchData.contentId, contentIds),
+        inArray(contentSearchData.fieldId, fieldIds)
+      ))
+
+    for (const row of searchRows) {
+      const fieldKey = fieldKeyById.get(row.fieldId)
+      if (!fieldKey) continue
+      const record = searchDataByContentId.get(row.contentId) ?? {}
+      record[fieldKey] = row.dataType === 'text' ? row.text : row.value
+      searchDataByContentId.set(row.contentId, record)
+    }
+  }
+
   const items = rows.map((row: (typeof rows)[number]) => {
-    const content = fieldConfigs.length ? parseContentJson(row.contentJson) : null
     const item = {
       id: row.id,
       schemaKey: row.schemaKey,
@@ -206,17 +291,11 @@ export default defineEventHandler(async (event) => {
       updatedAt: row.updatedAt
     }
 
-    if (!content) return item
+    if (!fieldConfigs.length) return item
 
     return {
       ...item,
-      searchData: buildSearchDataRecord(
-        fieldConfigs.map(field => ({
-          key: field.fieldKey,
-          kind: field.kind as any
-        })),
-        content
-      )
+      searchData: searchDataByContentId.get(row.id) ?? {}
     }
   })
 

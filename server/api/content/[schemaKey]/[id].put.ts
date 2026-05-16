@@ -9,6 +9,8 @@ import { content as contentTable } from '../../../db/schema'
 import { getActiveSchema } from '../../../cms/repo'
 import { syncContentRefs } from '../../../cms/ref-sync'
 import { upsertContentListingSnapshot } from '../../../cms/content-listing'
+import { upsertContentSearchData } from '../../../cms/search-index'
+import { validateContentJson } from '../../../cms/content-validation'
 import { replaceBase64ImagesInContent } from '../../../utils/asset-data-url'
 import { queueWidgetCacheInvalidation } from '../../../utils/widget-cache'
 import { requireSchemaPermission } from '../../../utils/schema-permission'
@@ -35,8 +37,9 @@ export default defineEventHandler(async (event) => {
 
   const now = new Date()
   const status = body?.status ?? existing.status
-  const content = body?.content ?? parseContentJson(existing.contentJson)
-  if (typeof content !== 'object' || Array.isArray(content) || !content) throw badRequest('Invalid content')
+  const contentInput = body?.content ?? parseContentJson(existing.contentJson)
+  if (typeof contentInput !== 'object' || Array.isArray(contentInput) || !contentInput) throw badRequest('Invalid content')
+  const content = validateContentJson(active.jsonSchema, contentInput)
 
   await db.transaction(async (tx: any) => {
     await replaceBase64ImagesInContent({ event, db: tx, createdBy: actorId, content })
@@ -59,8 +62,15 @@ export default defineEventHandler(async (event) => {
       contentId: id,
       schemaKey,
       schemaVersion: active.version,
+      status,
       createdAt: existing.createdAt,
       updatedAt: now
+    })
+    await upsertContentSearchData({
+      db: tx,
+      contentId: id,
+      registry,
+      content
     })
   })
 

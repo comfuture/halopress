@@ -1,15 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { SQLiteSyncDialect } from 'drizzle-orm/sqlite-core'
 import {
   buildSearchDataRecord,
   coerceSearchValue,
-  jsonPathForFieldKey,
-  jsonValueExpression,
   normalizeSearchConfig,
   normalizeSearchMode,
   searchDataTypeForKind
 } from '../server/cms/search-helpers'
-import { content as contentTable } from '../server/db/schema'
 
 describe('searchDataTypeForKind', () => {
   it('maps field kinds to supported query data types', () => {
@@ -26,25 +22,6 @@ describe('normalizeSearchMode', () => {
     expect(normalizeSearchMode('number', 'exact')).toBe('exact')
     expect(normalizeSearchMode('number', 'exact_set')).toBe('off')
     expect(normalizeSearchMode('richtext', 'exact')).toBe('off')
-  })
-})
-
-describe('jsonPathForFieldKey', () => {
-  it('escapes field keys for sqlite json paths', () => {
-    expect(jsonPathForFieldKey('title')).toBe('$."title"')
-    expect(jsonPathForFieldKey('hero"image')).toBe('$."hero\\"image"')
-  })
-})
-
-describe('jsonValueExpression', () => {
-  it('normalizes numeric json timestamps for date queries', () => {
-    const dialect = new SQLiteSyncDialect()
-    const query = dialect.sqlToQuery(jsonValueExpression(contentTable.contentJson, 'publishedAt', 'datetime'))
-
-    expect(query.sql).toContain('json_type(')
-    expect(query.sql).toContain('IN (\'integer\', \'real\')')
-    expect(query.sql).toContain('CAST(json_extract(')
-    expect(query.sql).toContain('unixepoch(json_extract(')
   })
 })
 

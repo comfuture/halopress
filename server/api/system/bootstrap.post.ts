@@ -7,6 +7,7 @@ import { newId } from '../../utils/ids'
 import { upsertContentListingSnapshot } from '../../cms/content-listing'
 import { ensureAnonymousSchemaRole } from '../../utils/install'
 import { syncSearchConfig } from '../../cms/search-config'
+import { upsertContentSearchData } from '../../cms/search-index'
 
 export default defineEventHandler(async (event) => {
   const session = await requireAdmin(event)
@@ -78,8 +79,15 @@ export default defineEventHandler(async (event) => {
     contentId: id,
     schemaKey: ast.schemaKey,
     schemaVersion: 1,
+    status: 'published',
     createdAt: now,
     updatedAt: now
+  })
+  await upsertContentSearchData({
+    db,
+    contentId: id,
+    registry: compiled.registry,
+    content: bootstrapContent
   })
 
   return { ok: true, schemaKey: ast.schemaKey }

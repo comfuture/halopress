@@ -2,7 +2,7 @@ import { and, asc, desc, eq } from 'drizzle-orm'
 import { getQuery, setHeader } from 'h3'
 
 import { getDb } from '../../db/db'
-import { content as contentTable, contentListing as contentListingTable } from '../../db/schema'
+import { contentListing as contentListingTable } from '../../db/schema'
 import { badRequest } from '../../utils/http'
 import { applyWidgetCacheHeaders, resolveWidgetCacheKey, withWidgetCache } from '../../utils/widget-cache'
 
@@ -36,7 +36,7 @@ export default defineEventHandler(async (event) => {
   const { data, status: cacheStatus, backend } = await withWidgetCache(event, cacheKey, POLICY, async () => {
     const db = await getDb(event)
     const whereParts = [eq(contentListingTable.schemaKey, schemaKey)] as any[]
-    if (status && status !== 'all') whereParts.push(eq(contentTable.status, status))
+    if (status && status !== 'all') whereParts.push(eq(contentListingTable.status, status))
 
     const orderField = sortField === 'updatedAt' ? contentListingTable.updatedAt : contentListingTable.createdAt
     const orderTie = sortDesc ? desc(contentListingTable.contentId) : asc(contentListingTable.contentId)
@@ -50,12 +50,11 @@ export default defineEventHandler(async (event) => {
         title: contentListingTable.title,
         description: contentListingTable.description,
         image: contentListingTable.image,
-        status: contentTable.status,
+        status: contentListingTable.status,
         createdAt: contentListingTable.createdAt,
         updatedAt: contentListingTable.updatedAt
       })
       .from(contentListingTable)
-      .innerJoin(contentTable, eq(contentTable.id, contentListingTable.contentId))
       .where(and(...whereParts))
       .orderBy(orderPrimary, orderTie)
       .limit(limit)

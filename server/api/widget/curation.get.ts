@@ -1,10 +1,9 @@
 import { and, asc, desc, eq, inArray } from 'drizzle-orm'
 import { getQuery, setHeader } from 'h3'
 
-import type { FieldKind } from '../../cms/types'
 import { getDb } from '../../db/db'
-import { content as contentTable, contentListing as contentListingTable, contentRefList, searchConfig } from '../../db/schema'
-import { coerceSearchValue, jsonValueExpression, searchDataTypeForKind } from '../../cms/search-helpers'
+import { contentListing as contentListingTable, contentRefList, contentSearchData, searchConfig } from '../../db/schema'
+import { coerceSearchValue, searchDataTypeForKind } from '../../cms/search-helpers'
 import { badRequest } from '../../utils/http'
 import { applyWidgetCacheHeaders, resolveWidgetCacheKey, withWidgetCache } from '../../utils/widget-cache'
 
@@ -84,7 +83,7 @@ export default defineEventHandler(async (event) => {
         eq(contentListingTable.schemaKey, schemaKey),
         inArray(contentListingTable.contentId, orderedIds)
       ] as any[]
-      if (whereStatus) whereParts.push(eq(contentTable.status, status))
+      if (whereStatus) whereParts.push(eq(contentListingTable.status, status))
 
       const items = await db
         .select({
@@ -94,12 +93,11 @@ export default defineEventHandler(async (event) => {
           title: contentListingTable.title,
           description: contentListingTable.description,
           image: contentListingTable.image,
-          status: contentTable.status,
+          status: contentListingTable.status,
           createdAt: contentListingTable.createdAt,
           updatedAt: contentListingTable.updatedAt
         })
         .from(contentListingTable)
-        .innerJoin(contentTable, eq(contentTable.id, contentListingTable.contentId))
         .where(and(...whereParts)) as ContentItem[]
 
       const byId = new Map(items.map(item => [item.id, item]))
@@ -112,6 +110,7 @@ export default defineEventHandler(async (event) => {
 
     const field = await db
       .select({
+        fieldId: searchConfig.fieldId,
         fieldKey: searchConfig.fieldKey,
         kind: searchConfig.kind
       })
@@ -127,7 +126,6 @@ export default defineEventHandler(async (event) => {
     const dataType = searchDataTypeForKind(field.kind as any)
     if (!dataType) return []
 
-    const expr = jsonValueExpression(contentTable.contentJson, field.fieldKey, field.kind as FieldKind)
     const coercedValues = values
       .map(value => coerceSearchValue({ kind: field.kind as any, enumValues: [] } as any, value))
       .filter((value): value is string | number => typeof value === 'string' || typeof value === 'number')
@@ -135,10 +133,14 @@ export default defineEventHandler(async (event) => {
 
     const whereParts = [
       eq(contentListingTable.schemaKey, schemaKey),
-      inArray(expr, coercedValues),
-      eq(contentListingTable.contentId, contentTable.id)
+      eq(contentSearchData.fieldId, field.fieldId),
+      eq(contentSearchData.dataType, dataType),
+      eq(contentSearchData.contentId, contentListingTable.contentId),
+      dataType === 'text'
+        ? inArray(contentSearchData.text, coercedValues as string[])
+        : inArray(contentSearchData.value, coercedValues as number[])
     ] as any[]
-    if (whereStatus) whereParts.push(eq(contentTable.status, status))
+    if (whereStatus) whereParts.push(eq(contentListingTable.status, status))
 
     const items = await db
       .select({
@@ -148,12 +150,12 @@ export default defineEventHandler(async (event) => {
         title: contentListingTable.title,
         description: contentListingTable.description,
         image: contentListingTable.image,
-        status: contentTable.status,
+        status: contentListingTable.status,
         createdAt: contentListingTable.createdAt,
         updatedAt: contentListingTable.updatedAt
       })
       .from(contentListingTable)
-      .innerJoin(contentTable, eq(contentTable.id, contentListingTable.contentId))
+      .innerJoin(contentSearchData, eq(contentSearchData.contentId, contentListingTable.contentId))
       .where(and(...whereParts))
       .orderBy(desc(contentListingTable.updatedAt), desc(contentListingTable.contentId))
       .limit(limit) as ContentItem[]

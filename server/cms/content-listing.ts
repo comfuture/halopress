@@ -12,10 +12,11 @@ export function buildContentListingSnapshot(args: {
   contentId: string
   schemaKey: string
   schemaVersion: number
+  status: string
   createdAt: Date
   updatedAt: Date
 }) {
-  const { registry, content, contentId, schemaKey, schemaVersion, createdAt, updatedAt } = args
+  const { registry, content, contentId, schemaKey, schemaVersion, status, createdAt, updatedAt } = args
   const listing = buildListingProjection({ registry, content })
 
   return {
@@ -25,6 +26,7 @@ export function buildContentListingSnapshot(args: {
     title: listing.title,
     description: listing.description,
     image: listing.image,
+    status,
     createdAt,
     updatedAt
   }
@@ -37,6 +39,7 @@ export async function upsertContentListingSnapshot(args: {
   contentId: string
   schemaKey: string
   schemaVersion: number
+  status: string
   createdAt: Date
   updatedAt: Date
 }) {
@@ -52,6 +55,7 @@ export async function upsertContentListingSnapshot(args: {
         title: snapshot.title,
         description: snapshot.description,
         image: snapshot.image,
+        status: snapshot.status,
         createdAt: snapshot.createdAt,
         updatedAt: snapshot.updatedAt
       }
@@ -79,6 +83,7 @@ export async function syncContentListing(args: {
         id: contentTable.id,
         schemaKey: contentTable.schemaKey,
         schemaVersion: contentTable.schemaVersion,
+        status: contentTable.status,
         contentJson: contentTable.contentJson,
         createdAt: contentTable.createdAt,
         updatedAt: contentTable.updatedAt
@@ -90,6 +95,7 @@ export async function syncContentListing(args: {
         id: contentTable.id,
         schemaKey: contentTable.schemaKey,
         schemaVersion: contentTable.schemaVersion,
+        status: contentTable.status,
         contentJson: contentTable.contentJson,
         createdAt: contentTable.createdAt,
         updatedAt: contentTable.updatedAt
@@ -125,6 +131,7 @@ export async function syncContentListing(args: {
         contentId: row.id,
         schemaKey: row.schemaKey,
         schemaVersion: row.schemaVersion,
+        status: row.status,
         createdAt,
         updatedAt
       })

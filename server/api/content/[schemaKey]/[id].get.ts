@@ -39,6 +39,7 @@ export default defineEventHandler(async (event) => {
       title: contentListingTable.title,
       description: contentListingTable.description,
       image: contentListingTable.image,
+      status: contentListingTable.status,
       createdAt: contentListingTable.createdAt,
       updatedAt: contentListingTable.updatedAt
     })
@@ -54,6 +55,7 @@ export default defineEventHandler(async (event) => {
       contentId: row.id,
       schemaKey: row.schemaKey,
       schemaVersion: row.schemaVersion,
+      status: row.status,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt
     })
@@ -72,7 +74,7 @@ export default defineEventHandler(async (event) => {
       eq(contentListingTable.schemaKey, schemaKey)
     ] as any[]
     if (status !== 'all') {
-      whereParts.push(eq(contentTable.status, status))
+      whereParts.push(eq(contentListingTable.status, status))
     }
 
     const prevCondition = order === 'asc'
@@ -103,12 +105,11 @@ export default defineEventHandler(async (event) => {
         title: contentListingTable.title,
         description: contentListingTable.description,
         image: contentListingTable.image,
-        status: contentTable.status,
+        status: contentListingTable.status,
         createdAt: contentListingTable.createdAt,
         updatedAt: contentListingTable.updatedAt
       })
       .from(contentListingTable)
-      .innerJoin(contentTable, eq(contentTable.id, contentListingTable.contentId))
       .where(and(...whereParts, prevCondition))
       .orderBy(
         order === 'asc' ? desc(contentListingTable.updatedAt) : asc(contentListingTable.updatedAt),
@@ -124,12 +125,11 @@ export default defineEventHandler(async (event) => {
         title: contentListingTable.title,
         description: contentListingTable.description,
         image: contentListingTable.image,
-        status: contentTable.status,
+        status: contentListingTable.status,
         createdAt: contentListingTable.createdAt,
         updatedAt: contentListingTable.updatedAt
       })
       .from(contentListingTable)
-      .innerJoin(contentTable, eq(contentTable.id, contentListingTable.contentId))
       .where(and(...whereParts, nextCondition))
       .orderBy(
         order === 'asc' ? asc(contentListingTable.updatedAt) : desc(contentListingTable.updatedAt),

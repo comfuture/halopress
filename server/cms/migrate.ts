@@ -5,6 +5,7 @@ import type { FieldKind, FieldNode, SchemaAst, SchemaRegistry } from './types'
 import { parseContentJson } from './content-json'
 import { syncContentRefs } from './ref-sync'
 import { upsertContentListingSnapshot } from './content-listing'
+import { upsertContentSearchData } from './search-index'
 
 export type KindChange = {
   fieldId: string
@@ -252,8 +253,15 @@ export async function migrateSchemaContent(args: {
       contentId: row.id,
       schemaKey,
       schemaVersion: nextVersion,
+      status: row.status,
       createdAt: row.createdAt,
       updatedAt: now
+    })
+    await upsertContentSearchData({
+      db,
+      contentId: row.id,
+      registry,
+      content
     })
     updated += 1
   }
