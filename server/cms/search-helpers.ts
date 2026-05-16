@@ -140,7 +140,10 @@ function toDateValueMs(value: unknown): number | null {
   if (typeof value === 'string') {
     const trimmed = value.trim()
     if (!trimmed) return null
-    const date = new Date(trimmed)
+    const numeric = Number(trimmed)
+    const date = Number.isFinite(numeric)
+      ? new Date(numeric)
+      : new Date(trimmed)
     return Number.isNaN(date.getTime()) ? null : date.getTime()
   }
   return null
