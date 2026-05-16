@@ -80,10 +80,9 @@ async function saveDraft() {
   }
   savingDraft.value = true
   try {
-    const title = typeof state.content.title === 'string' ? state.content.title.trim() : ''
     const res = await $fetch<{ id: string }>(`/api/content/${schemaKey.value}`, {
       method: 'POST',
-      body: { title, status: 'draft', content: state.content, extra: state.content }
+      body: { status: 'draft', content: state.content }
     })
     toast.add({ title: 'Created', description: res.id })
     await navigateTo(`/_desk/content/${schemaKey.value}/${res.id}`)
@@ -102,10 +101,9 @@ async function publish() {
   }
   publishing.value = true
   try {
-    const title = typeof state.content.title === 'string' ? state.content.title.trim() : ''
     await $fetch<{ id: string }>(`/api/content/${schemaKey.value}`, {
       method: 'POST',
-      body: { title, status: 'published', content: state.content, extra: state.content }
+      body: { status: 'published', content: state.content }
     })
     toast.add({ title: 'Published' })
     await navigateTo(`/_desk/content/${schemaKey.value}`)

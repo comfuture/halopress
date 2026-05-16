@@ -10,8 +10,8 @@
 - `content`를 `content_json` 단일 저장 구조로 단순화한다.
 - `title`을 일반 스키마 필드로 전환하고, 새 스키마에는 기본 필드로 노출한다.
 - 리스팅 캐시를 `content_listing`으로 재구성하고, `title`/`description`/`image` 매핑을 스키마에서 제어한다.
-- `content_search_data`를 제거하고 `content.content_json`에 대한 direct JSON query로 검색/필터/정렬을 수행한다.
-- `content_search_config`를 `search_config`로 이름 변경하고, 허용 필드 메타데이터만 유지한다.
+- `content_search_data`를 materialized search index로 유지하고, 검색/필터/정렬은 index table을 통해 수행한다.
+- `content_search_config`를 `search_config`로 이름 변경하되, stable `fieldId` 기준 설정을 유지한다.
 - 단계별 atomic commit을 유지하면서 `test`, `lint`, `typecheck` 검증을 통과시킨다.
 
 ## 비목표
@@ -40,10 +40,10 @@
   - `title`
   - `description`
   - `image`
+  - `status`
   - `created_at`
   - `updated_at`
-- `content_listing`은 `content_json`이나 `status`를 저장하지 않는다.
-- status 필터링은 `content` 테이블과 join해서 처리한다.
+- `content_listing`은 `content_json`은 저장하지 않지만, 목록/위젯 필터 최적화를 위해 `status`는 projection으로 복제한다.
 
 ### Listing 설정
 - schema AST/registry에 versioned `listing` 설정을 추가한다.
@@ -58,10 +58,10 @@
   - `image`: exact `image`/`thumbnail`/`cover`, then first `asset`
 
 ### Search
-- `content_search_data`는 완전히 제거한다.
 - `content_search_config`는 `search_config`로 rename한다.
-- `search_config`는 `(schemaKey, fieldKey)` 기준으로 `kind`, `searchMode`, `filterable`, `sortable`를 저장한다.
-- `/api/search` 및 Desk content list는 `json_extract(content.content_json, ...)` 기반으로 직접 조회한다.
+- `search_config`는 `(schemaKey, fieldId)` 기준으로 `fieldKey`, `kind`, `searchMode`, `filterable`, `sortable`를 저장한다.
+- `content_search_data`는 write-time materialized index로 유지한다.
+- `/api/search` 및 Desk content list는 `search_config` + `content_search_data` 기반으로 조회한다.
 - richtext는 search/filter/sort 대상에서 제외한다.
 
 ## 구현 단계
@@ -87,10 +87,10 @@
 - `content_listing` 도입
 - content create/update/delete, schema publish, asset replace/delete, install bootstrap 시 projection 동기화
 
-6. direct JSON search
-- `content_search_data` 제거
+6. materialized search index
+- `content_search_data` 유지
 - `search_config` rename 및 sync 유지
-- `/api/search`, Desk filters/sorts, curation widget direct JSON query 전환
+- `/api/search`, Desk filters/sorts, curation widget을 materialized search index 기반으로 전환
 
 7. destructive reset
 - local SQLite 삭제
@@ -132,7 +132,7 @@
 - [ ] desk content form/API payload를 `content`로 전환
 - [ ] `content_listing` 테이블 도입
 - [ ] listing projection sync 전면 수정
-- [ ] `content_search_data` 제거
+- [ ] `content_search_data` materialized index 유지
 - [ ] `search_config` rename
 - [ ] JSON direct query search 적용
 - [ ] local DB 및 migrations 초기화

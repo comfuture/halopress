@@ -3,6 +3,7 @@ import { compileSchemaAst } from '../cms/compiler'
 import { defaultArticleSchemaAst } from '../cms/defaults'
 import { upsertContentListingSnapshot } from '../cms/content-listing'
 import { syncSearchConfig } from '../cms/search-config'
+import { upsertContentSearchData } from '../cms/search-index'
 import { content, schema, schemaActive, schemaRole, user, userRole } from '../db/schema'
 import { newId } from './ids'
 import { hashPassword } from './password'
@@ -27,9 +28,7 @@ async function sha256Hex(text: string) {
 }
 
 async function loadMigrations(): Promise<Array<{ when: number; hash: string; statements: string[] }>> {
-  const glob = (import.meta as any).glob as undefined | ((pattern: string, opts: any) => Record<string, unknown>)
-
-  if (!glob) {
+  if (!(import.meta as any).glob) {
     const { readMigrationFiles } = await import('drizzle-orm/migrator')
     const { resolve } = await import('node:path')
     const migrations = readMigrationFiles({
@@ -42,7 +41,11 @@ async function loadMigrations(): Promise<Array<{ when: number; hash: string; sta
     }))
   }
 
-  const journalModules = glob('../db/migrations/meta/_journal.json', { as: 'raw', eager: true })
+  const journalModules = (import.meta as any).glob('../db/migrations/meta/_journal.json', {
+    query: '?raw',
+    import: 'default',
+    eager: true
+  })
   const journalRaw = Object.values(journalModules)[0] as string | undefined
   if (!journalRaw) throw new Error('Migration journal not found')
 
@@ -50,7 +53,11 @@ async function loadMigrations(): Promise<Array<{ when: number; hash: string; sta
     entries: Array<{ tag: string; when: number; breakpoints: boolean }>
   }
 
-  const sqlModules = glob('../db/migrations/*.sql', { as: 'raw', eager: true })
+  const sqlModules = (import.meta as any).glob('../db/migrations/*.sql', {
+    query: '?raw',
+    import: 'default',
+    eager: true
+  })
   const entries: Array<{ when: number; hash: string; statements: string[] }> = []
 
   for (const entry of journal.entries) {
@@ -227,8 +234,15 @@ export async function ensureBootstrapSchema(db: any, createdBy: string) {
     contentId: id,
     schemaKey: ast.schemaKey,
     schemaVersion: 1,
+    status: 'published',
     createdAt: now,
     updatedAt: now
+  })
+  await upsertContentSearchData({
+    db,
+    contentId: id,
+    registry: compiled.registry,
+    content: bootstrapContent
   })
 
   return ast.schemaKey

@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "a88bfdea-0539-4f3f-98d3-46862b8d302f",
+  "id": "c2671849-3287-4ae7-b8e4-118e3d789a4e",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "asset": {
@@ -235,6 +235,13 @@
           "notNull": false,
           "autoincrement": false
         },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "integer",
@@ -256,6 +263,24 @@
           "columns": [
             "schema_key",
             "updated_at"
+          ],
+          "isUnique": false
+        },
+        "idx_content_listing_status_updated": {
+          "name": "idx_content_listing_status_updated",
+          "columns": [
+            "schema_key",
+            "status",
+            "updated_at"
+          ],
+          "isUnique": false
+        },
+        "idx_content_listing_status_created": {
+          "name": "idx_content_listing_status_created",
+          "columns": [
+            "schema_key",
+            "status",
+            "created_at"
           ],
           "isUnique": false
         },
@@ -451,6 +476,80 @@
             "position"
           ],
           "name": "content_ref_list_owner_content_id_field_key_position_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "content_search_data": {
+      "name": "content_search_data",
+      "columns": {
+        "content_id": {
+          "name": "content_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "field_id": {
+          "name": "field_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "data_type": {
+          "name": "data_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "text": {
+          "name": "text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "value": {
+          "name": "value",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_filter_content_search_text": {
+          "name": "idx_filter_content_search_text",
+          "columns": [
+            "field_id",
+            "data_type",
+            "text",
+            "content_id"
+          ],
+          "isUnique": false
+        },
+        "idx_filter_content_search_value": {
+          "name": "idx_filter_content_search_value",
+          "columns": [
+            "field_id",
+            "data_type",
+            "value",
+            "content_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "content_search_data_content_id_field_id_pk": {
+          "columns": [
+            "content_id",
+            "field_id"
+          ],
+          "name": "content_search_data_content_id_field_id_pk"
         }
       },
       "uniqueConstraints": {},
@@ -813,6 +912,13 @@
           "notNull": true,
           "autoincrement": false
         },
+        "field_id": {
+          "name": "field_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
         "field_key": {
           "name": "field_key",
           "type": "text",
@@ -871,12 +977,12 @@
       },
       "foreignKeys": {},
       "compositePrimaryKeys": {
-        "search_config_schema_key_field_key_pk": {
+        "search_config_schema_key_field_id_pk": {
           "columns": [
             "schema_key",
-            "field_key"
+            "field_id"
           ],
-          "name": "search_config_schema_key_field_key_pk"
+          "name": "search_config_schema_key_field_id_pk"
         }
       },
       "uniqueConstraints": {},

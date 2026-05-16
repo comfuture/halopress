@@ -27,7 +27,8 @@ export default defineEventHandler(async (event) => {
       .where(eq(contentTable.id, id))
 
     await tx
-      .delete(contentListingTable)
+      .update(contentListingTable)
+      .set({ status: 'deleted', updatedAt: now })
       .where(eq(contentListingTable.contentId, id))
   })
 

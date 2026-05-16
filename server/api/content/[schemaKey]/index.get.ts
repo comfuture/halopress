@@ -20,7 +20,7 @@ export default defineEventHandler(async (event) => {
   const db = await getDb(event)
 
   const whereParts = [eq(contentTable.schemaKey, schemaKey)] as any[]
-  if (status) whereParts.push(eq(contentTable.status, status))
+  if (status) whereParts.push(eq(contentListingTable.status, status))
   if (cursor) {
     whereParts.push(order === 'asc'
       ? gt(contentTable.id, cursor)
@@ -37,7 +37,7 @@ export default defineEventHandler(async (event) => {
       title: contentListingTable.title,
       description: contentListingTable.description,
       image: contentListingTable.image,
-      status: contentTable.status,
+      status: contentListingTable.status,
       createdAt: contentTable.createdAt,
       updatedAt: contentTable.updatedAt,
       assetId: assetIdSubquery

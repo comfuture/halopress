@@ -5,8 +5,8 @@
     {
       "idx": 0,
       "version": "6",
-      "when": 1775197032747,
-      "tag": "0000_initial_content_json_structure",
+      "when": 1778918763131,
+      "tag": "0000_restore_materialized_search_index",
       "breakpoints": true
     }
   ]

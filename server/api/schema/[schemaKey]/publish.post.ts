@@ -6,6 +6,7 @@ import { syncContentListing } from '../../../cms/content-listing'
 import { getActiveSchema, getDraft } from '../../../cms/repo'
 import { getKindChanges, migrateSchemaContent } from '../../../cms/migrate'
 import { syncSearchConfig } from '../../../cms/search-config'
+import { syncSearchIndexForSchema } from '../../../cms/search-index'
 import { schema as schemaTable, schemaActive as schemaActiveTable } from '../../../db/schema'
 import { requireAdmin } from '../../../utils/auth'
 import { badRequest, notFound } from '../../../utils/http'
@@ -91,6 +92,7 @@ export default defineEventHandler(async (event) => {
   }
 
   await syncSearchConfig({ db, schemaKey, registry: compiled.registry })
+  const searchIndex = await syncSearchIndexForSchema({ db, schemaKey, registry: compiled.registry })
 
   if (listingChanged && !(body?.migrate && kindChanges.length)) {
     await syncContentListing({ db, schemaKey, onlyMissing: false })
@@ -100,5 +102,5 @@ export default defineEventHandler(async (event) => {
     queueWidgetCacheInvalidation(event, `schema:${schemaKey}`)
   }
 
-  return { ok: true, schemaKey, version: nextVersion, migrated, searchIndexed: 0 }
+  return { ok: true, schemaKey, version: nextVersion, migrated, searchIndexed: searchIndex.indexed }
 })

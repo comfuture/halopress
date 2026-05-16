@@ -34,6 +34,7 @@ CREATE TABLE `content_listing` (
 	`title` text,
 	`description` text,
 	`image` text,
+	`status` text NOT NULL,
 	`created_at` integer NOT NULL,
 	`updated_at` integer NOT NULL,
 	FOREIGN KEY (`content_id`) REFERENCES `content`(`id`) ON UPDATE no action ON DELETE no action,
@@ -41,6 +42,8 @@ CREATE TABLE `content_listing` (
 );
 --> statement-breakpoint
 CREATE INDEX `idx_content_listing_schema_updated` ON `content_listing` (`schema_key`,`updated_at`);--> statement-breakpoint
+CREATE INDEX `idx_content_listing_status_updated` ON `content_listing` (`schema_key`,`status`,`updated_at`);--> statement-breakpoint
+CREATE INDEX `idx_content_listing_status_created` ON `content_listing` (`schema_key`,`status`,`created_at`);--> statement-breakpoint
 CREATE INDEX `idx_content_listing_content` ON `content_listing` (`content_id`);--> statement-breakpoint
 CREATE TABLE `content_ref` (
 	`content_id` text NOT NULL,
@@ -66,6 +69,17 @@ CREATE TABLE `content_ref_list` (
 );
 --> statement-breakpoint
 CREATE INDEX `idx_content_ref_list_owner` ON `content_ref_list` (`owner_content_id`,`field_key`);--> statement-breakpoint
+CREATE TABLE `content_search_data` (
+	`content_id` text NOT NULL,
+	`field_id` text NOT NULL,
+	`data_type` text NOT NULL,
+	`text` text,
+	`value` real,
+	PRIMARY KEY(`content_id`, `field_id`)
+);
+--> statement-breakpoint
+CREATE INDEX `idx_filter_content_search_text` ON `content_search_data` (`field_id`,`data_type`,`text`,`content_id`);--> statement-breakpoint
+CREATE INDEX `idx_filter_content_search_value` ON `content_search_data` (`field_id`,`data_type`,`value`,`content_id`);--> statement-breakpoint
 CREATE TABLE `page` (
 	`id` text PRIMARY KEY NOT NULL,
 	`title` text,
@@ -123,12 +137,13 @@ CREATE INDEX `idx_schema_role_schema` ON `schema_role` (`schema_key`);--> statem
 CREATE INDEX `idx_schema_role_role` ON `schema_role` (`role_key`);--> statement-breakpoint
 CREATE TABLE `search_config` (
 	`schema_key` text NOT NULL,
+	`field_id` text NOT NULL,
 	`field_key` text NOT NULL,
 	`kind` text NOT NULL,
 	`search_mode` text DEFAULT 'off' NOT NULL,
 	`filterable` integer DEFAULT false NOT NULL,
 	`sortable` integer DEFAULT false NOT NULL,
-	PRIMARY KEY(`schema_key`, `field_key`)
+	PRIMARY KEY(`schema_key`, `field_id`)
 );
 --> statement-breakpoint
 CREATE INDEX `idx_search_config_schema` ON `search_config` (`schema_key`);--> statement-breakpoint
