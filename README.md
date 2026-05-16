@@ -82,36 +82,95 @@ pnpm db:push
 pnpm db:studio
 ```
 
-## Cloudflare D1 + Wrangler deployment
+## Cloudflare Workers deployment
 
-### 1) Create and configure `wrangler.toml`
+Halopress is configured to run as a Cloudflare Worker with:
 
-Update `wrangler.toml` with your real D1 database values:
+- D1 binding: `DB`
+- R2 binding: `ASSETS`
+- Static assets: `.output/public`
+- Worker entry: `.output/server/index.mjs`
 
-- `database_name`
-- `database_id`
-
-Environment variables should be set via Wrangler secrets:
-
-```bash
-npx wrangler secret put NUXT_AUTH_SECRET
-npx wrangler secret put NUXT_AUTH_ORIGIN
-```
-
-### 2) Apply D1 migrations (remote)
+### 1) Authenticate Wrangler
 
 ```bash
-pnpm db:d1:apply:remote -- <D1_DATABASE_NAME>
+pnpm wrangler login
 ```
 
-### 3) Deploy (build → migrate → deploy)
+### 2) Configure secrets
+
+Set runtime secrets in Cloudflare, not in `wrangler.toml`:
 
 ```bash
-pnpm deploy:cf -- <D1_DATABASE_NAME>
+pnpm wrangler secret put NUXT_AUTH_SECRET
+pnpm wrangler secret put NUXT_AUTH_ORIGIN
 ```
 
-This script runs:
+Optional OAuth secrets:
 
-1) `pnpm build`
-2) `wrangler d1 migrations apply --remote`
-3) `wrangler deploy`
+```bash
+pnpm wrangler secret put NUXT_SECRET_KEY
+pnpm wrangler secret put NUXT_OAUTH_GOOGLE_ENCRYPTION_KEY
+pnpm wrangler secret put NUXT_OAUTH_GOOGLE_CLIENT_ID
+pnpm wrangler secret put NUXT_OAUTH_GOOGLE_CLIENT_SECRET
+```
+
+### 3) Provision D1 and R2 bindings
+
+`wrangler.toml` intentionally declares `DB` and `ASSETS` without `database_id` or `bucket_name`. Wrangler can automatically provision D1 and R2 when deploying from the CLI:
+
+```bash
+pnpm deploy:cf
+```
+
+This runs:
+
+1. `pnpm build`
+2. `wrangler d1 migrations apply DB --remote`
+3. `wrangler deploy`
+
+After CLI provisioning, Wrangler writes the generated D1 database ID and R2 bucket name back to `wrangler.toml`.
+
+If you provision resources from the Cloudflare dashboard or a connected Git repository, Cloudflare creates the resources but does not write IDs back to the repository. In that case, copy the generated resource names/IDs into `wrangler.toml`:
+
+```toml
+[[d1_databases]]
+binding = "DB"
+database_name = "halopress"
+database_id = "<generated-d1-id>"
+migrations_dir = "server/db/migrations"
+
+[[r2_buckets]]
+binding = "ASSETS"
+bucket_name = "<generated-r2-bucket-name>"
+```
+
+### 4) Deploy from a connected Git branch
+
+Cloudflare Workers Builds runs a build command and then a deploy command. Configure the connected repository with:
+
+- Install command: `pnpm install --frozen-lockfile`
+- Build command: `pnpm build`
+- Deploy command: `HALOPRESS_SKIP_BUILD=1 pnpm deploy`
+
+With `HALOPRESS_SKIP_BUILD=1`, the deploy command reuses the build output and runs:
+
+```bash
+pnpm wrangler d1 migrations apply DB --remote
+HALOPRESS_SKIP_WRANGLER_BUILD=1 pnpm wrangler deploy
+```
+
+For local CLI deploys, `pnpm deploy` or `pnpm deploy:cf` builds the Nuxt Worker bundle first, then applies D1 migrations to the remote `DB` binding, and deploys the Worker. The install screen only seeds/admin-bootstraps the CMS on Cloudflare; schema migrations are owned by the deploy step.
+
+### 5) Manual migration commands
+
+```bash
+pnpm db:d1:list -- DB --remote
+pnpm db:d1:apply:remote -- DB
+```
+
+Use `HALOPRESS_D1_DATABASE` if you need a different D1 binding or database name:
+
+```bash
+HALOPRESS_D1_DATABASE=DB pnpm deploy:cf
+```
