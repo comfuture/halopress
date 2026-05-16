@@ -1,14 +1,22 @@
+"$schema" = "./node_modules/wrangler/config-schema.json"
 name = "halopress"
 main = ".output/server/index.mjs"
 compatibility_date = "2025-01-15"
 compatibility_flags = ["nodejs_compat"]
 
-[vars]
-# NUXT_AUTH_SECRET = "change-me"
-# NUXT_AUTH_ORIGIN = "https://yourdomain/api/auth"
+[build]
+command = "bash scripts/wrangler-build.sh"
+
+[assets]
+directory = ".output/public"
+
+[observability]
+enabled = true
 
 [[d1_databases]]
 binding = "DB"
 database_name = "halopress"
-database_id = "REPLACE_ME"
 migrations_dir = "server/db/migrations"
+
+[[r2_buckets]]
+binding = "ASSETS"
