@@ -4,26 +4,22 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-DB_NAME="${1:-}"
-if [ -z "$DB_NAME" ] && [ -f wrangler.toml ]; then
-  if command -v rg >/dev/null 2>&1; then
-    DB_NAME="$(rg -No 'database_name\\s*=\\s*\"([^\"]+)\"' -r '$1' wrangler.toml | head -n 1 || true)"
-  else
-    DB_NAME="$(grep -E 'database_name\\s*=\\s*\"[^\"]+\"' wrangler.toml | sed -E 's/.*\"([^\"]+)\".*/\\1/' | head -n 1 || true)"
-  fi
+D1_DATABASE="${HALOPRESS_D1_DATABASE:-DB}"
+
+if [ "$#" -gt 0 ] && [[ "$1" != -* ]]; then
+  D1_DATABASE="$1"
+  shift
 fi
 
-if [ -z "$DB_NAME" ]; then
-  echo "Usage: $0 <D1_DATABASE_NAME>" >&2
-  echo "Or set database_name in wrangler.toml." >&2
-  exit 1
+if [ "${HALOPRESS_SKIP_BUILD:-}" = "1" ]; then
+  echo "Skipping Nuxt build because HALOPRESS_SKIP_BUILD=1."
+else
+  echo "Building Nuxt output..."
+  pnpm build
 fi
 
-echo "Building Nuxt output..."
-pnpm build
-
-echo "Applying D1 migrations (remote) for ${DB_NAME}..."
-npx wrangler d1 migrations apply "${DB_NAME}" --remote
+echo "Applying D1 migrations (remote) for ${D1_DATABASE}..."
+pnpm wrangler d1 migrations apply "${D1_DATABASE}" --remote
 
 echo "Deploying worker..."
-npx wrangler deploy
+HALOPRESS_SKIP_WRANGLER_BUILD=1 pnpm wrangler deploy "$@"

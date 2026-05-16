@@ -16,10 +16,11 @@
     "db:studio": "drizzle-kit studio",
     "db:backfill:content-listing": "tsx scripts/backfill-content-listing.ts",
     "db:drop": "drizzle-kit drop",
-    "db:d1:list": "npx wrangler d1 migrations list",
-    "db:d1:apply": "npx wrangler d1 migrations apply",
-    "db:d1:apply:local": "npx wrangler d1 migrations apply --local",
-    "db:d1:apply:remote": "npx wrangler d1 migrations apply --remote",
+    "db:d1:list": "wrangler d1 migrations list",
+    "db:d1:apply": "wrangler d1 migrations apply",
+    "db:d1:apply:local": "wrangler d1 migrations apply --local",
+    "db:d1:apply:remote": "wrangler d1 migrations apply --remote",
+    "deploy": "bash scripts/deploy-cloudflare.sh",
     "deploy:cf": "bash scripts/deploy-cloudflare.sh"
   },
   "dependencies": {
@@ -63,6 +64,7 @@
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vitest": "^4.1.2",
+    "wrangler": "4.92.0",
     "vue-tsc": "^3.2.4"
   },
   "pnpm": {
