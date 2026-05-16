@@ -58,6 +58,7 @@ describe('coerceSearchValue', () => {
     expect(coerceSearchValue({ kind: 'boolean' }, true)).toBe(1)
     expect(coerceSearchValue({ kind: 'date' }, '2025-01-01')).toBeTypeOf('number')
     expect(coerceSearchValue({ kind: 'datetime' }, 1735689600000)).toBe(1735689600000)
+    expect(coerceSearchValue({ kind: 'datetime' }, '1735689600000')).toBe(1735689600000)
   })
 
   it('accepts only configured enum values', () => {
