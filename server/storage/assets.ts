@@ -16,7 +16,11 @@ function localPathForObjectKey(objectKey: string) {
 function getR2Bucket(event: H3Event) {
   const cf = (event as any).context?.cloudflare
   // Binding name: ASSETS (recommended). Fallback: R2.
-  return cf?.env?.ASSETS ?? cf?.env?.R2 ?? null
+  const bucket = cf?.env?.ASSETS ?? cf?.env?.R2 ?? null
+  if (cf && !bucket) {
+    throw new Error('Missing Cloudflare R2 binding: ASSETS')
+  }
+  return bucket
 }
 
 export async function putObject(event: H3Event, objectKey: string, bytes: Uint8Array, contentType: string) {

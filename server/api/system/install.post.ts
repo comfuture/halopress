@@ -1,4 +1,4 @@
-import { readBody } from 'h3'
+import { createError, readBody } from 'h3'
 import { getDb } from '../../db/db'
 import { badRequest, notFound, unauthorized } from '../../utils/http'
 import { getAdminUserByIdentifier, isAdminLoginAllowedDb } from '../../utils/auth'
@@ -52,7 +52,17 @@ export default defineEventHandler(async (event) => {
   const status = await getInstallStatus(db)
   if (status.ready) throw notFound()
 
-  await runMigrations(db)
+  const isCloudflareRuntime = Boolean((event as any).context?.cloudflare)
+  if (isCloudflareRuntime) {
+    if (status.missingTables?.length) {
+      throw createError({
+        statusCode: 500,
+        statusMessage: 'D1 migrations are not applied. Run pnpm deploy:cf or pnpm db:d1:apply:remote -- DB before installing.'
+      })
+    }
+  } else {
+    await runMigrations(db)
+  }
   await seedRoles(db, roles)
 
   await upsertSetting({
