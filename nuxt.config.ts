@@ -69,6 +69,16 @@ export default defineNuxtConfig({
     preset: 'cloudflare-module'
   },
 
+  hooks: {
+    'nitro:config'(nitroConfig) {
+      // Sidebase's production origin assertion runs at Worker startup without a request.
+      // On Cloudflare Workers the canonical origin is available from each request host.
+      nitroConfig.plugins = nitroConfig.plugins?.filter(
+        plugin => plugin && !plugin.includes('@sidebase/nuxt-auth/dist/runtime/server/plugins/assertOrigin')
+      )
+    }
+  },
+
   vite: {
     optimizeDeps: {
       include: [
@@ -96,6 +106,7 @@ export default defineNuxtConfig({
     baseURL: '/api/auth',
     provider: {
       type: 'authjs',
+      trustHost: true,
       defaultProvider: 'credentials',
       addDefaultCallbackUrl: true
     },

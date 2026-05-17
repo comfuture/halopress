@@ -108,6 +108,14 @@ pnpm wrangler secret put NUXT_AUTH_SECRET
 pnpm wrangler secret put NUXT_AUTH_ORIGIN
 ```
 
+The Cloudflare Worker infers the NuxtAuth origin from the incoming request host, so `NUXT_AUTH_ORIGIN` is optional for workers.dev or custom-domain deployments. Set it only when you need to force a specific auth base URL, including `/api/auth`, for example `https://cms.example.com/api/auth`.
+
+Use a strong random `NUXT_AUTH_SECRET`, for example:
+
+```bash
+openssl rand -hex 32
+```
+
 Optional OAuth secrets:
 
 ```bash
