@@ -91,6 +91,8 @@ Halopress is configured to run as a Cloudflare Worker with:
 - Static assets: `.output/public`
 - Worker entry: `.output/server/index.mjs`
 
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/comfuture/halopress)
+
 ### 1) Authenticate Wrangler
 
 ```bash
