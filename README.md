@@ -130,6 +130,7 @@ This runs:
 1. `pnpm build`
 2. `wrangler deploy`
 3. `wrangler d1 migrations apply DB --remote`
+4. `wrangler deploy`
 
 After CLI provisioning, Wrangler writes the generated D1 database ID and R2 bucket name back to `wrangler.toml`.
 
@@ -153,16 +154,20 @@ Cloudflare Workers Builds runs a build command and then a deploy command. Config
 
 - Install command: `pnpm install --frozen-lockfile`
 - Build command: `pnpm build`
-- Deploy command: `HALOPRESS_SKIP_BUILD=1 pnpm deploy`
+- Deploy command: `HALOPRESS_SKIP_BUILD=1 pnpm run deploy`
 
-With `HALOPRESS_SKIP_BUILD=1`, the deploy command reuses the build output and runs:
+After generated resource IDs are committed, `HALOPRESS_SKIP_BUILD=1` lets the deploy command reuse the build output and run:
 
 ```bash
-HALOPRESS_SKIP_WRANGLER_BUILD=1 pnpm wrangler deploy
 pnpm wrangler d1 migrations apply DB --remote
+HALOPRESS_SKIP_WRANGLER_BUILD=1 pnpm wrangler deploy
 ```
 
-For local CLI deploys, `pnpm deploy` or `pnpm deploy:cf` builds the Nuxt Worker bundle first, deploys the Worker to provision bindings, and then applies D1 migrations to the remote `DB` binding. The install screen only seeds/admin-bootstraps the CMS on Cloudflare; schema migrations are owned by the deploy step.
+When `wrangler.toml` already contains the generated `database_id`, `pnpm run deploy` applies D1 migrations before deploying the Worker so new code does not run against the old schema. For first-time CLI provisioning, the script deploys once to create the bindings, applies D1 migrations, and then redeploys the Worker.
+
+The deploy script forwards `--env`/`-e`, `--config`/`-c`, and `--env-file` to both `wrangler deploy` and `wrangler d1 migrations apply`. `--dry-run` only runs Wrangler's deploy dry run and skips D1 migrations.
+
+The install screen only seeds/admin-bootstraps the CMS on Cloudflare; schema migrations are owned by the deploy step.
 
 ### 5) Manual migration commands
 
