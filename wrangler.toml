@@ -19,4 +19,4 @@ database_name = "halopress"
 migrations_dir = "server/db/migrations"
 
 [[r2_buckets]]
-binding = "ASSETS"
+binding = "CONTENT_ASSETS"
