@@ -18,8 +18,8 @@ else
   pnpm build
 fi
 
+echo "Deploying worker and provisioning Cloudflare bindings..."
+HALOPRESS_SKIP_WRANGLER_BUILD=1 pnpm wrangler deploy "$@"
+
 echo "Applying D1 migrations (remote) for ${D1_DATABASE}..."
 pnpm wrangler d1 migrations apply "${D1_DATABASE}" --remote
-
-echo "Deploying worker..."
-HALOPRESS_SKIP_WRANGLER_BUILD=1 pnpm wrangler deploy "$@"

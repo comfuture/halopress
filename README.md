@@ -126,8 +126,8 @@ pnpm deploy:cf
 This runs:
 
 1. `pnpm build`
-2. `wrangler d1 migrations apply DB --remote`
-3. `wrangler deploy`
+2. `wrangler deploy`
+3. `wrangler d1 migrations apply DB --remote`
 
 After CLI provisioning, Wrangler writes the generated D1 database ID and R2 bucket name back to `wrangler.toml`.
 
@@ -156,11 +156,11 @@ Cloudflare Workers Builds runs a build command and then a deploy command. Config
 With `HALOPRESS_SKIP_BUILD=1`, the deploy command reuses the build output and runs:
 
 ```bash
-pnpm wrangler d1 migrations apply DB --remote
 HALOPRESS_SKIP_WRANGLER_BUILD=1 pnpm wrangler deploy
+pnpm wrangler d1 migrations apply DB --remote
 ```
 
-For local CLI deploys, `pnpm deploy` or `pnpm deploy:cf` builds the Nuxt Worker bundle first, then applies D1 migrations to the remote `DB` binding, and deploys the Worker. The install screen only seeds/admin-bootstraps the CMS on Cloudflare; schema migrations are owned by the deploy step.
+For local CLI deploys, `pnpm deploy` or `pnpm deploy:cf` builds the Nuxt Worker bundle first, deploys the Worker to provision bindings, and then applies D1 migrations to the remote `DB` binding. The install screen only seeds/admin-bootstraps the CMS on Cloudflare; schema migrations are owned by the deploy step.
 
 ### 5) Manual migration commands
 
