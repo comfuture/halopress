@@ -110,24 +110,38 @@ d1_config_value() {
   awk -v env="$ENV_NAME" -v target="$D1_DATABASE" -v field="$field" '
     function clean(value) {
       sub(/^[^=]*=/, "", value)
+      sub(/[[:space:]]+#.*$/, "", value)
       gsub(/^[[:space:]"\047]+|[[:space:]"\047]+$/, "", value)
       return value
     }
     function reset_block() {
       in_target = 0
+      scope = ""
       binding = ""
       database_name = ""
       database_id = ""
       migrations_dir = ""
     }
+    function field_value() {
+      if (field == "binding") return binding
+      if (field == "database_name") return database_name
+      if (field == "database_id") return database_id
+      if (field == "migrations_dir") return migrations_dir
+      return ""
+    }
     function emit_if_match() {
+      value = ""
       if (!in_target) return
       if (binding != target && database_name != target && target != "") return
-      if (field == "binding") print binding
-      else if (field == "database_name") print database_name
-      else if (field == "database_id") print database_id
-      else if (field == "migrations_dir") print migrations_dir
-      found = 1
+      value = field_value()
+      if (scope == "env" && value != "") {
+        print value
+        found = 1
+        exit
+      }
+      if (scope == "top" && top_value == "") {
+        top_value = value
+      }
     }
     BEGIN { reset_block() }
     /^[[:space:]]*\[\[/ {
@@ -135,10 +149,15 @@ d1_config_value() {
       if (found) exit
       header = $0
       gsub(/[[:space:]]/, "", header)
-      if (env != "") {
-        in_target = (header == "[[env." env ".d1_databases]]")
+      if (env != "" && header == "[[env." env ".d1_databases]]") {
+        in_target = 1
+        scope = "env"
+      } else if (header == "[[d1_databases]]") {
+        in_target = 1
+        scope = "top"
       } else {
-        in_target = (header == "[[d1_databases]]")
+        in_target = 0
+        scope = ""
       }
       binding = ""
       database_name = ""
@@ -164,6 +183,48 @@ d1_config_value() {
     }
     END {
       if (!found) emit_if_match()
+      if (!found && top_value != "") print top_value
+    }
+  ' "$CONFIG_PATH" | head -n 1
+}
+
+config_scalar_value() {
+  local field="$1"
+
+  if [ ! -f "$CONFIG_PATH" ]; then
+    echo "Wrangler config not found: ${CONFIG_PATH}" >&2
+    exit 1
+  fi
+
+  awk -v env="$ENV_NAME" -v field="$field" '
+    function clean(value) {
+      sub(/^[^=]*=/, "", value)
+      sub(/[[:space:]]+#.*$/, "", value)
+      gsub(/^[[:space:]"\047]+|[[:space:]"\047]+$/, "", value)
+      return value
+    }
+    BEGIN { scope = "top" }
+    /^[[:space:]]*\[/ {
+      header = $0
+      gsub(/[[:space:]]/, "", header)
+      if (env != "" && header == "[env." env "]") {
+        scope = "env"
+      } else {
+        scope = "other"
+      }
+      next
+    }
+    scope == "top" && $0 ~ "^[[:space:]]*" field "[[:space:]]*=" {
+      top_value = clean($0)
+      next
+    }
+    scope == "env" && $0 ~ "^[[:space:]]*" field "[[:space:]]*=" {
+      print clean($0)
+      found = 1
+      exit
+    }
+    END {
+      if (!found && top_value != "") print top_value
     }
   ' "$CONFIG_PATH" | head -n 1
 }
@@ -190,6 +251,8 @@ run_migrations_with_resolved_database_id() {
   local database_id
   local migrations_dir
   local compatibility_date
+  local worker_name
+  local worker_main
   local config_dir
   local temp_config
   local d1_header
@@ -209,15 +272,15 @@ run_migrations_with_resolved_database_id() {
   fi
 
   database_id="$(resolve_remote_d1_database_id "$database_name")"
-  compatibility_date="$(awk '
-    /^[[:space:]]*compatibility_date[[:space:]]*=/ {
-      value = $0
-      sub(/^[^=]*=/, "", value)
-      gsub(/^[[:space:]"\047]+|[[:space:]"\047]+$/, "", value)
-      print value
-      exit
-    }
-  ' "$CONFIG_PATH")"
+  worker_name="$(config_scalar_value name)"
+  worker_main="$(config_scalar_value main)"
+  compatibility_date="$(config_scalar_value compatibility_date)"
+  if [ -z "$worker_name" ]; then
+    worker_name="halopress-d1-migrations"
+  fi
+  if [ -z "$worker_main" ]; then
+    worker_main=".output/server/index.mjs"
+  fi
   if [ -z "$compatibility_date" ]; then
     compatibility_date="2026-05-18"
   fi
@@ -233,8 +296,8 @@ run_migrations_with_resolved_database_id() {
   trap 'rm -f "$temp_config"' RETURN
 
   {
-    printf 'name = "halopress-d1-migrations"\n'
-    printf 'main = ".output/server/index.mjs"\n'
+    printf 'name = "%s"\n' "$worker_name"
+    printf 'main = "%s"\n' "$worker_main"
     printf 'compatibility_date = "%s"\n' "$compatibility_date"
     printf '\n%s\n' "$d1_header"
     printf 'binding = "%s"\n' "$binding"
@@ -247,46 +310,10 @@ run_migrations_with_resolved_database_id() {
 }
 
 has_database_id() {
-  if [ ! -f "$CONFIG_PATH" ]; then
-    echo "Wrangler config not found: ${CONFIG_PATH}" >&2
-    exit 1
-  fi
+  local database_id
 
-  if [ -n "$ENV_NAME" ]; then
-    awk -v env="$ENV_NAME" '
-      /^[[:space:]]*\[\[/ {
-        header = $0
-        gsub(/[[:space:]]/, "", header)
-        in_d1 = (header == "[[env." env ".d1_databases]]")
-      }
-      in_d1 && /^[[:space:]]*database_id[[:space:]]*=/ {
-        value = $0
-        sub(/^[^=]*=/, "", value)
-        gsub(/[[:space:]"\047]/, "", value)
-        if (value != "" && value !~ /^<.*>$/) {
-          found = 1
-        }
-      }
-      END { exit found ? 0 : 1 }
-    ' "$CONFIG_PATH"
-  else
-    awk '
-      /^[[:space:]]*\[\[/ {
-        header = $0
-        gsub(/[[:space:]]/, "", header)
-        in_d1 = (header == "[[d1_databases]]")
-      }
-      in_d1 && /^[[:space:]]*database_id[[:space:]]*=/ {
-        value = $0
-        sub(/^[^=]*=/, "", value)
-        gsub(/[[:space:]"\047]/, "", value)
-        if (value != "" && value !~ /^<.*>$/) {
-          found = 1
-        }
-      }
-      END { exit found ? 0 : 1 }
-    ' "$CONFIG_PATH"
-  fi
+  database_id="$(d1_config_value database_id)"
+  [ -n "$database_id" ] && [[ "$database_id" != \<*\> ]]
 }
 
 if [ "${HALOPRESS_SKIP_BUILD:-}" = "1" ]; then
