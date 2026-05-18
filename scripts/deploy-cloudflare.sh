@@ -232,7 +232,11 @@ config_scalar_value() {
 resolve_remote_d1_database_id() {
   local database_name="$1"
 
-  pnpm wrangler d1 list --json "${D1_LIST_ARGS[@]}" | node -e '
+  if [ "${#D1_LIST_ARGS[@]}" -gt 0 ]; then
+    pnpm wrangler d1 list --json "${D1_LIST_ARGS[@]}"
+  else
+    pnpm wrangler d1 list --json
+  fi | node -e '
     const fs = require("node:fs")
     const databaseName = process.argv[1]
     const databases = JSON.parse(fs.readFileSync(0, "utf8"))
@@ -306,7 +310,11 @@ run_migrations_with_resolved_database_id() {
     printf 'migrations_dir = "%s"\n' "$migrations_dir"
   } > "$temp_config"
 
-  pnpm wrangler d1 migrations apply "$binding" --remote --config "$temp_config" "${FALLBACK_MIGRATION_ARGS[@]}"
+  if [ "${#FALLBACK_MIGRATION_ARGS[@]}" -gt 0 ]; then
+    pnpm wrangler d1 migrations apply "$binding" --remote --config "$temp_config" "${FALLBACK_MIGRATION_ARGS[@]}"
+  else
+    pnpm wrangler d1 migrations apply "$binding" --remote --config "$temp_config"
+  fi
 }
 
 has_database_id() {
