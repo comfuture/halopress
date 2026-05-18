@@ -1,6 +1,8 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import CredentialsProvider from 'next-auth/providers/credentials'
 import GoogleProvider from 'next-auth/providers/google'
+import type { JWT, JWTDecodeParams, JWTEncodeParams } from 'next-auth/jwt'
+import { EncryptJWT, jwtDecrypt } from 'jose'
 import { NuxtAuthHandler } from '#auth'
 import { createError, defineEventHandler, getRequestURL } from 'h3'
 import { eq, or } from 'drizzle-orm'
@@ -30,6 +32,8 @@ type AuthProviderConfig = {
 }
 
 const authEventStorage = new AsyncLocalStorage<any>()
+const DEFAULT_JWT_MAX_AGE = 30 * 24 * 60 * 60
+const NEXTAUTH_JWT_INFO = 'NextAuth.js Generated Encryption Key'
 
 function getAuthEvent() {
   return authEventStorage.getStore()
@@ -68,15 +72,57 @@ function buildAuthHandlerKey(config: AuthProviderConfig) {
   })
 }
 
+function resolveProviderFactory<T extends (...args: any[]) => any>(provider: T | { default?: T }): T {
+  return ('default' in provider && provider.default ? provider.default : provider) as T
+}
+
+function secretToBytes(secret: JWTEncodeParams['secret']) {
+  if (secret instanceof Uint8Array) return new Uint8Array(Array.from(secret))
+  return new TextEncoder().encode(String(secret))
+}
+
+async function deriveAuthEncryptionKey(secret: JWTEncodeParams['secret']) {
+  const enc = new TextEncoder()
+  const key = await globalThis.crypto.subtle.importKey('raw', secretToBytes(secret), 'HKDF', false, ['deriveBits'])
+  const bits = await globalThis.crypto.subtle.deriveBits(
+    {
+      name: 'HKDF',
+      hash: 'SHA-256',
+      salt: new Uint8Array(0),
+      info: enc.encode(NEXTAUTH_JWT_INFO)
+    },
+    key,
+    256
+  )
+  return new Uint8Array(bits)
+}
+
+async function encodeAuthToken({ token = {}, secret, maxAge = DEFAULT_JWT_MAX_AGE }: JWTEncodeParams) {
+  const encryptionKey = await deriveAuthEncryptionKey(secret)
+  return new EncryptJWT(token)
+    .setProtectedHeader({ alg: 'dir', enc: 'A256GCM' })
+    .setIssuedAt()
+    .setExpirationTime(Math.floor(Date.now() / 1000) + maxAge)
+    .setJti(globalThis.crypto.randomUUID())
+    .encrypt(encryptionKey)
+}
+
+async function decodeAuthToken({ token, secret }: JWTDecodeParams): Promise<JWT | null> {
+  if (!token) return null
+  const encryptionKey = await deriveAuthEncryptionKey(secret)
+  const { payload } = await jwtDecrypt(token, encryptionKey, { clockTolerance: 15 })
+  return payload as JWT
+}
+
 async function buildAuthHandler(config: AuthProviderConfig) {
   const { credentialsEnabled, googleConfig } = config
   const oauthProviders: any[] = []
 
   if (googleConfig.enabled) {
     if (googleConfig.clientId && googleConfig.clientSecret) {
+      const createGoogleProvider = resolveProviderFactory(GoogleProvider)
       oauthProviders.push(
-        // @ts-expect-error Use .default here for it to work during SSR.
-        GoogleProvider.default({
+        createGoogleProvider({
           clientId: googleConfig.clientId,
           clientSecret: googleConfig.clientSecret
         })
@@ -89,9 +135,9 @@ async function buildAuthHandler(config: AuthProviderConfig) {
   const providers: any[] = []
 
   if (credentialsEnabled) {
+    const createCredentialsProvider = resolveProviderFactory(CredentialsProvider)
     providers.push(
-      // @ts-expect-error Use .default here for it to work during SSR.
-      CredentialsProvider.default({
+      createCredentialsProvider({
         name: 'Credentials',
         credentials: {
           identifier: { label: 'Email or username', type: 'text' },
@@ -165,6 +211,10 @@ async function buildAuthHandler(config: AuthProviderConfig) {
     secret: useRuntimeConfig().authSecret,
     session: {
       strategy: 'jwt'
+    },
+    jwt: {
+      encode: encodeAuthToken,
+      decode: decodeAuthToken
     },
     pages: {
       signIn: '/_desk/login'
