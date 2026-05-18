@@ -86,6 +86,146 @@ run_migrations() {
   fi
 }
 
+d1_config_value() {
+  local field="$1"
+
+  if [ ! -f "$CONFIG_PATH" ]; then
+    echo "Wrangler config not found: ${CONFIG_PATH}" >&2
+    exit 1
+  fi
+
+  awk -v env="$ENV_NAME" -v target="$D1_DATABASE" -v field="$field" '
+    function clean(value) {
+      sub(/^[^=]*=/, "", value)
+      gsub(/^[[:space:]"\047]+|[[:space:]"\047]+$/, "", value)
+      return value
+    }
+    function reset_block() {
+      in_target = 0
+      binding = ""
+      database_name = ""
+      database_id = ""
+      migrations_dir = ""
+    }
+    function emit_if_match() {
+      if (!in_target) return
+      if (binding != target && database_name != target && target != "") return
+      if (field == "binding") print binding
+      else if (field == "database_name") print database_name
+      else if (field == "database_id") print database_id
+      else if (field == "migrations_dir") print migrations_dir
+      found = 1
+    }
+    BEGIN { reset_block() }
+    /^[[:space:]]*\[\[/ {
+      emit_if_match()
+      if (found) exit
+      header = $0
+      gsub(/[[:space:]]/, "", header)
+      if (env != "") {
+        in_target = (header == "[[env." env ".d1_databases]]")
+      } else {
+        in_target = (header == "[[d1_databases]]")
+      }
+      binding = ""
+      database_name = ""
+      database_id = ""
+      migrations_dir = ""
+      next
+    }
+    in_target && /^[[:space:]]*binding[[:space:]]*=/ {
+      binding = clean($0)
+      next
+    }
+    in_target && /^[[:space:]]*database_name[[:space:]]*=/ {
+      database_name = clean($0)
+      next
+    }
+    in_target && /^[[:space:]]*database_id[[:space:]]*=/ {
+      database_id = clean($0)
+      next
+    }
+    in_target && /^[[:space:]]*migrations_dir[[:space:]]*=/ {
+      migrations_dir = clean($0)
+      next
+    }
+    END {
+      if (!found) emit_if_match()
+    }
+  ' "$CONFIG_PATH" | head -n 1
+}
+
+resolve_remote_d1_database_id() {
+  local database_name="$1"
+
+  pnpm wrangler d1 list --json | node -e '
+    const fs = require("node:fs")
+    const databaseName = process.argv[1]
+    const databases = JSON.parse(fs.readFileSync(0, "utf8"))
+    const database = databases.find(item => item.name === databaseName)
+    if (!database?.uuid) {
+      console.error(`Could not find remote D1 database named ${databaseName}`)
+      process.exit(1)
+    }
+    process.stdout.write(database.uuid)
+  ' "$database_name"
+}
+
+run_migrations_with_resolved_database_id() {
+  local binding
+  local database_name
+  local database_id
+  local migrations_dir
+  local compatibility_date
+  local config_dir
+  local temp_config
+
+  binding="$(d1_config_value binding)"
+  database_name="$(d1_config_value database_name)"
+  migrations_dir="$(d1_config_value migrations_dir)"
+
+  if [ -z "$binding" ]; then
+    binding="$D1_DATABASE"
+  fi
+  if [ -z "$database_name" ]; then
+    database_name="$D1_DATABASE"
+  fi
+  if [ -z "$migrations_dir" ]; then
+    migrations_dir="migrations"
+  fi
+
+  database_id="$(resolve_remote_d1_database_id "$database_name")"
+  compatibility_date="$(awk '
+    /^[[:space:]]*compatibility_date[[:space:]]*=/ {
+      value = $0
+      sub(/^[^=]*=/, "", value)
+      gsub(/^[[:space:]"\047]+|[[:space:]"\047]+$/, "", value)
+      print value
+      exit
+    }
+  ' "$CONFIG_PATH")"
+  if [ -z "$compatibility_date" ]; then
+    compatibility_date="2026-05-18"
+  fi
+
+  config_dir="$(cd "$(dirname "$CONFIG_PATH")" && pwd)"
+  temp_config="$(mktemp "${config_dir}/.halopress-d1-migrations.XXXXXX.toml")"
+  trap 'rm -f "$temp_config"' RETURN
+
+  {
+    printf 'name = "halopress-d1-migrations"\n'
+    printf 'main = ".output/server/index.mjs"\n'
+    printf 'compatibility_date = "%s"\n' "$compatibility_date"
+    printf '\n[[d1_databases]]\n'
+    printf 'binding = "%s"\n' "$binding"
+    printf 'database_name = "%s"\n' "$database_name"
+    printf 'database_id = "%s"\n' "$database_id"
+    printf 'migrations_dir = "%s"\n' "$migrations_dir"
+  } > "$temp_config"
+
+  pnpm wrangler d1 migrations apply "$binding" --remote --config "$temp_config"
+}
+
 has_database_id() {
   if [ ! -f "$CONFIG_PATH" ]; then
     echo "Wrangler config not found: ${CONFIG_PATH}" >&2
@@ -153,8 +293,8 @@ else
   echo "Deploying worker to provision Cloudflare bindings..."
   run_deploy
 
-  echo "Applying D1 migrations (remote) for ${D1_DATABASE}..."
-  run_migrations
+  echo "Applying D1 migrations (remote) for ${D1_DATABASE} with resolved database_id..."
+  run_migrations_with_resolved_database_id
 
   echo "Redeploying worker after migrations..."
   run_deploy
