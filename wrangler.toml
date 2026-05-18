@@ -1,8 +1,9 @@
 "$schema" = "./node_modules/wrangler/config-schema.json"
 name = "halopress"
 main = ".output/server/index.mjs"
-compatibility_date = "2025-01-15"
+compatibility_date = "2026-05-18"
 compatibility_flags = ["nodejs_compat"]
+workers_dev = true
 
 [build]
 command = "bash scripts/wrangler-build.sh"
