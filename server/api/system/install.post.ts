@@ -49,20 +49,18 @@ export default defineEventHandler(async (event) => {
   }
 
   const db = await getDb(event)
-  const status = await getInstallStatus(db)
+  let status = await getInstallStatus(db)
   if (status.ready) throw notFound()
 
-  const isCloudflareRuntime = Boolean((event as any).context?.cloudflare)
-  if (isCloudflareRuntime) {
-    if (status.missingTables?.length) {
-      throw createError({
-        statusCode: 500,
-        statusMessage: 'D1 migrations are not applied. Run pnpm deploy:cf or pnpm db:d1:apply:remote -- DB before installing.'
-      })
-    }
-  } else {
-    await runMigrations(db)
+  await runMigrations(db)
+  status = await getInstallStatus(db)
+  if (status.missingTables?.length) {
+    throw createError({
+      statusCode: 500,
+      statusMessage: `Database migrations did not create required tables: ${status.missingTables.join(', ')}`
+    })
   }
+
   await seedRoles(db, roles)
 
   await upsertSetting({

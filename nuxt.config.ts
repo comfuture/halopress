@@ -69,6 +69,15 @@ export default defineNuxtConfig({
     preset: 'cloudflare-module'
   },
 
+  routeRules: {
+    '/_install': {
+      // Sidebase reads this custom nested route rule, but Nuxt's routeRules type does not include it.
+      auth: {
+        disableServerSideAuth: true
+      }
+    } as any
+  },
+
   hooks: {
     'nitro:config'(nitroConfig) {
       // Sidebase's production origin assertion runs at Worker startup without a request.
