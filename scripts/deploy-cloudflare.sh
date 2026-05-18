@@ -7,6 +7,8 @@ cd "$ROOT_DIR"
 D1_DATABASE="${HALOPRESS_D1_DATABASE:-DB}"
 DEPLOY_ARGS=()
 MIGRATION_ARGS=()
+D1_LIST_ARGS=()
+FALLBACK_MIGRATION_ARGS=()
 CONFIG_PATH="wrangler.toml"
 ENV_NAME=""
 DRY_RUN=0
@@ -30,6 +32,7 @@ while [ "$#" -gt 0 ]; do
       flag="$1"
       DEPLOY_ARGS+=("$flag")
       MIGRATION_ARGS+=("$flag")
+      D1_LIST_ARGS+=("$flag")
       shift
       if [ "$#" -eq 0 ]; then
         echo "Missing value for ${flag}" >&2
@@ -37,20 +40,26 @@ while [ "$#" -gt 0 ]; do
       fi
       if [ "$flag" = "--env" ] || [ "$flag" = "-e" ]; then
         ENV_NAME="$1"
+        FALLBACK_MIGRATION_ARGS+=("$flag" "$1")
       elif [ "$flag" = "--config" ] || [ "$flag" = "-c" ]; then
         CONFIG_PATH="$1"
+      elif [ "$flag" = "--env-file" ]; then
+        FALLBACK_MIGRATION_ARGS+=("$flag" "$1")
       fi
       DEPLOY_ARGS+=("$1")
       MIGRATION_ARGS+=("$1")
+      D1_LIST_ARGS+=("$1")
       shift
       ;;
     --env=*|-e=*|--config=*|-c=*|--env-file=*)
       case "$1" in
         --env=*)
           ENV_NAME="${1#--env=}"
+          FALLBACK_MIGRATION_ARGS+=("$1")
           ;;
         -e=*)
           ENV_NAME="${1#-e=}"
+          FALLBACK_MIGRATION_ARGS+=("$1")
           ;;
         --config=*)
           CONFIG_PATH="${1#--config=}"
@@ -58,9 +67,13 @@ while [ "$#" -gt 0 ]; do
         -c=*)
           CONFIG_PATH="${1#-c=}"
           ;;
+        --env-file=*)
+          FALLBACK_MIGRATION_ARGS+=("$1")
+          ;;
       esac
       DEPLOY_ARGS+=("$1")
       MIGRATION_ARGS+=("$1")
+      D1_LIST_ARGS+=("$1")
       shift
       ;;
     *)
@@ -158,7 +171,7 @@ d1_config_value() {
 resolve_remote_d1_database_id() {
   local database_name="$1"
 
-  pnpm wrangler d1 list --json | node -e '
+  pnpm wrangler d1 list --json "${D1_LIST_ARGS[@]}" | node -e '
     const fs = require("node:fs")
     const databaseName = process.argv[1]
     const databases = JSON.parse(fs.readFileSync(0, "utf8"))
@@ -179,6 +192,7 @@ run_migrations_with_resolved_database_id() {
   local compatibility_date
   local config_dir
   local temp_config
+  local d1_header
 
   binding="$(d1_config_value binding)"
   database_name="$(d1_config_value database_name)"
@@ -208,6 +222,12 @@ run_migrations_with_resolved_database_id() {
     compatibility_date="2026-05-18"
   fi
 
+  if [ -n "$ENV_NAME" ]; then
+    d1_header="[[env.${ENV_NAME}.d1_databases]]"
+  else
+    d1_header="[[d1_databases]]"
+  fi
+
   config_dir="$(cd "$(dirname "$CONFIG_PATH")" && pwd)"
   temp_config="$(mktemp "${config_dir}/.halopress-d1-migrations.XXXXXX.toml")"
   trap 'rm -f "$temp_config"' RETURN
@@ -216,14 +236,14 @@ run_migrations_with_resolved_database_id() {
     printf 'name = "halopress-d1-migrations"\n'
     printf 'main = ".output/server/index.mjs"\n'
     printf 'compatibility_date = "%s"\n' "$compatibility_date"
-    printf '\n[[d1_databases]]\n'
+    printf '\n%s\n' "$d1_header"
     printf 'binding = "%s"\n' "$binding"
     printf 'database_name = "%s"\n' "$database_name"
     printf 'database_id = "%s"\n' "$database_id"
     printf 'migrations_dir = "%s"\n' "$migrations_dir"
   } > "$temp_config"
 
-  pnpm wrangler d1 migrations apply "$binding" --remote --config "$temp_config"
+  pnpm wrangler d1 migrations apply "$binding" --remote --config "$temp_config" "${FALLBACK_MIGRATION_ARGS[@]}"
 }
 
 has_database_id() {
