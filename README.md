@@ -93,6 +93,8 @@ Halopress is configured to run as a Cloudflare Worker with:
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/comfuture/halopress)
 
+Deploy Button copies this repository, provisions the Wrangler-declared D1/R2 resources, and connects the copied repository to Cloudflare Workers Builds. `workers_dev = true` is set in `wrangler.toml` so the selected Worker name is attached to its default workers.dev route.
+
 ### 1) Authenticate Wrangler
 
 ```bash
