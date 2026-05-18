@@ -175,7 +175,7 @@ pnpm wrangler d1 migrations apply DB --remote
 HALOPRESS_SKIP_WRANGLER_BUILD=1 pnpm wrangler deploy
 ```
 
-When `wrangler.toml` already contains the generated `database_id`, `pnpm run deploy` applies D1 migrations before deploying the Worker so new code does not run against the old schema. For first-time CLI provisioning, the script deploys once to create the bindings, applies D1 migrations, and then redeploys the Worker.
+When `wrangler.toml` already contains the generated `database_id`, `pnpm run deploy` applies D1 migrations before deploying the Worker so new code does not run against the old schema. For first-time CLI provisioning, the script deploys once to create the bindings, resolves the generated D1 database ID when Cloudflare has not written it back to `wrangler.toml`, applies D1 migrations, and then redeploys the Worker.
 
 The deploy script forwards `--env`/`-e`, `--config`/`-c`, and `--env-file` to both `wrangler deploy` and `wrangler d1 migrations apply`. `--dry-run` only runs Wrangler's deploy dry run and skips D1 migrations.
 
