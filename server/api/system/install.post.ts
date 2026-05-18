@@ -49,16 +49,26 @@ export default defineEventHandler(async (event) => {
   }
 
   const db = await getDb(event)
+  const isCloudflareRuntime = Boolean((event as any)?.context?.cloudflare)
   let status = await getInstallStatus(db)
   if (status.ready) throw notFound()
 
-  await runMigrations(db)
-  status = await getInstallStatus(db)
   if (status.missingTables?.length) {
-    throw createError({
-      statusCode: 500,
-      statusMessage: `Database migrations did not create required tables: ${status.missingTables.join(', ')}`
-    })
+    if (isCloudflareRuntime) {
+      throw createError({
+        statusCode: 500,
+        statusMessage: `Database migrations are incomplete. Run the Cloudflare deploy migration step before install. Missing tables: ${status.missingTables.join(', ')}`
+      })
+    }
+
+    await runMigrations(db)
+    status = await getInstallStatus(db)
+    if (status.missingTables?.length) {
+      throw createError({
+        statusCode: 500,
+        statusMessage: `Database migrations did not create required tables: ${status.missingTables.join(', ')}`
+      })
+    }
   }
 
   await seedRoles(db, roles)

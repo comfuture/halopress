@@ -1,6 +1,6 @@
 import type { webcrypto } from 'node:crypto'
 
-const HASH_ITERATIONS = 120000
+const HASH_ITERATIONS = 100000
 const HASH_LENGTH = 32
 
 function bytesToHex(bytes: Uint8Array) {
