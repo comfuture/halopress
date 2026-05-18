@@ -53,14 +53,14 @@ export default defineEventHandler(async (event) => {
   let status = await getInstallStatus(db)
   if (status.ready) throw notFound()
 
-  if (status.missingTables?.length) {
-    if (isCloudflareRuntime) {
+  if (isCloudflareRuntime) {
+    if (status.missingTables?.length) {
       throw createError({
         statusCode: 500,
         statusMessage: `Database migrations are incomplete. Run the Cloudflare deploy migration step before install. Missing tables: ${status.missingTables.join(', ')}`
       })
     }
-
+  } else {
     await runMigrations(db)
     status = await getInstallStatus(db)
     if (status.missingTables?.length) {
