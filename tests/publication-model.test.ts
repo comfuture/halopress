@@ -60,4 +60,12 @@ describe('document asset retention', () => {
       repeated: '/assets/cover-1/raw'
     })).toEqual(['cover-1', 'inline-2'])
   })
+
+  it('keeps malformed encoded asset IDs extractable without failing a save', () => {
+    expect(extractDocumentAssetIds({
+      malformed: '/assets/bad%ZZ/raw',
+      truncated: '/assets/%E0%A4%A/raw',
+      encoded: '/assets/cover%20image/raw'
+    })).toEqual(['%E0%A4%A', 'bad%ZZ', 'cover image'])
+  })
 })

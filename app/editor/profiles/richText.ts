@@ -136,7 +136,9 @@ const sharedDefinition: Omit<EditorProfileDefinition, 'name'> = {
       { kind: 'duplicate', pos, label: 'Duplicate', icon: 'i-lucide-copy' },
       { label: 'Copy to clipboard', icon: 'i-lucide-clipboard', onSelect: async () => {
         const selected = editor.state.doc.nodeAt(pos)
-        if (selected && typeof navigator !== 'undefined') await navigator.clipboard.writeText(selected.textContent)
+        if (selected && typeof navigator !== 'undefined' && typeof navigator.clipboard?.writeText === 'function') {
+          await navigator.clipboard.writeText(selected.textContent)
+        }
       } }
     ]] },
     { key: 'move', create: () => ({ pos }: EditorQuickMenuContext) => [[

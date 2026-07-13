@@ -123,13 +123,15 @@ export function buildPageDocumentSegments(value: unknown): PageDocumentSegment[]
   const segments: PageDocumentSegment[] = []
   let ordinary: unknown[] = []
   let segmentIndex = 0
+  let readOnlyExtensions: ReturnType<typeof createPageProfile>['readOnlyExtensions'] | undefined
 
   const flushOrdinary = () => {
     if (!ordinary.length) return
     const key = `html-${segmentIndex++}`
     try {
       const document = sanitizePageDocument({ type: 'doc', content: ordinary })
-      const html = generateHTML(document, createPageProfile().readOnlyExtensions)
+      readOnlyExtensions ??= createPageProfile().readOnlyExtensions
+      const html = generateHTML(document, readOnlyExtensions)
       segments.push({ kind: 'html', key, html })
     } catch {
       segments.push({ kind: 'fallback', key, message: 'Unable to render document content' })
