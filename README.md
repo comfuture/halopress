@@ -83,6 +83,25 @@ and preserves the secret on later deployments.
 The same application owns the editorial workflow and the delivery surface, while
 keeping the content contract clear between them.
 
+## Draft-safe publishing and standalone pages
+
+Published content and pages point to immutable revisions. Editors can save a new
+working draft, preview it through an authenticated private route, discard it, or
+publish it without changing the last good anonymous response in the meantime.
+Publishing promotes the working revision and its search, listing, reference, and
+asset projections together.
+
+Standalone pages use the same page document renderer in Desk preview and public
+delivery. The initial public route is `/_pages/:id`, backed by the published-only
+`/api/delivery/page/:id` endpoint. `_pages` is a reserved prefix alongside Desk,
+installation, and preview routes; these fixed routes take precedence over the
+existing `/:schema/:id` content route. Custom paths and public slugs are not part
+of this initial ID-based contract.
+
+Page blocks come from a curated registry. Stored unknown or retired blocks remain
+in the document and render a safe fallback, while arbitrary Vue components,
+scripts, classes, attributes, and unsafe URLs are never taken from stored data.
+
 ## Project status
 
 HaloPress is under active development. The complete schema-to-publishing path is
