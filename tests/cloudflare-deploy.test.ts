@@ -570,6 +570,8 @@ migrations_dir = "migrations"
     expect(nuxtConfig).toContain('isCloudflareBuild ? \'cloudflare\' : \'ipx\'')
     expect(nuxtConfig).toContain('imageProvider === \'ipx\'')
     expect(nuxtConfig).toContain('? { \'/assets\': ipxAssetsAlias }')
+    expect(nuxtConfig).toContain('const cloudflareBaseURL = process.env.NUXT_IMAGE_CLOUDFLARE_BASE_URL')
+    expect(nuxtConfig).not.toContain('NUXT_IMAGE_CLOUDFLARE_BASE_URL || process.env.CF_PAGES_URL')
     expect(nuxtConfig).toContain('cloudflare: cloudflareBaseURL ? { baseURL: cloudflareBaseURL } : {}')
     expect(nuxtConfig).not.toContain('providers: {')
 
