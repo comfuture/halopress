@@ -33,9 +33,21 @@ describe('dependency security contracts', () => {
       '@sidebase/nuxt-auth@1.3.1>next-auth': '4.24.14'
     })
     expect(packageJson.pnpm.overrides).toMatchObject({
+      '@esbuild-kit/core-utils>esbuild': '0.25.12',
+      '@eslint/config-inspector>esbuild': '0.28.1',
+      '@mapbox/node-pre-gyp>tar': '7.5.16',
+      'anymatch>picomatch': '2.3.2',
+      'archiver-utils>lodash': '4.18.0',
+      'fontless>esbuild': '0.28.1',
+      'glob@10>minimatch': '9.0.7',
+      'micromatch>picomatch': '2.3.2',
+      'minimatch@5>brace-expansion': '2.0.3',
+      'minimatch@9>brace-expansion': '2.0.3',
       'next-auth@4.24.14>next': '-',
       'next-auth@4.24.14>react': '-',
-      'next-auth@4.24.14>react-dom': '-'
+      'next-auth@4.24.14>react-dom': '-',
+      'next-auth@4.24.14>uuid': '11.1.1',
+      'readdir-glob>minimatch': '5.1.8'
     })
     expect(authPatch).toContain('"./core"')
     expect(AuthHandler).toBeTypeOf('function')
