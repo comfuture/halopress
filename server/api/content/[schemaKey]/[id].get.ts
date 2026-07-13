@@ -9,6 +9,8 @@ import { content as contentTable, contentListing as contentListingTable } from '
 import { buildContentListingSnapshot } from '../../../cms/content-listing'
 import { getSchemaVersion } from '../../../cms/repo'
 import { getPublicationRevision, publicationMetadata } from '../../../cms/publication'
+import { hasStandalonePageRouteClaim } from '../../../cms/page-delivery'
+import { PUBLIC_PAGE_ROUTE_PREFIX } from '../../../../shared/public-routing'
 
 export default defineEventHandler(async (event) => {
   const schemaKey = event.context.params?.schemaKey as string
@@ -20,6 +22,13 @@ export default defineEventHandler(async (event) => {
 
   const policy = await resolveDeliveryPolicy(event, schemaKey, { requestedStatus: q.status })
   const db = await getDb(event)
+  if (
+    schemaKey === PUBLIC_PAGE_ROUTE_PREFIX
+    && q.routeScope === 'public-page'
+    && await hasStandalonePageRouteClaim(db, id)
+  ) {
+    throw notFound('Content not found')
+  }
   const row = await db
     .select()
     .from(contentTable)

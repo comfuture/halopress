@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 import { eq } from 'drizzle-orm'
 import { afterAll, describe, expect, it, vi } from 'vitest'
 
-import { getPublishedPage } from '../server/cms/page-delivery'
+import { getPublishedPage, hasStandalonePageRouteClaim } from '../server/cms/page-delivery'
 import { page, publicationRevision } from '../server/db/schema'
 import { runMigrations } from '../server/utils/install'
 import { createTestSqliteDb } from './fixtures/sqlite'
@@ -163,6 +163,41 @@ describe('published standalone page delivery', () => {
       })
       await fixture.db.update(page).set({ publishedRevisionId: null, status: 'draft' }).where(eq(page.id, 'page-2'))
       await expect(getPublishedPage(fixture.db, 'page-2')).rejects.toMatchObject({ statusCode: 404 })
+    } finally {
+      fixture.close()
+    }
+  })
+
+  it.each([
+    { id: 'reserved-draft', status: 'draft', pointer: null },
+    { id: 'reserved-unpublished', status: 'draft', pointer: null },
+    { id: 'reserved-deleted', status: 'deleted', pointer: 'reserved-deleted-revision' },
+    { id: 'reserved-published', status: 'published', pointer: 'reserved-published-revision' }
+  ])('keeps the public route claimed while standalone page $id exists', async ({ id, status, pointer }) => {
+    const fixture = await createTestSqliteDb()
+    try {
+      await runMigrations(fixture.db)
+      const now = new Date()
+      await fixture.db.insert(page).values({
+        id,
+        title: id,
+        status,
+        contentJson: JSON.stringify({ type: 'doc', content: [] }),
+        publishedRevisionId: pointer,
+        createdAt: now,
+        updatedAt: now
+      })
+      if (pointer) {
+        await fixture.db.insert(publicationRevision).values({
+          id: pointer,
+          documentKind: 'page',
+          documentId: id,
+          contentJson: JSON.stringify({ type: 'doc', content: [] }),
+          createdAt: now
+        })
+      }
+      await expect(hasStandalonePageRouteClaim(fixture.db, id)).resolves.toBe(true)
+      await expect(hasStandalonePageRouteClaim(fixture.db, 'missing-page')).resolves.toBe(false)
     } finally {
       fixture.close()
     }

@@ -17,6 +17,7 @@ export type HalopressContentOptions = {
   id?: MaybeRef<string | number>
   order?: MaybeRef<'asc' | 'desc'>
   status?: MaybeRef<string>
+  respectStandalonePageClaim?: MaybeRef<boolean>
 }
 
 type HalopressContentResponse<TContent = Record<string, unknown>> = HalopressContent<TContent> & {
@@ -43,6 +44,7 @@ export async function useHalopressContent(schemaOrPath: MaybeRef<string>, option
   const query = computed(() => ({
     order: unref(options.order) ?? undefined,
     status: unref(options.status) ?? undefined,
+    routeScope: unref(options.respectStandalonePageClaim) ? 'public-page' : undefined,
     surroundings: '1',
     includeSchema: '1'
   }))
