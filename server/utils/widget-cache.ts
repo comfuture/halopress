@@ -32,11 +32,13 @@ function getKvNamespace(event: H3Event) {
 
 function getWaitUntil(event: H3Event): ((promise: Promise<any>) => void) | null {
   const ctx = (event as any)?.context?.cloudflare
-  return ctx?.ctx?.waitUntil
-    ?? ctx?.context?.waitUntil
-    ?? ctx?.waitUntil
-    ?? (event as any)?.waitUntil
-    ?? null
+  const candidates = [ctx?.ctx, ctx?.context, ctx, event as any]
+  for (const candidate of candidates) {
+    if (typeof candidate?.waitUntil === 'function') {
+      return candidate.waitUntil.bind(candidate)
+    }
+  }
+  return null
 }
 
 function normalizeParams(params: Record<string, unknown>) {
