@@ -24,3 +24,6 @@ logs
 .env.*
 !.env.example
 !.env.dist
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
