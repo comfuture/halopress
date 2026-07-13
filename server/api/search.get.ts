@@ -128,7 +128,7 @@ async function getPublishedSchemaFields(db: any, schemaKey: string, status: stri
 function assertPublishedFieldCompatibility(args: {
   config: ContentFieldRow
   publishedSchemas: Awaited<ReturnType<typeof getPublishedSchemaFields>>
-  capability: 'filterable' | 'sortable'
+  capability?: 'filterable' | 'sortable'
 }) {
   for (const stored of args.publishedSchemas) {
     const reusedKey = stored.fields.find(candidate => (
@@ -141,7 +141,7 @@ function assertPublishedFieldCompatibility(args: {
     const field = stored.fields.find(candidate => candidate.fieldId === args.config.fieldId)
     if (!field) continue
     const normalized = normalizeSearchConfig(field)
-    if (field.kind !== args.config.kind || !normalized[args.capability]) {
+    if (field.kind !== args.config.kind || (args.capability && !normalized[args.capability])) {
       throw conflict(`Published search field spans incompatible schema versions: ${args.config.fieldKey}`)
     }
   }
@@ -182,9 +182,21 @@ export default defineEventHandler(async (event) => {
     .where(eq(searchConfig.schemaKey, schemaKey)) as ContentFieldRow[]
 
   const fieldByKey = new Map(fieldRows.map(row => [row.fieldKey, row]))
-  const publishedSchemas = projectionScope === 'published' && (filters.length > 0 || Boolean(sortKey))
+  const fieldConfigs = requestedFields
+    .map(fieldKey => fieldByKey.get(String(fieldKey)))
+    .filter((field): field is ContentFieldRow => Boolean(field))
+  const publishedSchemas = projectionScope === 'published' && (
+    filters.length > 0
+    || Boolean(sortKey)
+    || fieldConfigs.length > 0
+  )
     ? await getPublishedSchemaFields(db, schemaKey, status)
     : []
+  if (projectionScope === 'published') {
+    for (const config of fieldConfigs) {
+      assertPublishedFieldCompatibility({ config, publishedSchemas })
+    }
+  }
 
   const whereParts = [
     eq(contentListingTable.schemaKey, schemaKey),
@@ -329,10 +341,6 @@ export default defineEventHandler(async (event) => {
   const nextCursor = !sortKey && rows.length
     ? String(new Date(rows[rows.length - 1]!.updatedAt).getTime())
     : null
-
-  const fieldConfigs = requestedFields
-    .map(fieldKey => fieldByKey.get(String(fieldKey)))
-    .filter((field): field is ContentFieldRow => Boolean(field))
 
   const searchDataByContentId = new Map<string, Record<string, string | number | null>>()
   if (rows.length && fieldConfigs.length) {
