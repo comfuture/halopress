@@ -148,7 +148,7 @@ const readinessMessage = computed(() => {
     return {
       color: 'error' as const,
       icon: 'i-lucide-cloud-off',
-      title: 'We could not check your Halopress',
+      title: 'We could not check your HaloPress',
       description: 'Check your connection and try again. If this keeps happening, ask the deployment owner to review the logs.'
     }
   }
@@ -159,7 +159,7 @@ const readinessMessage = computed(() => {
         color: 'error' as const,
         icon: 'i-lucide-database-zap',
         title: 'Storage needs attention',
-        description: 'Halopress cannot reach all the storage it needs yet. Open the troubleshooting details for repair steps.'
+        description: 'HaloPress cannot reach all the storage it needs yet. Open the troubleshooting details for repair steps.'
       }
     case 'migration_required':
       return {
@@ -179,14 +179,14 @@ const readinessMessage = computed(() => {
       return {
         color: 'warning' as const,
         icon: 'i-lucide-rotate-ccw',
-        title: 'Continue setting up Halopress',
+        title: 'Continue setting up HaloPress',
         description: 'A previous attempt stopped before completion. Continue with the same account email and password.'
       }
     case 'ready_for_setup':
       return {
         color: 'success' as const,
         icon: 'i-lucide-circle-check-big',
-        title: 'Your Halopress is ready to set up',
+        title: 'Your HaloPress is ready to set up',
         description: setupSessionOwned.value
           ? 'Continue where you left off in this browser.'
           : 'Start setup to begin. This browser will hold your place while you finish.'
@@ -195,7 +195,7 @@ const readinessMessage = computed(() => {
       return {
         color: 'neutral' as const,
         icon: 'i-lucide-loader-circle',
-        title: 'Checking your Halopress',
+        title: 'Checking your HaloPress',
         description: 'This will only take a moment.'
       }
   }
@@ -425,29 +425,39 @@ async function completeSetup() {
 </script>
 
 <template>
-  <div class="min-h-screen bg-muted/30">
-    <header class="border-b border-default bg-default/90 backdrop-blur">
-      <UContainer class="flex min-h-16 items-center justify-between gap-4">
-        <div aria-label="HaloPress">
-          <AppLogo class="h-7 w-auto shrink-0" />
-        </div>
-        <UColorModeButton class="min-h-11 min-w-11" />
-      </UContainer>
-    </header>
+  <div class="min-h-dvh bg-muted/30">
+    <main class="flex min-h-dvh items-center">
+      <UContainer class="w-full py-6 sm:py-10 lg:py-12">
+        <section aria-labelledby="install-page-title" class="mx-auto w-full max-w-4xl space-y-6">
+          <div class="relative aspect-[3/1] overflow-hidden rounded-xl border border-default bg-inverted shadow-lg">
+            <img
+              src="/branding/halopress-install-wizard-journey.png"
+              alt=""
+              aria-hidden="true"
+              width="2172"
+              height="724"
+              fetchpriority="high"
+              decoding="async"
+              class="size-full object-cover"
+            >
+            <div class="absolute inset-x-0 top-0 flex items-start justify-between gap-4 p-3 sm:p-4">
+              <div class="rounded-lg bg-default/90 px-3 py-2 shadow-sm backdrop-blur">
+                <AppLogo class="h-6 w-auto shrink-0 sm:h-7" />
+              </div>
+              <UColorModeButton class="min-h-11 min-w-11 rounded-lg bg-default/90 shadow-sm backdrop-blur" />
+            </div>
+          </div>
 
-    <main>
-      <UContainer class="py-8 sm:py-12">
-        <div class="mx-auto max-w-4xl space-y-6">
           <div class="space-y-2">
             <p class="text-sm font-medium text-primary">
               First-run setup
             </p>
-            <h1 class="text-2xl font-semibold text-highlighted sm:text-3xl">
-              Welcome to Halopress
+            <h1 id="install-page-title" class="text-2xl font-semibold text-highlighted sm:text-3xl">
+              Welcome to HaloPress
             </h1>
             <p class="max-w-2xl text-sm text-muted sm:text-base">
               Create your account, choose helpful starter content, and start publishing.
-              Halopress will guide you through each step.
+              HaloPress will guide you through each step.
             </p>
           </div>
 
@@ -463,7 +473,7 @@ async function completeSetup() {
                   class="scroll-mt-24 text-xl font-semibold text-highlighted outline-none"
                 >
                   {{ submitting
-                    ? 'Preparing your Halopress'
+                    ? 'Preparing your HaloPress'
                     : setupSessionOwned
                       ? 'Your setup is still active'
                       : 'Setup is open in another browser' }}
@@ -503,7 +513,7 @@ async function completeSetup() {
                   tabindex="-1"
                   class="scroll-mt-24 text-2xl font-semibold text-highlighted outline-none"
                 >
-                  Halopress is ready
+                  HaloPress is ready
                 </h2>
                 <p class="text-sm text-muted sm:text-base">
                   Your account and content space are ready. Choose where you want to begin.
@@ -596,7 +606,7 @@ async function completeSetup() {
                     tabindex="-1"
                     class="scroll-mt-24 text-xl font-semibold text-highlighted outline-none"
                   >
-                    Make sure Halopress is ready
+                    Make sure HaloPress is ready
                   </h2>
                   <p class="text-sm text-muted">
                     We will make sure everything is ready before you create your account.
@@ -643,7 +653,7 @@ async function completeSetup() {
                   variant="soft"
                   icon="i-lucide-info"
                   title="Use the same account details"
-                  description="Halopress can safely finish the previous attempt without creating a duplicate account."
+                  description="HaloPress can safely finish the previous attempt without creating a duplicate account."
                 />
 
                 <UAlert
@@ -780,7 +790,7 @@ async function completeSetup() {
                   name="sampleData"
                   size="lg"
                   label="Create an Article type and Welcome guide"
-                  description="Adds an editable content type and one example guide. Recommended if this is your first time using Halopress."
+                  description="Adds an editable content type and one example guide. Recommended if this is your first time using HaloPress."
                   class="min-h-14 w-full cursor-pointer rounded-lg p-4 ring-1 ring-default"
                   :ui="{
                     base: 'after:absolute after:inset-0',
@@ -812,7 +822,7 @@ async function completeSetup() {
                     Review and start
                   </h2>
                   <p class="text-sm text-muted">
-                    Halopress will create your account, prepare its permissions, and add the starter content you selected.
+                    HaloPress will create your account, prepare its permissions, and add the starter content you selected.
                   </p>
                 </div>
 
@@ -851,7 +861,7 @@ async function completeSetup() {
                     :disabled="!isReadinessReady"
                     @click="completeSetup"
                   >
-                    Start Halopress
+                    Start HaloPress
                   </UButton>
                 </div>
               </section>
@@ -861,7 +871,7 @@ async function completeSetup() {
           <p class="text-center text-xs text-muted">
             This browser holds your place while you work, so you can safely continue after an interruption.
           </p>
-        </div>
+        </section>
       </UContainer>
     </main>
   </div>
