@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { BreadcrumbItem } from '@nuxt/ui'
 import type { JSONContent } from '@tiptap/vue-3'
+import { PUBLIC_PAGE_ROUTE_PREFIX } from '~~/shared/public-routing'
 import PageEditor from '~/components/PageEditor.vue'
 
 definePageMeta({
@@ -168,7 +169,7 @@ function downloadJson() {
         <template #actions>
           <UButton
             v-if="canUnpublish"
-            :to="`/_pages/${id}`"
+            :to="`/${PUBLIC_PAGE_ROUTE_PREFIX}/${id}`"
             target="_blank"
             color="neutral"
             variant="ghost"

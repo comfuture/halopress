@@ -4,6 +4,7 @@ import { z } from 'zod'
 import type { SortableEvent } from 'sortablejs'
 import { useSortable } from '@vueuse/integrations/useSortable'
 import type { BreadcrumbItem, NavigationMenuItem } from '@nuxt/ui'
+import { isReservedSchemaKey, PUBLIC_PAGE_ROUTE_PREFIX } from '~~/shared/public-routing'
 
 definePageMeta({
   layout: 'desk'
@@ -98,7 +99,13 @@ const schemaKeyPattern = /^[a-z0-9][a-z0-9_]*$/
 const fieldKeyPattern = /^[a-zA-Z][a-zA-Z0-9_]*$/
 
 const schemaMetaSchema = z.object({
-  schemaKey: z.string().min(1, 'Schema key is required').regex(schemaKeyPattern, 'Use lowercase letters, numbers, and underscores.'),
+  schemaKey: z.string()
+    .min(1, 'Schema key is required')
+    .regex(schemaKeyPattern, 'Use lowercase letters, numbers, and underscores.')
+    .refine(
+      key => !isReservedSchemaKey(key),
+      `The schema key "${PUBLIC_PAGE_ROUTE_PREFIX}" is reserved for standalone pages.`
+    ),
   title: z.string().optional(),
   description: z.string().optional()
 }).loose()

@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { isReservedSchemaKey } from '../../shared/public-routing'
+
 const uiConfig = z.object({
   widget: z.string().optional(),
   placeholder: z.string().optional(),
@@ -22,6 +24,11 @@ const listingConfig = z.object({
   descriptionFieldKey: z.string().nullable().optional(),
   imageFieldKey: z.string().nullable().optional()
 }).strict()
+
+const schemaKeySchema = z.string()
+  .min(1)
+  .regex(/^[a-z0-9][a-z0-9_]*$/)
+  .refine(key => !isReservedSchemaKey(key), 'Schema key is reserved for a public route')
 
 const relConfig = z.object({
   kind: z.enum(['ref', 'ref_list', 'poly_ref', 'asset_ref']),
@@ -67,7 +74,7 @@ export const fieldNodeSchema = z.object({
 }).strict()
 
 export const schemaAstSchema = z.object({
-  schemaKey: z.string().min(1).regex(/^[a-z0-9][a-z0-9_]*$/),
+  schemaKey: schemaKeySchema,
   title: z.string().min(1),
   description: z.string().optional(),
   fields: z.array(fieldNodeSchema),
