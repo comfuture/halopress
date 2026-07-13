@@ -1,175 +1,126 @@
 import { createError, readBody } from 'h3'
+
 import { getDb } from '../../db/db'
-import { badRequest, notFound, unauthorized } from '../../utils/http'
 import { getAdminUserByIdentifier, isAdminLoginAllowedDb } from '../../utils/auth'
-import { resolveEncryptionKey } from '../../utils/oauth'
-import { upsertSetting } from '../../utils/settings'
+import { badRequest, notFound, unauthorized } from '../../utils/http'
 import {
+  beginInstallation,
+  completeInstallation,
   ensureAdminUser,
   ensureBootstrapSchema,
-  getInstallStatus,
-  runMigrations,
-  seedRoles,
-  type UserRoleSeed
+  failInstallation,
+  getInstallationSessionAccess,
+  getRuntimeInstallStatus,
+  seedRoles
 } from '../../utils/install'
+import { installInputSchema } from '../../utils/install-input'
+import {
+  clearSetupSessionCookie,
+  getMissingCloudflareBindings,
+  hashSetupSessionToken,
+  readSetupSessionToken,
+  requireSameOriginSetupRequest
+} from '../../utils/install-session'
+import { isAuthRuntimeReady, resolveAuthSigningSecret } from '../../utils/install-token'
+import { upsertSetting } from '../../utils/settings'
 
 export default defineEventHandler(async (event) => {
-  const body = await readBody<{
-    email?: string
-    name?: string
-    password?: string
-    sampleData?: boolean
-    auth?: {
-      credentialsEnabled?: boolean
-      googleEnabled?: boolean
-      googleClientId?: string
-      googleClientSecret?: string
-    }
-    roles?: Array<{ roleKey?: string; title?: string; level?: number }>
-  }>(event)
-  const email = (body?.email ?? '').trim().toLowerCase()
-  const name = (body?.name ?? '').trim()
-  const password = body?.password ?? ''
-  const sampleData = body?.sampleData === true
-  const auth = body?.auth
-  const credentialsEnabled = auth?.credentialsEnabled !== false
-  const googleEnabled = auth?.googleEnabled === true
-  const googleClientIdInput = (auth?.googleClientId ?? '').trim()
-  const googleClientSecretInput = (auth?.googleClientSecret ?? '').trim()
-  const config = useRuntimeConfig(event)
-  const envGoogleClientId = (config.oauthGoogleClientId ?? '').trim()
-  const envGoogleClientSecret = (config.oauthGoogleClientSecret ?? '').trim()
-  const encryptionSecret = resolveEncryptionKey('google', event)
-  const roles = normalizeRoles(body?.roles)
-
-  if (!email || !password) throw badRequest('Missing admin credentials')
-  if (!credentialsEnabled && !googleEnabled) throw badRequest('At least one auth method must be enabled')
-  if (googleEnabled && !encryptionSecret) {
-    throw badRequest('NUXT_SECRET_KEY or NUXT_OAUTH_GOOGLE_ENCRYPTION_KEY is required to enable Google OAuth')
+  requireSameOriginSetupRequest(event)
+  const isCloudflareRuntime = Boolean((event as any)?.context?.cloudflare)
+  const missingBindings = getMissingCloudflareBindings(event)
+  if (missingBindings.length) {
+    throw createError({
+      statusCode: 503,
+      statusMessage: 'Cloudflare bindings are incomplete',
+      data: { phase: 'binding_missing', missingBindings }
+    })
   }
+  const signingSecret = resolveAuthSigningSecret(event)
+  if (!isAuthRuntimeReady(isCloudflareRuntime, signingSecret)) {
+    throw createError({
+      statusCode: 503,
+      statusMessage: 'Cloudflare setup requires a strong runtime secret',
+      data: { phase: 'configuration_required' }
+    })
+  }
+
+  const setupSessionToken = readSetupSessionToken(event)
+  if (!setupSessionToken) throw unauthorized('Setup session is required')
+  const setupSessionHash = await hashSetupSessionToken(setupSessionToken, signingSecret)
 
   const db = await getDb(event)
-  const isCloudflareRuntime = Boolean((event as any)?.context?.cloudflare)
-  let status = await getInstallStatus(db)
+  const status = await getRuntimeInstallStatus(db, { isCloudflareRuntime })
   if (status.ready) throw notFound()
-
-  if (isCloudflareRuntime) {
-    if (status.missingTables?.length) {
-      throw createError({
-        statusCode: 500,
-        statusMessage: `Database migrations are incomplete. Run the Cloudflare deploy migration step before install. Missing tables: ${status.missingTables.join(', ')}`
-      })
-    }
-  } else {
-    await runMigrations(db)
-    status = await getInstallStatus(db)
-    if (status.missingTables?.length) {
-      throw createError({
-        statusCode: 500,
-        statusMessage: `Database migrations did not create required tables: ${status.missingTables.join(', ')}`
-      })
-    }
+  if (status.phase === 'migration_required') {
+    throw createError({
+      statusCode: 503,
+      statusMessage: 'Database migrations are incomplete',
+      data: { phase: status.phase, missingTables: status.missingTables }
+    })
   }
 
-  await seedRoles(db, roles)
+  const access = await getInstallationSessionAccess(db, setupSessionHash)
+  if (!access.owned) throw unauthorized('Setup session is invalid or expired')
 
-  await upsertSetting({
-    key: 'auth.oauth.credentials.enabled',
-    value: credentialsEnabled ? 'true' : 'false',
-    valueType: 'boolean',
-    groupKey: 'auth.oauth',
-    updatedBy: 'system:install'
-  }, event)
+  const parsed = installInputSchema.safeParse(await readBody(event))
+  if (!parsed.success) {
+    throw badRequest('Invalid setup input', {
+      issues: parsed.error.issues.map(issue => ({
+        path: issue.path.join('.'),
+        message: issue.message
+      }))
+    })
+  }
+  const { email, name, password, sampleData } = parsed.data
 
-  await upsertSetting({
-    key: 'auth.oauth.google.enabled',
-    value: googleEnabled ? 'true' : 'false',
-    valueType: 'boolean',
-    groupKey: 'auth.oauth',
-    updatedBy: 'system:install'
-  }, event)
+  const claim = await beginInstallation(db, setupSessionHash)
+  if (!claim) {
+    throw createError({
+      statusCode: 409,
+      statusMessage: 'Installation is already in progress',
+      data: { phase: 'installing' }
+    })
+  }
 
-  if (googleEnabled) {
-    const googleClientId = googleClientIdInput || envGoogleClientId
-    const googleClientSecret = googleClientSecretInput || envGoogleClientSecret
-
-    if (!googleClientId || !googleClientSecret) {
-      throw badRequest('Missing Google OAuth client ID or secret')
+  try {
+    let sub = 'system:install'
+    if ((status.userCount ?? 0) > 0) {
+      const allowed = await isAdminLoginAllowedDb(event, email, password)
+      if (!allowed) throw unauthorized('Invalid admin credentials')
+      const adminUser = await getAdminUserByIdentifier(event, email)
+      if (!adminUser) throw unauthorized('Invalid admin credentials')
+      sub = `user:${adminUser.id}`
     }
 
+    await seedRoles(db)
     await upsertSetting({
-      key: 'auth.oauth.google.clientId',
-      value: googleClientId,
-      valueType: 'string',
+      key: 'auth.oauth.credentials.enabled',
+      value: 'true',
+      valueType: 'boolean',
       groupKey: 'auth.oauth',
-      updatedBy: 'system:install'
+      updatedBy: sub
     }, event)
 
-    await upsertSetting({
-      key: 'auth.oauth.google.clientSecret',
-      value: googleClientSecret,
-      valueType: 'string',
-      isEncrypted: true,
-      encryptionKey: encryptionSecret,
-      groupKey: 'auth.oauth',
-      updatedBy: 'system:install'
-    }, event)
+    if (sampleData) {
+      const schemaKey = await ensureBootstrapSchema(db, sub)
+      if (!schemaKey) throw new Error('Starter schema could not be created safely')
+    }
+
+    if ((status.userCount ?? 0) === 0) {
+      const adminId = await ensureAdminUser(db, { email, name, password })
+      if (!adminId) throw createError({ statusCode: 409, statusMessage: 'Admin user already exists' })
+      sub = `user:${adminId}`
+    }
+
+    await completeInstallation(db, claim.leaseToken, sub)
+    clearSetupSessionCookie(event, isCloudflareRuntime)
+    return { ok: true }
+  } catch (error) {
+    try {
+      await failInstallation(db, claim.leaseToken, error)
+    } catch (leaseError) {
+      console.error('[install] Failed to release installation lease', leaseError)
+    }
+    throw error
   }
-
-  const freshStatus = await getInstallStatus(db)
-
-  let sub = 'system:install'
-  if ((freshStatus.userCount ?? 0) > 0) {
-    const allowed = await isAdminLoginAllowedDb(event, email, password)
-    if (!allowed) throw unauthorized('Invalid admin credentials')
-    const adminUser = await getAdminUserByIdentifier(event, email)
-    sub = adminUser ? `user:${adminUser.id}` : `admin:${email}`
-  } else {
-    const adminId = await ensureAdminUser(db, { email, name, password })
-    if (!adminId) throw badRequest('Admin user already exists')
-    sub = `user:${adminId}`
-  }
-
-  if (sampleData) {
-    await ensureBootstrapSchema(db, sub)
-  }
-
-  return { ok: true }
 })
-
-function normalizeRoles(input: Array<{ roleKey?: string; title?: string; level?: number }> | undefined): UserRoleSeed[] {
-  const roles = (input ?? []).map((role) => {
-    const roleKey = (role?.roleKey ?? '').trim().toLowerCase()
-    const title = (role?.title ?? '').trim()
-    const level = Number(role?.level)
-    return { roleKey, title, level }
-  }).filter(role => role.roleKey)
-
-  if (!roles.length) {
-    return [
-      { roleKey: 'admin', title: 'Admin', level: 100 },
-      { roleKey: 'user', title: 'User', level: 50 },
-      { roleKey: 'anonymous', title: 'Anonymous', level: 0 }
-    ]
-  }
-
-  const seen = new Set<string>()
-  for (const role of roles) {
-    if (seen.has(role.roleKey)) {
-      throw badRequest(`Duplicate role key: ${role.roleKey}`)
-    }
-    seen.add(role.roleKey)
-    if (!Number.isFinite(role.level) || role.level < 0 || role.level > 100) {
-      throw badRequest(`Invalid level for role: ${role.roleKey}`)
-    }
-    if (!role.title) {
-      role.title = role.roleKey
-    }
-  }
-
-  if (!seen.has('admin') || !seen.has('anonymous')) {
-    throw badRequest('Admin and anonymous roles are required')
-  }
-
-  return roles
-}
