@@ -289,9 +289,13 @@ describe('versioned published search', () => {
 
   it('uses stable field IDs for compatible key renames', async () => {
     const filters = encodeURIComponent(JSON.stringify({ field: 'label', value: 'news' }))
-    const result = await searchHandler(responseEvent(`/api/search?schemaKey=compatible&filters=${filters}&sort=label:asc`))
+    const result = await searchHandler(responseEvent(`/api/search?schemaKey=compatible&filters=${filters}&sort=label:asc&fields=label`))
     expect(result.items).toHaveLength(1)
-    expect(result.items[0]).toMatchObject({ id: 'compatible-v1', schemaVersion: 1 })
+    expect(result.items[0]).toMatchObject({
+      id: 'compatible-v1',
+      schemaVersion: 1,
+      searchData: { label: 'news' }
+    })
   })
 
   it('rejects a reused field key with a different stable ID', async () => {
@@ -299,6 +303,13 @@ describe('versioned published search', () => {
     await expect(searchHandler(responseEvent(`/api/search?schemaKey=recreated&filters=${filters}`)))
       .rejects.toMatchObject({ statusCode: 409 })
     await expect(searchHandler(responseEvent('/api/search?schemaKey=recreated&sort=category:asc')))
+      .rejects.toMatchObject({ statusCode: 409 })
+    await expect(searchHandler(responseEvent('/api/search?schemaKey=recreated&fields=category')))
+      .rejects.toMatchObject({ statusCode: 409 })
+  })
+
+  it('rejects requested search data that changed kind across published versions', async () => {
+    await expect(searchHandler(responseEvent('/api/search?schemaKey=article&fields=rating')))
       .rejects.toMatchObject({ statusCode: 409 })
   })
 
