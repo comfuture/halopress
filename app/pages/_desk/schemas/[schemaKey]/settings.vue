@@ -127,13 +127,13 @@ async function updatePermission(role: RolePermission, key: 'canRead' | 'canWrite
           variant="subtle"
         />
 
-        <UCard v-else>
-          <template #header>
-            <div>
-              <p class="text-sm font-semibold">Permissions</p>
-              <p class="text-xs text-muted">Control read/write/admin access per role.</p>
-            </div>
-          </template>
+        <fieldset v-else class="min-w-0 space-y-4">
+          <legend class="text-sm font-semibold text-highlighted">
+            Permissions
+          </legend>
+          <p class="text-xs text-muted">
+            Control read/write/admin access per role.
+          </p>
 
           <div v-if="pending" class="space-y-2">
             <USkeleton class="h-10 w-full" />
@@ -186,7 +186,7 @@ async function updatePermission(role: RolePermission, key: 'canRead' | 'canWrite
               </div>
             </div>
           </div>
-        </UCard>
+        </fieldset>
       </div>
     </template>
   </UDashboardPanel>

@@ -150,11 +150,13 @@ async function publish() {
     </template>
 
     <template #body>
-      <UCard v-if="schema?.registry" class="shrink-0">
-        <div class="flex flex-col gap-4">
-          <CmsContentForm ref="contentFormRef" :schema="schema" :model="state.content" />
-        </div>
-      </UCard>
+      <CmsContentForm
+        v-if="schema?.registry"
+        ref="contentFormRef"
+        :schema="schema"
+        :model="state.content"
+        class="shrink-0"
+      />
     </template>
   </UDashboardPanel>
 </template>

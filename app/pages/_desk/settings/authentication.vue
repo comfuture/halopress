@@ -155,24 +155,22 @@ function discardChanges() {
           icon="i-lucide-circle-alert"
         />
 
-        <UCard v-else-if="data" variant="subtle">
-          <template #header>
-            <div class="flex flex-wrap items-start justify-between gap-3">
-              <div class="space-y-1">
-                <h1 class="text-base font-semibold text-highlighted">
-                  Google sign-in
-                </h1>
-                <p class="text-sm text-muted">
-                  Link the Google identity that uses the same email address as an active Halopress administrator.
-                </p>
-              </div>
-              <UBadge :color="statusColor" variant="soft">
-                {{ statusLabel }}
-              </UBadge>
+        <section v-else-if="data" class="space-y-6" aria-labelledby="google-sign-in-heading">
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div class="space-y-1">
+              <h1 id="google-sign-in-heading" class="text-base font-semibold text-highlighted">
+                Google sign-in
+              </h1>
+              <p class="text-sm text-muted">
+                Link the Google identity that uses the same email address as an active Halopress administrator.
+              </p>
             </div>
-          </template>
+            <UBadge :color="statusColor" variant="soft">
+              {{ statusLabel }}
+            </UBadge>
+          </div>
 
-          <UForm :state="state" :validate="validate" class="space-y-6" @submit="save">
+          <UForm :state="state" :validate="validate" class="space-y-8" @submit="save">
             <UAlert
               title="Password sign-in remains your recovery path"
               description="Enabling Google does not replace or disable the administrator email and password created during installation."
@@ -181,11 +179,11 @@ function discardChanges() {
               :icon="data.passwordEnabled ? 'i-lucide-shield-check' : 'i-lucide-shield-alert'"
             />
 
-            <section class="space-y-3" aria-labelledby="google-cloud-setup-heading">
-              <div>
-                <h2 id="google-cloud-setup-heading" class="font-medium text-highlighted">
-                  Google Cloud setup
-                </h2>
+            <fieldset class="min-w-0 border-0 p-0">
+              <legend class="font-medium text-highlighted">
+                Google Cloud setup
+              </legend>
+              <div class="mt-3 space-y-3">
                 <p class="mt-1 text-sm text-muted">
                   Cloudflare one-click deploy cannot create a Google OAuth application for you. Create a Web application client in Google Cloud, then add this exact Authorized redirect URI.
                 </p>
@@ -199,30 +197,30 @@ function discardChanges() {
                 >
                   Open Google Cloud credentials
                 </UButton>
-              </div>
 
-              <UFormField label="Authorized redirect URI" description="The URI in Google Cloud must match exactly.">
-                <div class="flex flex-col gap-2 sm:flex-row">
-                  <UInput
-                    :model-value="data.callbackUrl"
-                    readonly
-                    aria-label="Google OAuth callback URL"
-                    class="min-w-0 flex-1 font-mono"
-                    size="lg"
-                  />
-                  <UButton
-                    type="button"
-                    color="neutral"
-                    variant="outline"
-                    :icon="copied ? 'i-lucide-check' : 'i-lucide-copy'"
-                    class="min-h-11 justify-center"
-                    @click="copyCallbackUrl"
-                  >
-                    {{ copied ? 'Copied' : 'Copy' }}
-                  </UButton>
-                </div>
-              </UFormField>
-            </section>
+                <UFormField label="Authorized redirect URI" description="The URI in Google Cloud must match exactly.">
+                  <div class="flex flex-col gap-2 sm:flex-row">
+                    <UInput
+                      :model-value="data.callbackUrl"
+                      readonly
+                      aria-label="Google OAuth callback URL"
+                      class="min-w-0 flex-1 font-mono"
+                      size="lg"
+                    />
+                    <UButton
+                      type="button"
+                      color="neutral"
+                      variant="outline"
+                      :icon="copied ? 'i-lucide-check' : 'i-lucide-copy'"
+                      class="min-h-11 justify-center"
+                      @click="copyCallbackUrl"
+                    >
+                      {{ copied ? 'Copied' : 'Copy' }}
+                    </UButton>
+                  </div>
+                </UFormField>
+              </div>
+            </fieldset>
 
             <UAlert
               v-if="data.envManaged"
@@ -244,36 +242,41 @@ function discardChanges() {
               </template>
             </UAlert>
 
-            <div v-if="data.canEditCredentials" class="grid gap-5 sm:grid-cols-2">
-              <UFormField
-                label="Google client ID"
-                name="clientId"
-                :description="data.clientIdConfigured ? `Current: ${data.clientIdMasked}. Leave blank to keep it.` : 'Paste the Web application client ID.'"
-              >
-                <UInput
-                  v-model="state.clientId"
-                  autocomplete="off"
-                  placeholder="1234…apps.googleusercontent.com"
-                  class="w-full"
-                  size="lg"
-                />
-              </UFormField>
+            <fieldset v-if="data.canEditCredentials" class="min-w-0 border-0 p-0">
+              <legend class="font-medium text-highlighted">
+                Google credentials
+              </legend>
+              <div class="mt-3 grid gap-5 sm:grid-cols-2">
+                <UFormField
+                  label="Google client ID"
+                  name="clientId"
+                  :description="data.clientIdConfigured ? `Current: ${data.clientIdMasked}. Leave blank to keep it.` : 'Paste the Web application client ID.'"
+                >
+                  <UInput
+                    v-model="state.clientId"
+                    autocomplete="off"
+                    placeholder="1234…apps.googleusercontent.com"
+                    class="w-full"
+                    size="lg"
+                  />
+                </UFormField>
 
-              <UFormField
-                label="Google client secret"
-                name="clientSecret"
-                :description="data.secretConfigured ? 'A secret is stored. Leave blank to keep it.' : 'The secret is encrypted before it is stored.'"
-              >
-                <UInput
-                  v-model="state.clientSecret"
-                  type="password"
-                  autocomplete="new-password"
-                  placeholder="Paste client secret"
-                  class="w-full"
-                  size="lg"
-                />
-              </UFormField>
-            </div>
+                <UFormField
+                  label="Google client secret"
+                  name="clientSecret"
+                  :description="data.secretConfigured ? 'A secret is stored. Leave blank to keep it.' : 'The secret is encrypted before it is stored.'"
+                >
+                  <UInput
+                    v-model="state.clientSecret"
+                    type="password"
+                    autocomplete="new-password"
+                    placeholder="Paste client secret"
+                    class="w-full"
+                    size="lg"
+                  />
+                </UFormField>
+              </div>
+            </fieldset>
 
             <UAlert
               v-if="data.canEditCredentials && !data.encryptionKeyAvailable"
@@ -293,7 +296,7 @@ function discardChanges() {
               icon="i-lucide-shield-alert"
             />
 
-            <div class="rounded-lg border border-muted bg-default p-4">
+            <div class="border-t border-muted pt-6">
               <USwitch
                 v-model="state.enabled"
                 label="Enable Google sign-in"
@@ -330,7 +333,7 @@ function discardChanges() {
               </UButton>
             </div>
           </UForm>
-        </UCard>
+        </section>
 
         <div v-else class="flex min-h-56 items-center justify-center" aria-live="polite">
           <UIcon name="i-lucide-loader-circle" class="size-6 animate-spin text-muted" />

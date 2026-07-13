@@ -190,111 +190,117 @@ defineExpose({
     ref="formRef"
     :schema="formSchema"
     :state="model"
-    class="flex flex-col gap-4"
   >
-    <UFormField
-      v-for="field in editableFields"
-      :key="field.fieldId"
-      :label="field.title || field.key"
-      :name="field.key"
-      :required="!!field.required"
-      class="w-full"
-    >
-      <UInput
-        v-if="field.kind === 'string'"
-        v-model="model[field.key]"
-        :placeholder="field.ui?.placeholder"
+    <fieldset class="min-w-0 space-y-4">
+      <legend class="mb-4 text-sm font-semibold text-highlighted">
+        Content
+      </legend>
+      <UFormField
+        v-for="field in editableFields"
+        :key="field.fieldId"
+        :label="field.kind === 'asset' || field.kind === 'reference' ? undefined : field.title || field.key"
+        :name="field.key"
+        :required="!!field.required"
         class="w-full"
-      />
+      >
+        <UInput
+          v-if="field.kind === 'string'"
+          v-model="model[field.key]"
+          :placeholder="field.ui?.placeholder"
+          class="w-full"
+        />
 
-      <UTextarea
-        v-else-if="field.kind === 'text'"
-        v-model="model[field.key]"
-        :rows="field.ui?.rows || 4"
-        :placeholder="field.ui?.placeholder"
-        class="w-full"
-      />
+        <UTextarea
+          v-else-if="field.kind === 'text'"
+          v-model="model[field.key]"
+          :rows="field.ui?.rows || 4"
+          :placeholder="field.ui?.placeholder"
+          class="w-full"
+        />
 
-      <USelectMenu
-        v-else-if="field.kind === 'enum'"
-        v-model="model[field.key]"
-        :items="enumOptions(field.key)"
-        value-key="value"
-        label-key="label"
-        :placeholder="field.ui?.placeholder || 'Select…'"
-        class="w-full sm:min-w-72"
-      />
+        <USelectMenu
+          v-else-if="field.kind === 'enum'"
+          v-model="model[field.key]"
+          :items="enumOptions(field.key)"
+          value-key="value"
+          label-key="label"
+          :placeholder="field.ui?.placeholder || 'Select…'"
+          class="w-full sm:min-w-72"
+        />
 
-      <UInput
-        v-else-if="field.kind === 'number'"
-        v-model="model[field.key]"
-        type="number"
-        inputmode="decimal"
-        step="any"
-        class="w-full"
-      />
+        <UInput
+          v-else-if="field.kind === 'number'"
+          v-model="model[field.key]"
+          type="number"
+          inputmode="decimal"
+          step="any"
+          class="w-full"
+        />
 
-      <UInput
-        v-else-if="field.kind === 'integer'"
-        v-model="model[field.key]"
-        type="number"
-        inputmode="numeric"
-        step="1"
-        class="w-full"
-      />
+        <UInput
+          v-else-if="field.kind === 'integer'"
+          v-model="model[field.key]"
+          type="number"
+          inputmode="numeric"
+          step="1"
+          class="w-full"
+        />
 
-      <USwitch
-        v-else-if="field.kind === 'boolean'"
-        v-model="model[field.key]"
-      />
+        <USwitch
+          v-else-if="field.kind === 'boolean'"
+          v-model="model[field.key]"
+        />
 
-      <UInput
-        v-else-if="field.kind === 'date'"
-        v-model="model[field.key]"
-        type="date"
-        class="w-full"
-      />
+        <UInput
+          v-else-if="field.kind === 'date'"
+          v-model="model[field.key]"
+          type="date"
+          class="w-full"
+        />
 
-      <UInput
-        v-else-if="field.kind === 'datetime'"
-        v-model="model[field.key]"
-        type="datetime-local"
-        class="w-full"
-      />
+        <UInput
+          v-else-if="field.kind === 'datetime'"
+          v-model="model[field.key]"
+          type="datetime-local"
+          class="w-full"
+        />
 
-      <UInput
-        v-else-if="field.kind === 'url'"
-        v-model="model[field.key]"
-        type="url"
-        :placeholder="field.ui?.placeholder || 'https://'"
-        class="w-full"
-      />
+        <UInput
+          v-else-if="field.kind === 'url'"
+          v-model="model[field.key]"
+          type="url"
+          :placeholder="field.ui?.placeholder || 'https://'"
+          class="w-full"
+        />
 
-      <CmsRichEditor
-        v-else-if="field.kind === 'richtext'"
-        v-model="model[field.key]"
-        :placeholder="field.ui?.placeholder || 'Write…'"
-        class="w-full min-h-48"
-      />
+        <CmsRichEditor
+          v-else-if="field.kind === 'richtext'"
+          v-model="model[field.key]"
+          :placeholder="field.ui?.placeholder || 'Write…'"
+          class="w-full min-h-48"
+        />
 
-      <CmsAssetPicker
-        v-else-if="field.kind === 'asset'"
-        v-model="model[field.key]"
-        :label="field.title || field.key"
-      />
+        <CmsAssetPicker
+          v-else-if="field.kind === 'asset'"
+          v-model="model[field.key]"
+          :label="field.title || field.key"
+          :required="!!field.required"
+        />
 
-      <CmsReferencePicker
-        v-else-if="field.kind === 'reference'"
-        v-model="model[field.key]"
-        :label="field.title || field.key"
-        :target-schema-key="refTargetSchemaKey(field)"
-      />
+        <CmsReferencePicker
+          v-else-if="field.kind === 'reference'"
+          v-model="model[field.key]"
+          :label="field.title || field.key"
+          :required="!!field.required"
+          :target-schema-key="refTargetSchemaKey(field)"
+        />
 
-      <UInput
-        v-else
-        v-model="model[field.key]"
-        class="w-full"
-      />
-    </UFormField>
+        <UInput
+          v-else
+          v-model="model[field.key]"
+          class="w-full"
+        />
+      </UFormField>
+    </fieldset>
   </UForm>
 </template>
