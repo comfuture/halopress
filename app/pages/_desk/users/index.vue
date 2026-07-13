@@ -330,7 +330,7 @@ const columns = computed<TableColumn<UserRow>[]>(() => ([
       </UForm>
     </template>
     <template #footer>
-      <UButton color="neutral" variant="outline" @click="void (editOpen = false)">
+      <UButton color="neutral" variant="outline" @click="editOpen = false;">
         Cancel
       </UButton>
       <UButton

@@ -57,7 +57,7 @@ function apply() {
         variant="outline"
         icon="i-lucide-search"
         :disabled="!targetSchemaKey"
-        @click="void (open = true)"
+        @click="open = true;"
       >
         Browse
       </UButton>
@@ -76,7 +76,7 @@ function apply() {
 
       <template #footer>
         <div class="flex w-full justify-end gap-2">
-          <UButton color="neutral" variant="outline" @click="void (open = false)">
+          <UButton color="neutral" variant="outline" @click="open = false;">
             Cancel
           </UButton>
           <UButton icon="i-lucide-check" @click="apply">
