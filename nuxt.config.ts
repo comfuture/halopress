@@ -69,15 +69,6 @@ export default defineNuxtConfig({
     preset: 'cloudflare-module'
   },
 
-  routeRules: {
-    '/_install': {
-      // Sidebase reads this custom nested route rule, but Nuxt's routeRules type does not include it.
-      auth: {
-        disableServerSideAuth: true
-      }
-    } as any
-  },
-
   hooks: {
     'nitro:config'(nitroConfig) {
       // Sidebase's production origin assertion runs at Worker startup without a request.
@@ -114,6 +105,9 @@ export default defineNuxtConfig({
   auth: {
     originEnvKey: 'NUXT_AUTH_ORIGIN',
     baseURL: '/api/auth',
+    // Cloudflare Workers cannot make an HTTP request back to the same Worker.
+    // Load the session in the browser after hydration instead of during SSR.
+    disableServerSideAuth: true,
     provider: {
       type: 'authjs',
       trustHost: true,
