@@ -11,6 +11,7 @@ import { schema as schemaTable, schemaActive as schemaActiveTable } from '../../
 import { requireAdmin } from '../../../utils/auth'
 import { badRequest, notFound } from '../../../utils/http'
 import { schemaAstSchema } from '../../../cms/zod'
+import { assertSchemaKeyCanBePersisted } from '../../../cms/schema-key'
 import { ensureAnonymousSchemaRole } from '../../../utils/install'
 import { queueWidgetCacheInvalidation } from '../../../utils/widget-cache'
 
@@ -32,6 +33,7 @@ export default defineEventHandler(async (event) => {
     ast = draft.ast
   }
   if (ast.schemaKey !== schemaKey) throw badRequest('schemaKey mismatch')
+  await assertSchemaKeyCanBePersisted(db, schemaKey)
 
   const latest = await db
     .select({ version: schemaTable.version })
