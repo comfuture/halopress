@@ -6,12 +6,21 @@ import { content as contentTable, schema as schemaTable, schemaActive as schemaA
 import { requireAdmin } from '../../utils/auth'
 import { BOOTSTRAP_CONTENT_ID, isBootstrapSchema } from '../../utils/bootstrap'
 import { getGoogleAuthenticationSettings } from '../../utils/google-authentication-settings'
-import { hasCustomDomain, hasImageTransformations } from '../../utils/onboarding'
+import {
+  buildOnboardingStatus,
+  getImageTransformationsStatus,
+  hasCompletedDomainGuidance,
+  resolveOnboardingDeployment
+} from '../../utils/onboarding'
 
 export default defineEventHandler(async (event) => {
   await requireAdmin(event)
   const db = await getDb(event)
   const requestUrl = getRequestURL(event)
+  const deployment = resolveOnboardingDeployment({
+    cloudflareContext: (event as any).context?.cloudflare,
+    development: import.meta.dev
+  })
 
   const [activeSchemas, publishedContent, googleOAuth, imageTransformations] = await Promise.all([
     db
@@ -32,34 +41,19 @@ export default defineEventHandler(async (event) => {
       .where(and(eq(contentTable.status, 'published'), ne(contentTable.id, BOOTSTRAP_CONTENT_ID)))
       .get(),
     getGoogleAuthenticationSettings(event),
-    hasImageTransformations(event)
+    getImageTransformationsStatus(deployment, event)
   ])
 
   const customSchemas = activeSchemas.filter((schema: { schemaKey: string, version: number, note: string | null }) => !isBootstrapSchema(schema))
   const publishedContentCount = Number(publishedContent?.total ?? 0)
-  const isCloudflareRuntime = Boolean((event as any).context?.cloudflare)
 
-  return {
-    schemas: {
-      complete: customSchemas.length > 0,
-      count: customSchemas.length,
-      firstSchemaKey: customSchemas[0]?.schemaKey ?? null
-    },
-    content: {
-      complete: publishedContentCount > 0,
-      count: publishedContentCount
-    },
-    customDomain: {
-      complete: isCloudflareRuntime && hasCustomDomain(requestUrl.hostname),
-      hostname: requestUrl.hostname
-    },
-    imageTransformations: {
-      complete: imageTransformations
-    },
-    googleOAuth: {
-      complete: googleOAuth.configured && googleOAuth.enabled,
-      configured: googleOAuth.configured,
-      enabled: googleOAuth.enabled
-    }
-  }
+  return buildOnboardingStatus({
+    deployment,
+    schemasComplete: customSchemas.length > 0,
+    firstSchemaKey: customSchemas[0]?.schemaKey ?? null,
+    contentComplete: publishedContentCount > 0,
+    domainComplete: hasCompletedDomainGuidance(deployment, requestUrl.hostname),
+    imageTransformationsComplete: imageTransformations,
+    googleOAuthComplete: googleOAuth.configured && googleOAuth.enabled
+  })
 })

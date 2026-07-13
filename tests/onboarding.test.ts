@@ -3,34 +3,140 @@ import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 
 import {
-  EXPECTED_ONBOARDING_ITEM_COUNT,
+  formatOnboardingProgressLabel,
+  formatOnboardingProgressValue,
   getOnboardingItems,
+  getOnboardingProgress,
   hasCompletedOnboarding,
   type OnboardingStatus
 } from '../app/utils/onboarding'
 import { isBootstrapSchema } from '../server/utils/bootstrap'
-import { hasCustomDomain, hasImageTransformations } from '../server/utils/onboarding'
+import {
+  buildOnboardingStatus,
+  getImageTransformationsStatus,
+  hasCompletedDomainGuidance,
+  hasCustomDomain,
+  hasImageTransformations,
+  hasPublicOrigin,
+  resolveOnboardingDeployment
+} from '../server/utils/onboarding'
+import type { OnboardingDeployment } from '../shared/types/onboarding'
 
 const projectRoot = join(import.meta.dirname, '..')
 
-function onboardingStatus(complete: boolean): OnboardingStatus {
+const cloudflareDeployment = resolveOnboardingDeployment({
+  cloudflareContext: {},
+  development: false
+})
+const nodeDeployment = resolveOnboardingDeployment({ development: false })
+const localDeployment = resolveOnboardingDeployment({ development: true })
+
+function onboardingStatus(
+  deployment: OnboardingDeployment,
+  complete: boolean,
+  overrides: Partial<{
+    domain: boolean
+    images: boolean
+  }> = {}
+): OnboardingStatus {
+  return buildOnboardingStatus({
+    deployment,
+    schemasComplete: complete,
+    firstSchemaKey: complete ? 'article' : null,
+    contentComplete: complete,
+    domainComplete: overrides.domain ?? complete,
+    imageTransformationsComplete: overrides.images ?? complete,
+    googleOAuthComplete: complete
+  })
+}
+
+function onboardingEvent(hostname: string, cloudflare = false) {
   return {
-    schemas: { complete, firstSchemaKey: complete ? 'article' : null },
-    content: { complete },
-    customDomain: { complete },
-    imageTransformations: { complete },
-    googleOAuth: { complete }
+    context: cloudflare ? { cloudflare: {} } : {},
+    path: '/',
+    node: { req: { url: '/', headers: { host: hostname } } }
   }
 }
 
 describe('dashboard onboarding', () => {
-  it('distinguishes custom domains from local and Cloudflare platform hosts', () => {
+  it('resolves deployment capabilities from runtime evidence rather than hostname', () => {
+    expect(cloudflareDeployment).toEqual({
+      runtime: 'cloudflare',
+      capabilities: {
+        domainGuidance: 'cloudflare-custom-domain',
+        imageTransformations: true
+      }
+    })
+    expect(nodeDeployment).toEqual({
+      runtime: 'node',
+      capabilities: {
+        domainGuidance: 'public-origin',
+        imageTransformations: false
+      }
+    })
+    expect(localDeployment).toEqual({
+      runtime: 'local',
+      capabilities: {
+        domainGuidance: 'none',
+        imageTransformations: false
+      }
+    })
+
+    expect(resolveOnboardingDeployment({ cloudflareContext: {}, development: true })).toEqual(localDeployment)
+  })
+
+  it('distinguishes Cloudflare custom domains and Node public origins from loopback hosts', () => {
     expect(hasCustomDomain('cms.example.com')).toBe(true)
     expect(hasCustomDomain('CMS.EXAMPLE.COM.')).toBe(true)
     expect(hasCustomDomain('site.account.workers.dev')).toBe(false)
     expect(hasCustomDomain('site.pages.dev')).toBe(false)
     expect(hasCustomDomain('localhost')).toBe(false)
-    expect(hasCustomDomain('127.0.0.1')).toBe(false)
+    expect(hasCustomDomain('app.localhost')).toBe(false)
+    expect(hasCustomDomain('127.42.0.8')).toBe(false)
+    expect(hasCustomDomain('[::1]')).toBe(false)
+
+    expect(hasPublicOrigin('cms.example.com')).toBe(true)
+    expect(hasPublicOrigin('halopress.onrender.com')).toBe(true)
+    expect(hasPublicOrigin('8.8.8.8')).toBe(true)
+    expect(hasPublicOrigin('[2001:4860:4860::8888]')).toBe(true)
+    expect(hasPublicOrigin('localhost')).toBe(false)
+    expect(hasPublicOrigin('127.0.0.1')).toBe(false)
+    expect(hasPublicOrigin('::1')).toBe(false)
+    expect(hasPublicOrigin('10.0.0.8')).toBe(false)
+    expect(hasPublicOrigin('192.168.1.2')).toBe(false)
+    expect(hasPublicOrigin('169.254.10.1')).toBe(false)
+    expect(hasPublicOrigin('halopress')).toBe(false)
+    expect(hasPublicOrigin('halopress.internal')).toBe(false)
+
+    expect(hasCompletedDomainGuidance(cloudflareDeployment, 'site.account.workers.dev')).toBe(false)
+    expect(hasCompletedDomainGuidance(cloudflareDeployment, 'cms.example.com')).toBe(true)
+    expect(hasCompletedDomainGuidance(nodeDeployment, 'halopress.onrender.com')).toBe(true)
+    expect(hasCompletedDomainGuidance(nodeDeployment, 'cms.example.com')).toBe(true)
+    expect(hasCompletedDomainGuidance(nodeDeployment, 'localhost')).toBe(false)
+    expect(hasCompletedDomainGuidance(nodeDeployment, '10.0.0.8')).toBe(false)
+    expect(hasCompletedDomainGuidance(nodeDeployment, 'halopress.internal')).toBe(false)
+    expect(hasCompletedDomainGuidance(localDeployment, 'cms.example.com')).toBe(false)
+  })
+
+  it('does not grant Cloudflare capabilities from spoofed Cloudflare-looking hosts', async () => {
+    const fetcher = vi.fn()
+    const spoofedHostEvent = onboardingEvent('spoofed.account.workers.dev')
+    const deployment = resolveOnboardingDeployment({
+      cloudflareContext: spoofedHostEvent.context.cloudflare,
+      development: false
+    })
+
+    expect(deployment.runtime).toBe('node')
+    expect(deployment.capabilities).toEqual({
+      domainGuidance: 'public-origin',
+      imageTransformations: false
+    })
+    await expect(getImageTransformationsStatus(deployment, spoofedHostEvent as any, fetcher as any)).resolves.toBe(false)
+    expect(fetcher).not.toHaveBeenCalled()
+
+    const itemUrls = getOnboardingItems(onboardingStatus(deployment, false)).map(item => item.to)
+    expect(itemUrls).not.toContain('https://developers.cloudflare.com/images/optimization/transformations/overview/')
+    expect(itemUrls.every(url => !url.includes('developers.cloudflare.com'))).toBe(true)
   })
 
   it('only excludes the exact starter schema from user onboarding progress', () => {
@@ -39,23 +145,88 @@ describe('dashboard onboarding', () => {
     expect(isBootstrapSchema({ schemaKey: 'product', version: 1, note: 'bootstrap' })).toBe(false)
   })
 
-  it('only completes onboarding when all five items are complete', () => {
-    const completeItems = getOnboardingItems(onboardingStatus(true))
-    expect(completeItems).toHaveLength(EXPECTED_ONBOARDING_ITEM_COUNT)
-    expect(hasCompletedOnboarding(completeItems)).toBe(true)
+  it('derives the visible items and links from the applicable deployment capabilities', () => {
+    const cloudflareItems = getOnboardingItems(onboardingStatus(cloudflareDeployment, false))
+    const nodeItems = getOnboardingItems(onboardingStatus(nodeDeployment, false))
+    const localItems = getOnboardingItems(onboardingStatus(localDeployment, false))
 
-    expect(hasCompletedOnboarding(getOnboardingItems(onboardingStatus(false)))).toBe(false)
-    expect(hasCompletedOnboarding(completeItems.slice(0, 4))).toBe(false)
+    expect(cloudflareItems.map(item => item.key)).toEqual(['schema', 'content', 'domain', 'images', 'google'])
+    expect(cloudflareItems.find(item => item.key === 'domain')).toMatchObject({
+      title: 'Set up a custom domain',
+      external: true
+    })
+    expect(cloudflareItems.find(item => item.key === 'images')?.to).toContain('developers.cloudflare.com/images/')
+
+    expect(nodeItems.map(item => item.key)).toEqual(['schema', 'content', 'domain', 'google'])
+    expect(nodeItems.find(item => item.key === 'domain')).toMatchObject({
+      title: 'Use a public site URL',
+      external: true
+    })
+    expect(nodeItems.find(item => item.key === 'domain')?.to).toContain('docs/deployment.md#node-production')
+    expect(nodeItems.every(item => !item.to.includes('developers.cloudflare.com'))).toBe(true)
+
+    expect(localItems.map(item => item.key)).toEqual(['schema', 'content', 'google'])
   })
 
-  it('only probes Image Transformations in the Cloudflare runtime', async () => {
-    const fetcher = vi.fn()
-    const event = {
-      context: {},
-      path: '/',
-      node: { req: { url: '/', headers: { host: 'localhost:3000' } } }
-    }
+  it('encodes the first schema key in the content creation link', () => {
+    const status = onboardingStatus(localDeployment, false)
+    status.schemas.firstSchemaKey = 'press release/한국어'
 
+    expect(getOnboardingItems(status).find(item => item.key === 'content')?.to)
+      .toBe('/_desk/content/press%20release%2F%ED%95%9C%EA%B5%AD%EC%96%B4/new')
+  })
+
+  it('calculates completion and progress from every applicable item', () => {
+    const cloudflareItems = getOnboardingItems(onboardingStatus(cloudflareDeployment, true))
+    const nodeItems = getOnboardingItems(onboardingStatus(nodeDeployment, true, { images: false }))
+    const localItems = getOnboardingItems(onboardingStatus(localDeployment, true, { domain: false, images: false }))
+
+    expect(getOnboardingProgress(cloudflareItems)).toEqual({ completed: 5, total: 5, complete: true })
+    expect(getOnboardingProgress(nodeItems)).toEqual({ completed: 4, total: 4, complete: true })
+    expect(getOnboardingProgress(localItems)).toEqual({ completed: 3, total: 3, complete: true })
+    expect(hasCompletedOnboarding(cloudflareItems.slice(0, 4))).toBe(true)
+    expect(hasCompletedOnboarding([{ complete: true }, { complete: false }])).toBe(false)
+    expect(hasCompletedOnboarding([])).toBe(true)
+    expect(formatOnboardingProgressLabel()).toBe('Onboarding progress')
+    expect(formatOnboardingProgressValue(2, 4)).toBe('2 of 4 setup tasks complete')
+  })
+
+  it('returns only the minimal onboarding API response fields', () => {
+    const deployment = resolveOnboardingDeployment({
+      cloudflareContext: {
+        env: {
+          DB: 'DB_SENTINEL',
+          CONTENT_ASSETS: 'R2_SENTINEL',
+          NUXT_AUTH_SECRET: 'SECRET_SENTINEL'
+        }
+      },
+      development: false
+    })
+    const status = onboardingStatus(deployment, true)
+
+    expect(status).toEqual({
+      deployment: {
+        runtime: 'cloudflare',
+        capabilities: {
+          domainGuidance: 'cloudflare-custom-domain',
+          imageTransformations: true
+        }
+      },
+      schemas: { complete: true, firstSchemaKey: 'article' },
+      content: { complete: true },
+      domain: { complete: true },
+      imageTransformations: { complete: true },
+      googleOAuth: { complete: true }
+    })
+    expect(JSON.stringify(status)).not.toMatch(/hostname|env|binding|DB_SENTINEL|R2_SENTINEL|SECRET_SENTINEL|configured|enabled/i)
+  })
+
+  it('gates Image Transformations before starting a probe outside Cloudflare', async () => {
+    const fetcher = vi.fn()
+    const event = onboardingEvent('cms.example.com')
+
+    await expect(getImageTransformationsStatus(nodeDeployment, event as any, fetcher as any)).resolves.toBe(false)
+    await expect(getImageTransformationsStatus(localDeployment, event as any, fetcher as any)).resolves.toBe(false)
     await expect(hasImageTransformations(event as any, fetcher as any)).resolves.toBe(false)
     expect(fetcher).not.toHaveBeenCalled()
   })
@@ -68,13 +239,9 @@ describe('dashboard onboarding', () => {
         'cf-resized': 'orig-size=128'
       }
     }))
-    const event = {
-      context: { cloudflare: {} },
-      path: '/',
-      node: { req: { url: '/', headers: { host: 'cms.example.com' } } }
-    }
+    const event = onboardingEvent('cms.example.com', true)
 
-    await expect(hasImageTransformations(event as any, fetcher as any)).resolves.toBe(true)
+    await expect(getImageTransformationsStatus(cloudflareDeployment, event as any, fetcher as any)).resolves.toBe(true)
     expect(fetcher).toHaveBeenCalledWith(
       new URL('http://cms.example.com/cdn-cgi/image/w=32,h=32,fit=cover,f=webp/branding/halopress-mark-256.png'),
       expect.objectContaining({ headers: { accept: 'image/webp,image/*' } })
@@ -103,11 +270,7 @@ describe('dashboard onboarding', () => {
     const errorBodyCancel = vi.spyOn(error.body!, 'cancel')
     const rawBodyCancel = vi.spyOn(raw.body!, 'cancel')
     const failedBodyCancel = vi.spyOn(failed.body!, 'cancel')
-    const event = {
-      context: { cloudflare: {} },
-      path: '/',
-      node: { req: { url: '/', headers: { host: 'cms.example.com' } } }
-    }
+    const event = onboardingEvent('cms.example.com', true)
 
     await expect(hasImageTransformations(event as any, vi.fn(async () => error) as any)).resolves.toBe(false)
     await expect(hasImageTransformations(event as any, vi.fn(async () => raw) as any)).resolves.toBe(false)
@@ -120,26 +283,22 @@ describe('dashboard onboarding', () => {
     expect(failedBodyCancel).toHaveBeenCalledOnce()
   })
 
-  it('keeps the five recommended setup guides in a dismissible dashboard widget', async () => {
+  it('keeps the dismissible widget behavior while using dynamic progress', async () => {
     const widget = await readFile(join(projectRoot, 'app/components/OnboardingWidget.vue'), 'utf8')
-    const itemDefinitions = await readFile(join(projectRoot, 'app/utils/onboarding.ts'), 'utf8')
-    for (const title of [
-      'Create a schema',
-      'Publish new content',
-      'Set up a custom domain',
-      'Enable Image Transformations',
-      'Configure Google OAuth'
-    ]) {
-      expect(itemDefinitions).toContain(title)
-    }
     expect(widget).toContain('<UProgress')
-    expect(widget).toContain('item.complete ? \'i-lucide-circle-check-big\' : \'i-lucide-circle\'')
-    expect(widget).toContain('hasCompletedOnboarding(items.value)')
+    expect(widget).toContain(':max="itemCount"')
+    expect(widget).toContain(':get-value-label="getProgressLabel"')
+    expect(widget).toContain(':get-value-text="getProgressValue"')
+    expect(widget).toContain('data.value ? progress.value.complete : false')
     expect(widget).toContain('useCookie<boolean>(\'halopress_onboarding_dismissed_v1\'')
+    expect(widget).toContain('immediate: !dismissed.value')
     expect(widget).toContain('server: false')
+    expect(widget).toContain('now - lastRefreshAt < 30_000')
+    expect(widget).toContain('document.addEventListener(\'visibilitychange\', refreshWhenVisible)')
+    expect(widget).toContain('window.addEventListener(\'focus\', refreshWhenVisible)')
     expect(widget).toContain('label="Dismiss"')
     expect(widget).toContain('aria-label="Dismiss onboarding for now"')
-    expect(widget).toContain('aria-label="Onboarding progress"')
+    expect(widget).toContain('label="Retry"')
     expect(widget).toContain('item.complete ? \'Complete\' : \'Not complete\'')
     expect(widget).toContain('opens in a new tab')
     expect(widget).toContain(':to="item.to"')
@@ -159,5 +318,15 @@ describe('dashboard onboarding', () => {
     const statusApi = await readFile(join(projectRoot, 'server/api/settings/onboarding.get.ts'), 'utf8')
     expect(statusApi).toContain('BOOTSTRAP_CONTENT_ID')
     expect(statusApi).toContain('isBootstrapSchema')
+    expect(statusApi).toContain('getImageTransformationsStatus(deployment, event)')
+    expect(statusApi).not.toContain('hostname: requestUrl.hostname')
+
+    const deploymentGuide = await readFile(join(projectRoot, 'docs/deployment.md'), 'utf8')
+    expect(deploymentGuide).toContain('| Node production | Schema, content, public site URL, Google OAuth |')
+    expect(deploymentGuide).toContain('A provider-assigned hostname and a custom domain are both valid public')
+    expect(deploymentGuide).toMatch(/cannot enable Cloudflare links, probes, or\s+capabilities/)
+
+    const readme = await readFile(join(projectRoot, 'README.md'), 'utf8')
+    expect(readme).toContain('[deployment and onboarding guide](docs/deployment.md)')
   })
 })
