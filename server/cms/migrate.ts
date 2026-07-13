@@ -3,9 +3,7 @@ import type { Db } from '../db/db'
 import { content as contentTable } from '../db/schema'
 import type { FieldKind, FieldNode, SchemaAst, SchemaRegistry } from './types'
 import { parseContentJson } from './content-json'
-import { syncContentRefs } from './ref-sync'
-import { upsertContentListingSnapshot } from './content-listing'
-import { upsertContentSearchData } from './search-index'
+import { syncContentProjections } from './content-projections'
 
 export type KindChange = {
   fieldId: string
@@ -188,6 +186,7 @@ export async function migrateSchemaContent(args: {
     .select({
       id: contentTable.id,
       status: contentTable.status,
+      publishedRevisionId: contentTable.publishedRevisionId,
       createdAt: contentTable.createdAt,
       contentJson: contentTable.contentJson
     })
@@ -238,6 +237,10 @@ export async function migrateSchemaContent(args: {
       schemaVersion: nextVersion,
       updatedAt: now
     }
+    const nextStatus = row.status === 'published' && row.publishedRevisionId
+      ? 'draft'
+      : row.status
+    if (nextStatus !== row.status) updatePayload.status = nextStatus
     if (mutated) updatePayload.contentJson = JSON.stringify(content)
 
     await db
@@ -245,23 +248,17 @@ export async function migrateSchemaContent(args: {
       .set(updatePayload)
       .where(eq(contentTable.id, row.id))
 
-    await syncContentRefs({ db, contentId: row.id, registry, content })
-    await upsertContentListingSnapshot({
+    await syncContentProjections({
       db,
       registry,
       content,
       contentId: row.id,
       schemaKey,
       schemaVersion: nextVersion,
-      status: row.status,
+      status: nextStatus,
       createdAt: row.createdAt,
-      updatedAt: now
-    })
-    await upsertContentSearchData({
-      db,
-      contentId: row.id,
-      registry,
-      content
+      updatedAt: now,
+      projectionScope: 'working'
     })
     updated += 1
   }
