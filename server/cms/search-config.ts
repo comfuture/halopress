@@ -53,5 +53,5 @@ export async function syncSearchConfig(args: {
       .where(and(eq(searchConfig.schemaKey, schemaKey), eq(searchConfig.fieldId, row.fieldId)))
   }
 
-  await deleteContentSearchDataForFields({ db, fieldIds: removedIds })
+  await deleteContentSearchDataForFields({ db, fieldIds: removedIds, projectionScope: 'working' })
 }

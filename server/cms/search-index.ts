@@ -132,11 +132,17 @@ export async function deleteContentSearchData(args: {
 export async function deleteContentSearchDataForFields(args: {
   db: Db
   fieldIds: string[]
+  projectionScope?: 'working' | 'published'
 }) {
   if (!args.fieldIds.length) return
   await args.db
     .delete(contentSearchData)
-    .where(inArray(contentSearchData.fieldId, args.fieldIds))
+    .where(args.projectionScope
+      ? and(
+          inArray(contentSearchData.fieldId, args.fieldIds),
+          eq(contentSearchData.projectionScope, args.projectionScope)
+        )
+      : inArray(contentSearchData.fieldId, args.fieldIds))
 }
 
 export async function syncSearchIndexForSchema(args: {

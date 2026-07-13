@@ -1,15 +1,21 @@
 import { getQuery } from 'h3'
 import { and, asc, desc, eq, gte, inArray, lt, lte, sql, type SQL, type SQLWrapper } from 'drizzle-orm'
 
-import type { FieldKind } from '../cms/types'
+import type { FieldKind, SchemaRegistry } from '../cms/types'
 import { getDb } from '../db/db'
-import { contentListing as contentListingTable, contentSearchData, searchConfig } from '../db/schema'
+import {
+  contentListing as contentListingTable,
+  contentSearchData,
+  schema as schemaTable,
+  searchConfig
+} from '../db/schema'
 import {
   coerceSearchValue,
+  normalizeSearchConfig,
   searchDataTypeForKind
 } from '../cms/search-helpers'
 import { applyPrivateDeliveryHeaders, applyPublicDeliveryHeaders, resolveDeliveryPolicy } from '../utils/delivery-policy'
-import { badRequest } from '../utils/http'
+import { badRequest, conflict } from '../utils/http'
 
 type FilterInput = {
   field: string
@@ -88,12 +94,58 @@ function searchSortExpression(fieldId: string, dataType: string, projectionScope
   )`
 }
 
+async function getPublishedSchemaFields(db: any, schemaKey: string, status: string | null) {
+  const conditions = [
+    eq(contentListingTable.schemaKey, schemaKey),
+    eq(contentListingTable.projectionScope, 'published')
+  ]
+  if (status) conditions.push(eq(contentListingTable.status, status))
+  const versionRows = await db
+    .selectDistinct({ version: contentListingTable.schemaVersion })
+    .from(contentListingTable)
+    .where(and(...conditions)) as Array<{ version: number }>
+  const versions = [...new Set(versionRows.map(row => row.version))]
+  if (!versions.length) return []
+
+  const storedSchemas = await db
+    .select({ version: schemaTable.version, registryJson: schemaTable.registryJson })
+    .from(schemaTable)
+    .where(and(
+      eq(schemaTable.schemaKey, schemaKey),
+      inArray(schemaTable.version, versions)
+    )) as Array<{ version: number; registryJson: string | null }>
+  if (storedSchemas.length !== versions.length) {
+    throw conflict('Published search schema version is unavailable')
+  }
+
+  return storedSchemas.map((stored) => {
+    if (!stored.registryJson) throw conflict('Published search schema version is unavailable')
+    const registry = JSON.parse(stored.registryJson) as SchemaRegistry
+    return { version: stored.version, fields: registry.fields }
+  })
+}
+
+function assertPublishedFieldCompatibility(args: {
+  config: ContentFieldRow
+  publishedSchemas: Awaited<ReturnType<typeof getPublishedSchemaFields>>
+  capability: 'filterable' | 'sortable'
+}) {
+  for (const stored of args.publishedSchemas) {
+    const field = stored.fields.find(candidate => candidate.fieldId === args.config.fieldId)
+    if (!field) continue
+    const normalized = normalizeSearchConfig(field)
+    if (field.kind !== args.config.kind || !normalized[args.capability]) {
+      throw conflict(`Published search field spans incompatible schema versions: ${args.config.fieldKey}`)
+    }
+  }
+}
+
 export default defineEventHandler(async (event) => {
   const q = getQuery(event)
   const schemaKey = typeof q.schemaKey === 'string' ? q.schemaKey : null
   if (!schemaKey) throw badRequest('schemaKey required')
   const policy = await resolveDeliveryPolicy(event, schemaKey, { requestedStatus: q.status })
-  const projectionScope = policy.isPublic || q.status === 'published' ? 'published' : 'working'
+  const projectionScope = policy.effectiveStatus === 'published' ? 'published' : 'working'
   if (policy.isPublic) applyPublicDeliveryHeaders(event)
   else applyPrivateDeliveryHeaders(event)
 
@@ -123,6 +175,9 @@ export default defineEventHandler(async (event) => {
     .where(eq(searchConfig.schemaKey, schemaKey)) as ContentFieldRow[]
 
   const fieldByKey = new Map(fieldRows.map(row => [row.fieldKey, row]))
+  const publishedSchemas = projectionScope === 'published' && (filters.length > 0 || Boolean(sortKey))
+    ? await getPublishedSchemaFields(db, schemaKey, status)
+    : []
 
   const whereParts = [
     eq(contentListingTable.schemaKey, schemaKey),
@@ -136,6 +191,9 @@ export default defineEventHandler(async (event) => {
     const config = fieldByKey.get(filter.field)
     if (!config) throw badRequest(`Unknown field: ${filter.field}`)
     if (!config.filterable) throw badRequest(`Field not filterable: ${filter.field}`)
+    if (projectionScope === 'published') {
+      assertPublishedFieldCompatibility({ config, publishedSchemas, capability: 'filterable' })
+    }
 
     const kind = config.kind as FieldKind
     const dataType = searchDataTypeForKind(kind as any)
@@ -244,6 +302,9 @@ export default defineEventHandler(async (event) => {
     const config = fieldByKey.get(sortKey)
     if (!config) throw badRequest(`Unknown sort field: ${sortKey}`)
     if (!config.sortable) throw badRequest(`Field not sortable: ${sortKey}`)
+    if (projectionScope === 'published') {
+      assertPublishedFieldCompatibility({ config, publishedSchemas, capability: 'sortable' })
+    }
 
     const dataType = searchDataTypeForKind(config.kind as FieldKind)
     if (!dataType) throw badRequest(`Unsupported sort field: ${sortKey}`)
