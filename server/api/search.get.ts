@@ -1,21 +1,20 @@
 import { getQuery } from 'h3'
 import { and, asc, desc, eq, gte, inArray, lt, lte, sql, type SQL, type SQLWrapper } from 'drizzle-orm'
 
-import type { FieldKind, SchemaRegistry } from '../cms/types'
+import type { FieldKind } from '../cms/types'
 import { getDb } from '../db/db'
 import {
   contentListing as contentListingTable,
   contentSearchData,
-  schema as schemaTable,
   searchConfig
 } from '../db/schema'
+import { assertPublishedFieldCompatibility, getPublishedSchemaFields } from '../cms/published-search'
 import {
   coerceSearchValue,
-  normalizeSearchConfig,
   searchDataTypeForKind
 } from '../cms/search-helpers'
 import { applyPrivateDeliveryHeaders, applyPublicDeliveryHeaders, resolveDeliveryPolicy } from '../utils/delivery-policy'
-import { badRequest, conflict } from '../utils/http'
+import { badRequest } from '../utils/http'
 
 type FilterInput = {
   field: string
@@ -92,59 +91,6 @@ function searchSortExpression(fieldId: string, dataType: string, projectionScope
       and csd.data_type = ${dataType}
     limit 1
   )`
-}
-
-async function getPublishedSchemaFields(db: any, schemaKey: string, status: string | null) {
-  const conditions = [
-    eq(contentListingTable.schemaKey, schemaKey),
-    eq(contentListingTable.projectionScope, 'published')
-  ]
-  if (status) conditions.push(eq(contentListingTable.status, status))
-  const versionRows = await db
-    .selectDistinct({ version: contentListingTable.schemaVersion })
-    .from(contentListingTable)
-    .where(and(...conditions)) as Array<{ version: number }>
-  const versions = [...new Set(versionRows.map(row => row.version))]
-  if (!versions.length) return []
-
-  const storedSchemas = await db
-    .select({ version: schemaTable.version, registryJson: schemaTable.registryJson })
-    .from(schemaTable)
-    .where(and(
-      eq(schemaTable.schemaKey, schemaKey),
-      inArray(schemaTable.version, versions)
-    )) as Array<{ version: number; registryJson: string | null }>
-  if (storedSchemas.length !== versions.length) {
-    throw conflict('Published search schema version is unavailable')
-  }
-
-  return storedSchemas.map((stored) => {
-    if (!stored.registryJson) throw conflict('Published search schema version is unavailable')
-    const registry = JSON.parse(stored.registryJson) as SchemaRegistry
-    return { version: stored.version, fields: registry.fields }
-  })
-}
-
-function assertPublishedFieldCompatibility(args: {
-  config: ContentFieldRow
-  publishedSchemas: Awaited<ReturnType<typeof getPublishedSchemaFields>>
-  capability?: 'filterable' | 'sortable'
-}) {
-  for (const stored of args.publishedSchemas) {
-    const reusedKey = stored.fields.find(candidate => (
-      candidate.key === args.config.fieldKey
-      && candidate.fieldId !== args.config.fieldId
-    ))
-    if (reusedKey) {
-      throw conflict(`Published search field spans incompatible schema versions: ${args.config.fieldKey}`)
-    }
-    const field = stored.fields.find(candidate => candidate.fieldId === args.config.fieldId)
-    if (!field) continue
-    const normalized = normalizeSearchConfig(field)
-    if (field.kind !== args.config.kind || (args.capability && !normalized[args.capability])) {
-      throw conflict(`Published search field spans incompatible schema versions: ${args.config.fieldKey}`)
-    }
-  }
 }
 
 export default defineEventHandler(async (event) => {

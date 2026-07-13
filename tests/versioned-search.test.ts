@@ -41,6 +41,7 @@ vi.stubGlobal('defineEventHandler', (handler: EndpointHandler) => handler)
 
 let fixture: Awaited<ReturnType<typeof createTestSqliteDb>>
 let searchHandler: EndpointHandler
+let curationHandler: EndpointHandler
 
 function responseEvent(path: string) {
   const headers = new Map<string, unknown>()
@@ -186,6 +187,48 @@ beforeAll(async () => {
   })
 
   await insertSchema(registry({
+    schemaKey: 'widget-kind-drift',
+    version: 1,
+    fieldId: 'widget-score-field',
+    fieldKey: 'score',
+    kind: 'string'
+  }))
+  await insertSchema(registry({
+    schemaKey: 'widget-kind-drift',
+    version: 2,
+    fieldId: 'widget-score-field',
+    fieldKey: 'score',
+    kind: 'integer'
+  }))
+  await fixture.db.insert(searchConfig).values({
+    schemaKey: 'widget-kind-drift',
+    fieldId: 'widget-score-field',
+    fieldKey: 'score',
+    kind: 'integer',
+    searchMode: 'exact',
+    filterable: true,
+    sortable: true
+  })
+  await insertPublished({
+    id: 'widget-kind-v1',
+    schemaKey: 'widget-kind-drift',
+    workingVersion: 2,
+    publishedVersion: 1,
+    dataType: 'text',
+    value: '10',
+    fieldId: 'widget-score-field'
+  })
+  await insertPublished({
+    id: 'widget-kind-v2',
+    schemaKey: 'widget-kind-drift',
+    workingVersion: 2,
+    publishedVersion: 2,
+    dataType: 'integer',
+    value: 20,
+    fieldId: 'widget-score-field'
+  })
+
+  await insertSchema(registry({
     schemaKey: 'compatible',
     version: 1,
     fieldId: 'category-field',
@@ -258,6 +301,7 @@ beforeAll(async () => {
   })
 
   searchHandler = (await import('../server/api/search.get')).default as EndpointHandler
+  curationHandler = (await import('../server/api/widget/curation.get')).default as EndpointHandler
 })
 
 afterAll(() => fixture.close())
@@ -382,5 +426,23 @@ describe('versioned published search', () => {
     } finally {
       isolated.close()
     }
+  })
+})
+
+describe('versioned published curation widgets', () => {
+  it('rejects kind drift instead of silently omitting an older published revision', async () => {
+    await expect(curationHandler(responseEvent('/api/widget/curation?schema=widget-kind-drift&field=score&values=20')))
+      .rejects.toMatchObject({ statusCode: 409 })
+  })
+
+  it('keeps stable-ID field renames available', async () => {
+    const result = await curationHandler(responseEvent('/api/widget/curation?schema=compatible&field=label&values=news'))
+    expect(result.items).toHaveLength(1)
+    expect(result.items[0]).toMatchObject({ id: 'compatible-v1', schemaVersion: 1 })
+  })
+
+  it('rejects a reused field key with a different stable ID', async () => {
+    await expect(curationHandler(responseEvent('/api/widget/curation?schema=recreated&field=category&values=archive')))
+      .rejects.toMatchObject({ statusCode: 409 })
   })
 })
