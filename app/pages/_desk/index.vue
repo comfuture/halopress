@@ -14,10 +14,10 @@ const hasSchemas = computed(() => schemaCount.value > 0)
 async function bootstrap() {
   try {
     await $fetch('/api/system/bootstrap', { method: 'POST' })
-    toast.add({ title: 'Bootstrapped', description: 'Default Article schema created.' })
+    toast.add({ title: 'Starter Article ready', description: 'You can start creating content now.' })
     await refresh()
   } catch (e: any) {
-    toast.add({ title: 'Bootstrap failed', description: e?.statusMessage || 'Error', color: 'error' })
+    toast.add({ title: 'Starter setup failed', description: e?.statusMessage || 'Error', color: 'error' })
   }
 }
 </script>
@@ -25,7 +25,7 @@ async function bootstrap() {
 <template>
   <UDashboardPanel id="desk-home">
     <template #header>
-      <DeskNavbar title="Dashboard" description="Manage schemas, content, and assets.">
+      <DeskNavbar title="Dashboard" description="Track setup progress and jump back into your work.">
       </DeskNavbar>
     </template>
 
@@ -63,14 +63,14 @@ async function bootstrap() {
       </UPageGrid>
 
       <UAlert v-if="!hasSchemas" title="No schemas yet"
-        description="Create your first schema or bootstrap a default Article schema." icon="i-lucide-sparkles"
+        description="Create a content structure from scratch, or start with the ready-made Article setup." icon="i-lucide-sparkles"
         variant="subtle">
         <template #actions>
           <UButton to="/_desk/schemas/new" icon="i-lucide-plus">
             New schema
           </UButton>
           <UButton color="neutral" variant="outline" icon="i-lucide-wand-2" @click="bootstrap">
-            Bootstrap
+            Use starter Article
           </UButton>
         </template>
       </UAlert>

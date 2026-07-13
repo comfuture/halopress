@@ -129,7 +129,7 @@ function discardChanges() {
 <template>
   <UDashboardPanel id="desk-authentication-settings">
     <template #header>
-      <DeskNavbar title="Authentication" description="Add Google sign-in without removing password access.">
+      <DeskNavbar title="Authentication" description="Let administrators sign in with Google while keeping password access.">
         <template #actions>
           <UButton
             color="neutral"
@@ -162,7 +162,7 @@ function discardChanges() {
                 Google sign-in
               </h1>
               <p class="text-sm text-muted">
-                Link the Google identity that uses the same email address as an active Halopress administrator.
+                Allow existing administrators to sign in with the Google account that uses their HaloPress email.
               </p>
             </div>
             <UBadge :color="statusColor" variant="soft">
@@ -185,7 +185,7 @@ function discardChanges() {
               </legend>
               <div class="mt-3 space-y-3">
                 <p class="mt-1 text-sm text-muted">
-                  Cloudflare one-click deploy cannot create a Google OAuth application for you. Create a Web application client in Google Cloud, then add this exact Authorized redirect URI.
+                  Create a Web application client in Google Cloud, then add the redirect URI below.
                 </p>
                 <UButton
                   to="https://console.cloud.google.com/apis/credentials"

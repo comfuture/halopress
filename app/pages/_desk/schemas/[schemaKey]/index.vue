@@ -900,7 +900,7 @@ async function confirmPublish() {
         <template #title>
           <div class="flex flex-col min-w-0">
             <UBreadcrumb :items="breadcrumbItems" />
-            <span class="text-xs text-muted truncate">Edit draft and publish an immutable version.</span>
+            <span class="text-xs text-muted truncate">Set up the fields editors will use, then publish your changes.</span>
           </div>
         </template>
 

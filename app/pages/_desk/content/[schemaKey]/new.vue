@@ -122,7 +122,10 @@ async function publish() {
         :title="`New ${schema?.title || schemaKey}`"
       >
         <template #title>
-          <UBreadcrumb :items="breadcrumbItems" />
+          <div class="flex min-w-0 flex-col">
+            <UBreadcrumb :items="breadcrumbItems" />
+            <span class="truncate text-xs text-muted">Add the details, then save a draft or publish.</span>
+          </div>
         </template>
 
         <template #actions>

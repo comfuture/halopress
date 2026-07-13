@@ -49,7 +49,7 @@ function handleDeleted() {
 <template>
   <UDashboardPanel id="desk-asset-detail">
     <template #header>
-      <DeskNavbar title="Asset" :description="asset?.id || 'Detail'">
+      <DeskNavbar title="Asset" description="Preview and manage this file.">
         <template #actions>
           <UButton color="neutral" variant="outline" icon="i-lucide-arrow-left" to="/_desk/assets">
             Back
@@ -76,7 +76,7 @@ function handleDeleted() {
         variant="naked"
         icon="i-lucide-file-question-mark"
         title="Asset not found"
-        description="The asset may have been removed or the URL may be incorrect."
+        description="This file may have been deleted, or the link may be incorrect."
       />
 
       <div v-else class="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">

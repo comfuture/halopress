@@ -14,7 +14,7 @@ const showEmpty = computed(() => status.value === 'success' && items.value.lengt
 <template>
   <UDashboardPanel id="desk-schemas">
     <template #header>
-      <DeskNavbar title="Schemas" description="Publish immutable versions and switch active schema.">
+      <DeskNavbar title="Schemas" description="Define the content types and fields your team can publish.">
         <template #actions>
           <UButton to="/_desk/schemas/new" icon="i-lucide-plus" aria-label="New schema">
             <span class="hidden sm:inline">New schema</span>
@@ -29,7 +29,7 @@ const showEmpty = computed(() => status.value === 'success' && items.value.lengt
         class="min-h-[50vh]"
         icon="i-lucide-braces"
         title="No schemas yet"
-        description="Create your first schema to publish immutable versions and switch the active schema."
+        description="Create a schema to define the fields your editors will use."
         variant="naked"
       >
         <template #actions>
@@ -44,7 +44,7 @@ const showEmpty = computed(() => status.value === 'success' && items.value.lengt
           v-for="s in items"
           :key="s.schemaKey"
           :title="s.title || s.schemaKey"
-          :description="`active v${s.activeVersion}`"
+          :description="`Version ${s.activeVersion} is live`"
           :to="`/_desk/schemas/${s.schemaKey}`"
           icon="i-lucide-braces"
         />

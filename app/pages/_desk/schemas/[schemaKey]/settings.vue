@@ -97,7 +97,7 @@ async function updatePermission(role: RolePermission, key: 'canRead' | 'canWrite
         <template #title>
           <div class="flex flex-col min-w-0">
             <UBreadcrumb :items="breadcrumbItems" />
-            <span class="text-xs text-muted truncate">Manage schema settings and permissions.</span>
+            <span class="text-xs text-muted truncate">Choose who can view, edit, and manage this content type.</span>
           </div>
         </template>
       </DeskNavbar>
@@ -132,7 +132,7 @@ async function updatePermission(role: RolePermission, key: 'canRead' | 'canWrite
             Permissions
           </legend>
           <p class="text-xs text-muted">
-            Control read/write/admin access per role.
+            Choose what each role can view, edit, or manage.
           </p>
 
           <div v-if="pending" class="space-y-2">

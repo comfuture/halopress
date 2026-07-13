@@ -54,7 +54,7 @@ watch(files, async (selected) => {
 <template>
   <UDashboardPanel id="desk-assets">
     <template #header>
-      <DeskNavbar title="Assets" description="Upload to local storage (or R2 when configured).">
+      <DeskNavbar title="Assets" description="Upload and manage files you can reuse across your site.">
         <template #actions>
           <UModal v-model:open="uploadOpen" title="Upload assets" description="Add new files to the asset library."
             :ui="{ footer: 'justify-end' }">
