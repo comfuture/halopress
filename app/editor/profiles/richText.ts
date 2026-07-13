@@ -26,6 +26,8 @@ const ReadOnlyImageUpload = Node.create({
   }
 })
 
+const createReadOnlyImageUpload = () => ReadOnlyImageUpload.configure({})
+
 const sharedDefinition: Omit<EditorProfileDefinition, 'name'> = {
   extensions: [
     { key: 'textAlign', create: () => TextAlign.configure({ types: ['heading', 'paragraph'] }) },
@@ -44,7 +46,7 @@ const sharedDefinition: Omit<EditorProfileDefinition, 'name'> = {
     { key: 'image', create: () => Image.configure({}) },
     { key: 'mention', create: () => Mention.configure({}) },
     { key: 'textAlign', create: () => TextAlign.configure({ types: ['heading', 'paragraph'] }) },
-    { key: 'imageUpload', create: () => ReadOnlyImageUpload.configure({}) }
+    { key: 'imageUpload', create: createReadOnlyImageUpload }
   ],
   handlers: [{
     key: 'imageUpload',
@@ -163,14 +165,17 @@ export const richTextProfileDefinition: EditorProfileDefinition = {
 
 export function createRichTextProfile(
   customization: EditorProfileCustomization = {},
-  options: { imageUploadFactory?: () => AnyExtension } = {}
+  options: { editable?: boolean, imageUploadFactory?: () => AnyExtension } = {}
 ) {
-  const definition = options.imageUploadFactory
+  const imageUploadFactory = options.editable === false
+    ? createReadOnlyImageUpload
+    : options.imageUploadFactory
+  const definition = imageUploadFactory
     ? {
         ...richTextProfileDefinition,
         extensions: richTextProfileDefinition.extensions.map(contribution => (
           contribution.key === 'imageUpload'
-            ? { ...contribution, create: options.imageUploadFactory! }
+            ? { ...contribution, create: imageUploadFactory }
             : contribution
         ))
       }

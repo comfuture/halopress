@@ -40,6 +40,7 @@ const ImageUploadEditor = ImageUpload.extend({
   }
 })
 const editorProfile = createRichTextProfile(props.profile, {
+  editable: props.editable,
   imageUploadFactory: () => ImageUploadEditor.configure({})
 })
 const extensions = markRaw(editorProfile.extensions.map(extension => markRaw(extension)))
