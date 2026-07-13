@@ -4,7 +4,7 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { encode, getToken } from 'next-auth/jwt'
 
-import { authSessionFromToken } from '../server/utils/auth-session'
+import { authSessionFromToken, hasSecureAuthSessionCookie } from '../server/utils/auth-session'
 
 const secret = '1bccd7d3097bff829c970eb6a2c4a9232a3d65bfe74932a0c7317b1e9fef471e'
 
@@ -87,5 +87,18 @@ describe('protected API session verification', () => {
     })
 
     expect(decoded).toMatchObject({ id: 'user_2', role: 'admin', tenantKey: 'example.com' })
+  })
+
+  it('detects secure session cookies without relying on the internal request URL', () => {
+    expect(hasSecureAuthSessionCookie({
+      '__Secure-next-auth.session-token': 'token'
+    })).toBe(true)
+    expect(hasSecureAuthSessionCookie({
+      '__Secure-next-auth.session-token.0': 'first',
+      '__Secure-next-auth.session-token.1': 'second'
+    })).toBe(true)
+    expect(hasSecureAuthSessionCookie({
+      'next-auth.session-token': 'token'
+    })).toBe(false)
   })
 })

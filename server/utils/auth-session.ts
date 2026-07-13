@@ -11,6 +11,10 @@ export type AuthSession = {
   expires?: string
 } | null
 
+export function hasSecureAuthSessionCookie(cookies: Record<string, string | undefined>) {
+  return Object.keys(cookies).some(name => name.startsWith('__Secure-next-auth.session-token'))
+}
+
 export function authSessionFromToken(token: JWT | null): AuthSession {
   if (!token) return null
   return {

@@ -1,8 +1,9 @@
 import type { H3Event } from 'h3'
+import { parseCookies } from 'h3'
 import { eq, or } from 'drizzle-orm'
 import { getToken } from '#auth'
 
-import { authSessionFromToken, type AuthSession } from './auth-session'
+import { authSessionFromToken, hasSecureAuthSessionCookie, type AuthSession } from './auth-session'
 import { unauthorized } from './http'
 import { resolveAuthSigningSecret } from './install-token'
 import { getTenantKey } from './tenant'
@@ -11,8 +12,10 @@ import { user as userTable } from '../db/schema'
 import { verifyPassword } from './password'
 
 export async function getAuthSession(event: H3Event): Promise<AuthSession> {
+  const secureCookie = hasSecureAuthSessionCookie(parseCookies(event))
   const token = await getToken({
     event,
+    secureCookie,
     secret: resolveAuthSigningSecret(event)
   })
   return authSessionFromToken(token)
