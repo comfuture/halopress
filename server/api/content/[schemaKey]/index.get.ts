@@ -3,16 +3,16 @@ import { getQuery } from 'h3'
 
 import { getDb } from '../../../db/db'
 import { content as contentTable, contentListing as contentListingTable, contentRef as contentRefTable } from '../../../db/schema'
-import { requireSchemaPermission } from '../../../utils/schema-permission'
+import { resolveDeliveryPolicy } from '../../../utils/delivery-policy'
 
 export default defineEventHandler(async (event) => {
   const schemaKey = event.context.params?.schemaKey as string
-  await requireSchemaPermission(event, schemaKey, 'read')
   const q = getQuery(event)
+  const policy = await resolveDeliveryPolicy(event, schemaKey, { requestedStatus: q.status })
   const pageSize = Math.min(Number(q.pageSize ?? q.limit ?? 20) || 20, 50)
   const cursor = typeof q.cursor === 'string' && q.cursor.length ? q.cursor : null
   const order = q.order === 'asc' ? 'asc' : 'desc'
-  const status = typeof q.status === 'string' ? q.status : null
+  const status = policy.effectiveStatus
 
   const refField = typeof q.refField === 'string' ? q.refField : null
   const refId = typeof q.refId === 'string' ? q.refId : null

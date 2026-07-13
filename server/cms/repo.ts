@@ -1,10 +1,15 @@
-import { and, desc, eq } from 'drizzle-orm'
+import { and, desc, eq, or } from 'drizzle-orm'
 import type { Db } from '../db/db'
-import { schema as schemaTable, schemaActive as schemaActiveTable, schemaDraft as schemaDraftTable } from '../db/schema'
+import {
+  schema as schemaTable,
+  schemaActive as schemaActiveTable,
+  schemaDraft as schemaDraftTable,
+  schemaRole as schemaRoleTable
+} from '../db/schema'
 import type { SchemaAst, SchemaRegistry } from './types'
 
-export async function listActiveSchemas(db: Db) {
-  const rows = await db
+export async function listActiveSchemas(db: Db, options: { roleKey?: string } = {}) {
+  const base = db
     .select({
       schemaKey: schemaActiveTable.schemaKey,
       activeVersion: schemaActiveTable.activeVersion,
@@ -13,6 +18,20 @@ export async function listActiveSchemas(db: Db) {
     })
     .from(schemaActiveTable)
     .leftJoin(schemaTable, and(eq(schemaTable.schemaKey, schemaActiveTable.schemaKey), eq(schemaTable.version, schemaActiveTable.activeVersion)))
+
+  const rows = options.roleKey
+    ? await base
+        .innerJoin(schemaRoleTable, and(
+          eq(schemaRoleTable.schemaKey, schemaActiveTable.schemaKey),
+          eq(schemaRoleTable.roleKey, options.roleKey)
+        ))
+        .where(or(
+          eq(schemaRoleTable.canRead, true),
+          eq(schemaRoleTable.canWrite, true),
+          eq(schemaRoleTable.canAdmin, true)
+        ))
+        .orderBy(schemaActiveTable.schemaKey)
+    : await base
     .orderBy(schemaActiveTable.schemaKey)
 
   return rows.map((r: any) => ({

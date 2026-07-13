@@ -4,6 +4,7 @@ import { getQuery, setHeader } from 'h3'
 import { getDb } from '../../db/db'
 import { contentListing as contentListingTable, contentRefList, contentSearchData, searchConfig } from '../../db/schema'
 import { coerceSearchValue, searchDataTypeForKind } from '../../cms/search-helpers'
+import { applyPrivateDeliveryHeaders, requirePublicContentOwner, resolveDeliveryPolicy } from '../../utils/delivery-policy'
 import { badRequest } from '../../utils/http'
 import { applyWidgetCacheHeaders, resolveWidgetCacheKey, withWidgetCache } from '../../utils/widget-cache'
 
@@ -32,6 +33,10 @@ export default defineEventHandler(async (event) => {
     : (typeof q.schemaKey === 'string' ? q.schemaKey : null)
 
   if (!schemaKey) throw badRequest('schema required')
+  const policy = await resolveDeliveryPolicy(event, schemaKey, {
+    requestedStatus: q.status,
+    defaultStatus: 'published'
+  })
 
   const fieldKey = typeof q.field === 'string' ? q.field : null
   if (!fieldKey) throw badRequest('field required')
@@ -48,16 +53,13 @@ export default defineEventHandler(async (event) => {
       : []
 
   const limit = Math.min(Number(q.limit ?? 6) || 6, 50)
-  const status = typeof q.status === 'string' ? q.status : 'published'
+  const status = policy.effectiveStatus
+  const publicOwner = ownerId && policy.isPublic
+    ? await requirePublicContentOwner(event, ownerId)
+    : null
 
-  const params = { schemaKey, fieldKey, values, ownerId, limit, status }
-  const cacheKey = await resolveWidgetCacheKey(event, 'curation', 'v1', params, `schema:${schemaKey}`)
-
-  applyWidgetCacheHeaders(event, POLICY, ['widget', 'curation', schemaKey, fieldKey])
-
-  const { data, status: cacheStatus, backend } = await withWidgetCache(event, cacheKey, POLICY, async () => {
+  const loadItems = async () => {
     const db = await getDb(event)
-    const whereStatus = status && status !== 'all'
 
     if (ownerId) {
       const listRows = await db
@@ -83,7 +85,7 @@ export default defineEventHandler(async (event) => {
         eq(contentListingTable.schemaKey, schemaKey),
         inArray(contentListingTable.contentId, orderedIds)
       ] as any[]
-      if (whereStatus) whereParts.push(eq(contentListingTable.status, status))
+      if (status) whereParts.push(eq(contentListingTable.status, status))
 
       const items = await db
         .select({
@@ -140,7 +142,7 @@ export default defineEventHandler(async (event) => {
         ? inArray(contentSearchData.text, coercedValues as string[])
         : inArray(contentSearchData.value, coercedValues as number[])
     ] as any[]
-    if (whereStatus) whereParts.push(eq(contentListingTable.status, status))
+    if (status) whereParts.push(eq(contentListingTable.status, status))
 
     const items = await db
       .select({
@@ -161,7 +163,36 @@ export default defineEventHandler(async (event) => {
       .limit(limit) as ContentItem[]
 
     return items
-  })
+  }
+
+  let data: Awaited<ReturnType<typeof loadItems>>
+  let cacheStatus: string
+  let backend: string
+
+  if (policy.canUsePublicCache) {
+    const params = {
+      schemaKey,
+      fieldKey,
+      values,
+      ownerId,
+      ownerUpdatedAt: publicOwner?.updatedAt?.getTime(),
+      limit,
+      status,
+      visibility: policy.cacheVisibility
+    }
+    const cacheKey = await resolveWidgetCacheKey(event, 'curation', 'v1', params, `schema:${schemaKey}`)
+
+    applyWidgetCacheHeaders(event, POLICY, ['widget', 'curation', schemaKey, fieldKey])
+    const cached = await withWidgetCache(event, cacheKey, POLICY, loadItems)
+    data = cached.data
+    cacheStatus = cached.status
+    backend = cached.backend
+  } else {
+    applyPrivateDeliveryHeaders(event)
+    data = await loadItems()
+    cacheStatus = 'bypass'
+    backend = 'none'
+  }
 
   setHeader(event, 'X-Widget-Cache', cacheStatus)
   setHeader(event, 'X-Widget-Cache-Backend', backend)
