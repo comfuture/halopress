@@ -8,7 +8,7 @@ import { createTestSqliteDb } from './fixtures/sqlite'
 type EndpointHandler = (event: any) => Promise<any>
 
 const dbState = vi.hoisted(() => ({ current: null as any }))
-const authState = vi.hoisted(() => ({ authenticated: true, admin: true }))
+const authState = vi.hoisted(() => ({ authenticated: true, admin: true, canRead: true }))
 
 vi.mock('../server/db/db', () => ({
   getDb: vi.fn(async () => dbState.current)
@@ -24,7 +24,7 @@ vi.mock('../server/utils/auth', () => ({
 
 vi.mock('../server/utils/schema-permission', () => ({
   requireSchemaPermission: vi.fn(async () => {
-    if (!authState.authenticated) throw Object.assign(new Error('Not found'), { statusCode: 404 })
+    if (!authState.canRead) throw Object.assign(new Error('Permission denied'), { statusCode: 403 })
     return { roleKey: 'admin', canRead: true, canWrite: true, canAdmin: true }
   })
 }))
@@ -37,15 +37,28 @@ let pagePreview: EndpointHandler
 
 function responseEvent(params: Record<string, string>) {
   const headers = new Map<string, unknown>()
+  let body = ''
+  const response = {
+    statusCode: 200,
+    statusMessage: '',
+    writableEnded: false,
+    setHeader: (name: string, value: unknown) => headers.set(name.toLowerCase(), value),
+    end(value?: unknown) {
+      body = value == null ? '' : String(value)
+      response.writableEnded = true
+    }
+  }
   return {
     event: {
       context: { params },
       node: {
         req: { headers: { host: 'preview.example.com' } },
-        res: { setHeader: (name: string, value: unknown) => headers.set(name.toLowerCase(), value) }
+        res: response
       }
     },
-    header: (name: string) => headers.get(name.toLowerCase())
+    header: (name: string) => headers.get(name.toLowerCase()),
+    status: () => response.statusCode,
+    body: () => body
   }
 }
 
@@ -78,6 +91,7 @@ beforeAll(async () => {
 beforeEach(() => {
   authState.authenticated = true
   authState.admin = true
+  authState.canRead = true
 })
 
 afterAll(() => {
@@ -89,6 +103,17 @@ function expectPrivatePreviewHeaders(request: ReturnType<typeof responseEvent>) 
   expect(request.header('cache-control')).toBe('private, no-store')
   expect(request.header('vary')).toBe('Cookie')
   expect(request.header('x-robots-tag')).toBe('noindex, nofollow, noarchive')
+}
+
+async function expectFinalizedNotFound(
+  handler: EndpointHandler,
+  request: ReturnType<typeof responseEvent>,
+  statusMessage: string
+) {
+  await expect(handler(request.event)).resolves.toBeUndefined()
+  expect(request.status()).toBe(404)
+  expect(JSON.parse(request.body())).toMatchObject({ statusCode: 404, statusMessage })
+  expectPrivatePreviewHeaders(request)
 }
 
 describe('preview delivery', () => {
@@ -115,17 +140,27 @@ describe('preview delivery', () => {
   it('does not enumerate content or pages to anonymous callers', async () => {
     authState.authenticated = false
     authState.admin = false
-    await expect(contentPreview(responseEvent({ schemaKey: 'article', id: 'content-draft' }).event))
-      .rejects.toMatchObject({ statusCode: 404 })
-    await expect(pagePreview(responseEvent({ id: 'page-draft' }).event))
-      .rejects.toMatchObject({ statusCode: 404, statusMessage: 'Page not found' })
+    const contentRequest = responseEvent({ schemaKey: 'article', id: 'content-draft' })
+    const pageRequest = responseEvent({ id: 'page-draft' })
+    await expectFinalizedNotFound(contentPreview, contentRequest, 'Content not found')
+    await expectFinalizedNotFound(pagePreview, pageRequest, 'Page not found')
+  })
+
+  it('does not cache authenticated preview permission failures', async () => {
+    authState.canRead = false
+    authState.admin = false
+    const contentRequest = responseEvent({ schemaKey: 'article', id: 'content-draft' })
+    const pageRequest = responseEvent({ id: 'page-draft' })
+    await expect(contentPreview(contentRequest.event)).rejects.toMatchObject({ statusCode: 403 })
+    await expectFinalizedNotFound(pagePreview, pageRequest, 'Page not found')
+    expectPrivatePreviewHeaders(contentRequest)
   })
 
   it('uses the same non-enumerating response for missing preview records', async () => {
-    await expect(contentPreview(responseEvent({ schemaKey: 'article', id: 'missing' }).event))
-      .rejects.toMatchObject({ statusCode: 404, statusMessage: 'Content not found' })
-    await expect(pagePreview(responseEvent({ id: 'missing' }).event))
-      .rejects.toMatchObject({ statusCode: 404, statusMessage: 'Page not found' })
+    const contentRequest = responseEvent({ schemaKey: 'article', id: 'missing' })
+    const pageRequest = responseEvent({ id: 'missing' })
+    await expectFinalizedNotFound(contentPreview, contentRequest, 'Content not found')
+    await expectFinalizedNotFound(pagePreview, pageRequest, 'Page not found')
   })
 })
 
