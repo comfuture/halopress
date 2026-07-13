@@ -38,6 +38,21 @@ export const settings = sqliteTable('settings', {
   byGroup: index('idx_settings_group').on(t.groupKey)
 }))
 
+export const installation = sqliteTable('installation', {
+  key: text('key').notNull(),
+  state: text('state').notNull().default('pending'),
+  owner: text('owner'),
+  setupSessionHash: text('setup_session_hash'),
+  setupSessionExpiresAt: integer('setup_session_expires_at', { mode: 'timestamp' }),
+  leaseToken: text('lease_token'),
+  leaseExpiresAt: integer('lease_expires_at', { mode: 'timestamp' }),
+  completedAt: integer('completed_at', { mode: 'timestamp' }),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+  lastError: text('last_error')
+}, t => ({
+  pk: primaryKey({ columns: [t.key] })
+}))
+
 export const schema = sqliteTable('schema', {
   schemaKey: text('schema_key').notNull(),
   version: integer('version').notNull(),

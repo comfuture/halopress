@@ -1,17 +1,21 @@
 import type { H3Event } from 'h3'
 import { eq, or } from 'drizzle-orm'
-import { getServerSession } from '#auth'
+import { getToken } from '#auth'
 
+import { authSessionFromToken, type AuthSession } from './auth-session'
 import { unauthorized } from './http'
+import { resolveAuthSigningSecret } from './install-token'
 import { getTenantKey } from './tenant'
 import { getDb } from '../db/db'
 import { user as userTable } from '../db/schema'
 import { verifyPassword } from './password'
 
-export type AuthSession = Awaited<ReturnType<typeof getServerSession>>
-
 export async function getAuthSession(event: H3Event): Promise<AuthSession> {
-  return await getServerSession(event)
+  const token = await getToken({
+    event,
+    secret: resolveAuthSigningSecret(event)
+  })
+  return authSessionFromToken(token)
 }
 
 export async function requireAdmin(event: H3Event): Promise<NonNullable<AuthSession>> {
@@ -33,15 +37,15 @@ export async function requireAdmin(event: H3Event): Promise<NonNullable<AuthSess
   }
 
   const userId = user.id
-  if (userId && !userId.startsWith('admin:')) {
-    const db = await getDb(event)
-    const row = await db
-      .select({ id: userTable.id, status: userTable.status })
-      .from(userTable)
-      .where(eq(userTable.id, userId))
-      .get()
-    if (!row || row.status !== 'active') throw unauthorized()
-  }
+  if (!userId) throw unauthorized()
+
+  const db = await getDb(event)
+  const row = await db
+    .select({ id: userTable.id, roleKey: userTable.roleKey, status: userTable.status })
+    .from(userTable)
+    .where(eq(userTable.id, userId))
+    .get()
+  if (!row || row.roleKey !== 'admin' || row.status !== 'active') throw unauthorized()
 
   return session as NonNullable<AuthSession>
 }

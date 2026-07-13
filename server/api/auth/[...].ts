@@ -12,6 +12,7 @@ import { user as userTable } from '../../db/schema'
 import { verifyPassword } from '../../utils/password'
 import { resolveCredentialsEnabled, resolveOAuthProviderConfig } from '../../utils/oauth'
 import { getInstallStatus } from '../../utils/install'
+import { fingerprintSecret, isAuthRuntimeReady, resolveAuthSigningSecret } from '../../utils/install-token'
 import { getTenantKey } from '../../utils/tenant'
 
 type CredentialInput = {
@@ -23,6 +24,8 @@ type CredentialInput = {
 
 type AuthHandler = ReturnType<typeof NuxtAuthHandler>
 type AuthProviderConfig = {
+  authSecret: string
+  authSecretFingerprint: string
   credentialsEnabled: boolean
   googleConfig: {
     enabled: boolean
@@ -51,7 +54,10 @@ let cachedAuthHandlerKey: string | null = null
 async function loadAuthProviderConfig(event: Parameters<AuthHandler>[0]): Promise<AuthProviderConfig> {
   const credentialsEnabled = await resolveCredentialsEnabled(event)
   const googleConfig = await resolveOAuthProviderConfig('google', event)
+  const authSecret = resolveAuthSigningSecret(event)
   return {
+    authSecret,
+    authSecretFingerprint: await fingerprintSecret(authSecret),
     credentialsEnabled,
     googleConfig: {
       enabled: Boolean(googleConfig.enabled),
@@ -63,6 +69,7 @@ async function loadAuthProviderConfig(event: Parameters<AuthHandler>[0]): Promis
 
 function buildAuthHandlerKey(config: AuthProviderConfig) {
   return JSON.stringify({
+    authSecretFingerprint: config.authSecretFingerprint,
     credentialsEnabled: config.credentialsEnabled,
     googleConfig: {
       enabled: config.googleConfig.enabled,
@@ -115,7 +122,7 @@ async function decodeAuthToken({ token, secret }: JWTDecodeParams): Promise<JWT 
 }
 
 async function buildAuthHandler(config: AuthProviderConfig) {
-  const { credentialsEnabled, googleConfig } = config
+  const { authSecret, credentialsEnabled, googleConfig } = config
   const oauthProviders: any[] = []
 
   if (googleConfig.enabled) {
@@ -208,7 +215,7 @@ async function buildAuthHandler(config: AuthProviderConfig) {
   providers.push(...oauthProviders)
 
   return NuxtAuthHandler({
-    secret: useRuntimeConfig().authSecret,
+    secret: authSecret,
     session: {
       strategy: 'jwt'
     },
@@ -306,10 +313,24 @@ async function buildAuthHandler(config: AuthProviderConfig) {
 }
 
 export default defineEventHandler(async (event) => {
+  const path = getRequestURL(event).pathname
+  const isCloudflareRuntime = Boolean((event as any)?.context?.cloudflare)
+  const authSigningSecret = resolveAuthSigningSecret(event)
+
+  if (!isAuthRuntimeReady(isCloudflareRuntime, authSigningSecret)) {
+    if (path.endsWith('/session')) return { user: null }
+    if (path.endsWith('/providers')) return {}
+    if (path.endsWith('/csrf')) return { csrfToken: '' }
+    throw createError({
+      statusCode: 503,
+      statusMessage: 'Authentication is unavailable until a strong runtime secret is configured',
+      data: { phase: 'configuration_required' }
+    })
+  }
+
   const installDb = await getDb(event)
   const installStatus = await getInstallStatus(installDb)
   if (!installStatus.ready) {
-    const path = getRequestURL(event).pathname
     if (path.endsWith('/session')) return { user: null }
     if (path.endsWith('/providers')) return {}
     if (path.endsWith('/csrf')) return { csrfToken: '' }
