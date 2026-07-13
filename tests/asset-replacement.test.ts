@@ -19,15 +19,21 @@ import { createTestSqliteDb } from './fixtures/sqlite'
 
 const dbState = vi.hoisted(() => ({ current: null as any }))
 const bodyState = vi.hoisted(() => ({ current: {} as { replacementId?: string } }))
-const storageState = vi.hoisted(() => ({ deleteObject: vi.fn() }))
+const multipartState = vi.hoisted(() => ({ current: [] as any[] }))
+const storageState = vi.hoisted(() => ({ deleteObject: vi.fn(), putObject: vi.fn() }))
 
 vi.mock('../server/db/db', () => ({ getDb: vi.fn(async () => dbState.current) }))
 vi.mock('../server/utils/auth', () => ({ requireAdmin: vi.fn(async () => ({ user: { id: 'admin-1' } })) }))
-vi.mock('../server/storage/assets', () => ({ deleteObject: storageState.deleteObject }))
+vi.mock('../server/storage/assets', () => ({
+  assetObjectKey: (_event: unknown, assetId: string) => `assets/${assetId}/original`,
+  deleteObject: storageState.deleteObject,
+  putObject: storageState.putObject
+}))
 vi.mock('../server/utils/widget-cache', () => ({ queueWidgetCacheInvalidation: vi.fn() }))
 vi.mock('h3', async (importOriginal) => ({
   ...await importOriginal<typeof import('h3')>(),
-  readBody: vi.fn(async () => bodyState.current)
+  readBody: vi.fn(async () => bodyState.current),
+  readMultipartFormData: vi.fn(async () => multipartState.current)
 }))
 vi.stubGlobal('defineEventHandler', (handler: (event: any) => Promise<any>) => handler)
 
@@ -82,7 +88,14 @@ async function seedAsset(db: any, id: string) {
 
 beforeEach(() => {
   bodyState.current = {}
+  multipartState.current = [{
+    name: 'file',
+    type: 'image/webp',
+    filename: 'replacement.webp',
+    data: new Uint8Array([1, 2, 3, 4])
+  }]
   storageState.deleteObject.mockReset()
+  storageState.putObject.mockReset()
 })
 
 describe('asset deletion with replacement', () => {
@@ -268,6 +281,70 @@ describe('asset deletion with replacement', () => {
       expect(storedRevision!.contentJson).toBe(JSON.stringify(publishedContent))
       expect(await fixture.db.select().from(asset).where(eq(asset.id, 'old-asset'))).toHaveLength(1)
       expect(storageState.deleteObject).not.toHaveBeenCalled()
+    } finally {
+      fixture.close()
+      dbState.current = null
+    }
+  })
+})
+
+describe('in-place asset replacement', () => {
+  it('rejects replacement before storage mutation when a published document retains the asset', async () => {
+    const fixture = await createTestSqliteDb()
+    dbState.current = fixture.db
+    try {
+      await runMigrations(fixture.db)
+      await seedAsset(fixture.db, 'published-asset')
+      await fixture.db.insert(documentAssetRef).values({
+        documentKind: 'content',
+        documentId: 'article-public',
+        projectionScope: 'published',
+        assetId: 'published-asset'
+      })
+
+      const handler = (await import('../server/api/assets/[assetId]/replace.post')).default as (event: any) => Promise<any>
+      await expect(handler({ context: { params: { assetId: 'published-asset' } } }))
+        .rejects.toMatchObject({ statusCode: 409, statusMessage: 'Asset is referenced by a published document' })
+
+      expect(storageState.putObject).not.toHaveBeenCalled()
+      await expect(fixture.db.select().from(asset).where(eq(asset.id, 'published-asset')).get())
+        .resolves.toMatchObject({ mimeType: 'image/png', sizeBytes: 100 })
+    } finally {
+      fixture.close()
+      dbState.current = null
+    }
+  })
+
+  it('keeps same-ID replacement available for working-only assets', async () => {
+    const fixture = await createTestSqliteDb()
+    dbState.current = fixture.db
+    try {
+      await runMigrations(fixture.db)
+      await seedAsset(fixture.db, 'working-asset')
+      await fixture.db.insert(documentAssetRef).values({
+        documentKind: 'page',
+        documentId: 'page-draft',
+        projectionScope: 'working',
+        assetId: 'working-asset'
+      })
+
+      const event = { context: { params: { assetId: 'working-asset' } } }
+      const handler = (await import('../server/api/assets/[assetId]/replace.post')).default as (event: any) => Promise<any>
+      await expect(handler(event)).resolves.toEqual({
+        ok: true,
+        assetId: 'working-asset',
+        mimeType: 'image/webp',
+        sizeBytes: 4
+      })
+
+      expect(storageState.putObject).toHaveBeenCalledWith(
+        event,
+        'assets/working-asset/original',
+        expect.any(Uint8Array),
+        'image/webp'
+      )
+      await expect(fixture.db.select().from(asset).where(eq(asset.id, 'working-asset')).get())
+        .resolves.toMatchObject({ mimeType: 'image/webp', sizeBytes: 4, objectKey: 'assets/working-asset/original' })
     } finally {
       fixture.close()
       dbState.current = null
