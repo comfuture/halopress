@@ -176,24 +176,78 @@ SELECT 'content', `content_id`, `projection_scope`, `target_id`
 FROM `content_ref`
 WHERE `target_kind` = 'asset';--> statement-breakpoint
 
+WITH RECURSIVE
+`asset_urls` (`document_kind`, `document_id`, `projection_scope`, `value`) AS (
+	SELECT 'content', c.`id`, 'working', j.`value`
+	FROM `content` c, json_tree(c.`content_json`) j
+	WHERE j.`type` = 'text'
+	UNION ALL
+	SELECT 'content', c.`id`, 'published', j.`value`
+	FROM `content` c, json_tree(c.`content_json`) j
+	WHERE c.`published_revision_id` IS NOT NULL AND j.`type` = 'text'
+	UNION ALL
+	SELECT 'page', p.`id`, 'working', j.`value`
+	FROM `page` p, json_tree(p.`content_json`) j
+	WHERE j.`type` = 'text'
+	UNION ALL
+	SELECT 'page', p.`id`, 'published', j.`value`
+	FROM `page` p, json_tree(p.`content_json`) j
+	WHERE p.`published_revision_id` IS NOT NULL AND j.`type` = 'text'
+),
+`asset_paths` (`document_kind`, `document_id`, `projection_scope`, `tail`, `raw_position`) AS (
+	SELECT
+		`document_kind`, `document_id`, `projection_scope`, substr(`value`, 9),
+		instr(substr(`value`, 9), '/raw')
+	FROM `asset_urls`
+	WHERE substr(`value`, 1, 8) = '/assets/'
+),
+`asset_candidates` (`document_kind`, `document_id`, `projection_scope`, `encoded_id`) AS (
+	SELECT
+		`document_kind`, `document_id`, `projection_scope`, substr(`tail`, 1, `raw_position` - 1)
+	FROM `asset_paths`
+	WHERE `raw_position` > 1
+		AND (
+			substr(`tail`, `raw_position` + 4) = ''
+			OR substr(`tail`, `raw_position` + 4, 1) IN ('?', '#')
+		)
+),
+`decoded_ids` (
+	`document_kind`, `document_id`, `projection_scope`, `encoded_id`, `position`, `hex_value`, `valid`
+) AS (
+	SELECT `document_kind`, `document_id`, `projection_scope`, `encoded_id`, 1, '', 1
+	FROM `asset_candidates`
+	UNION ALL
+	SELECT
+		`document_kind`, `document_id`, `projection_scope`, `encoded_id`,
+		`position` + CASE
+			WHEN substr(`encoded_id`, `position`, 1) = '%'
+				AND instr('0123456789ABCDEF', upper(substr(`encoded_id`, `position` + 1, 1))) > 0
+				AND instr('0123456789ABCDEF', upper(substr(`encoded_id`, `position` + 2, 1))) > 0
+			THEN 3 ELSE 1 END,
+		`hex_value` || CASE
+			WHEN substr(`encoded_id`, `position`, 1) = '%'
+				AND instr('0123456789ABCDEF', upper(substr(`encoded_id`, `position` + 1, 1))) > 0
+				AND instr('0123456789ABCDEF', upper(substr(`encoded_id`, `position` + 2, 1))) > 0
+			THEN substr(`encoded_id`, `position` + 1, 2)
+			ELSE hex(substr(`encoded_id`, `position`, 1)) END,
+		`valid` AND NOT (
+			substr(`encoded_id`, `position`, 1) = '%'
+			AND (
+				instr('0123456789ABCDEF', upper(substr(`encoded_id`, `position` + 1, 1))) = 0
+				OR instr('0123456789ABCDEF', upper(substr(`encoded_id`, `position` + 2, 1))) = 0
+			)
+		)
+	FROM `decoded_ids`
+	WHERE `position` <= length(`encoded_id`)
+),
+`canonical_ids` (`document_kind`, `document_id`, `projection_scope`, `asset_id`) AS (
+	SELECT
+		`document_kind`, `document_id`, `projection_scope`,
+		CASE WHEN `valid` THEN CAST(unhex(`hex_value`) AS TEXT) ELSE `encoded_id` END
+	FROM `decoded_ids`
+	WHERE `position` > length(`encoded_id`)
+)
 INSERT OR IGNORE INTO `document_asset_ref` (`document_kind`, `document_id`, `projection_scope`, `asset_id`)
-SELECT 'content', c.`id`, 'working', substr(j.`value`, 9, length(j.`value`) - 12)
-FROM `content` c, json_tree(c.`content_json`) j
-WHERE j.`type` = 'text' AND j.`value` GLOB '/assets/*/raw';--> statement-breakpoint
-
-INSERT OR IGNORE INTO `document_asset_ref` (`document_kind`, `document_id`, `projection_scope`, `asset_id`)
-SELECT 'content', c.`id`, 'published', substr(j.`value`, 9, length(j.`value`) - 12)
-FROM `content` c, json_tree(c.`content_json`) j
-WHERE c.`published_revision_id` IS NOT NULL
-	AND j.`type` = 'text' AND j.`value` GLOB '/assets/*/raw';--> statement-breakpoint
-
-INSERT OR IGNORE INTO `document_asset_ref` (`document_kind`, `document_id`, `projection_scope`, `asset_id`)
-SELECT 'page', p.`id`, 'working', substr(j.`value`, 9, length(j.`value`) - 12)
-FROM `page` p, json_tree(p.`content_json`) j
-WHERE j.`type` = 'text' AND j.`value` GLOB '/assets/*/raw';--> statement-breakpoint
-
-INSERT OR IGNORE INTO `document_asset_ref` (`document_kind`, `document_id`, `projection_scope`, `asset_id`)
-SELECT 'page', p.`id`, 'published', substr(j.`value`, 9, length(j.`value`) - 12)
-FROM `page` p, json_tree(p.`content_json`) j
-WHERE p.`published_revision_id` IS NOT NULL
-	AND j.`type` = 'text' AND j.`value` GLOB '/assets/*/raw';
+SELECT c.`document_kind`, c.`document_id`, c.`projection_scope`, a.`id`
+FROM `canonical_ids` c
+INNER JOIN `asset` a ON a.`id` = c.`asset_id`;
