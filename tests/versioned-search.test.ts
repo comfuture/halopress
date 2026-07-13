@@ -105,6 +105,7 @@ async function insertPublished(args: {
   publishedVersion: number
   dataType: 'text' | 'integer'
   value: string | number
+  fieldId?: string
 }) {
   const now = new Date(`2026-07-13T00:00:${args.id.length.toString().padStart(2, '0')}.000Z`)
   await fixture.db.insert(content).values({
@@ -132,7 +133,7 @@ async function insertPublished(args: {
   await fixture.db.insert(contentSearchData).values({
     contentId: args.id,
     projectionScope: 'published',
-    fieldId: args.schemaKey === 'article' ? 'score-field' : 'category-field',
+    fieldId: args.fieldId ?? (args.schemaKey === 'article' ? 'score-field' : 'category-field'),
     dataType: args.dataType,
     text: args.dataType === 'text' ? String(args.value) : null,
     value: args.dataType === 'text' ? null : Number(args.value)
@@ -216,6 +217,46 @@ beforeAll(async () => {
     value: 'news'
   })
 
+  const recreatedV1 = registry({
+    schemaKey: 'recreated',
+    version: 1,
+    fieldId: 'category-field-v1',
+    fieldKey: 'category',
+    kind: 'string'
+  })
+  recreatedV1.fields.push({
+    fieldId: 'category-field-v2',
+    key: 'legacyCategory',
+    kind: 'string',
+    search: { mode: 'exact', filterable: true, sortable: true }
+  })
+  await insertSchema(recreatedV1)
+  await insertSchema(registry({
+    schemaKey: 'recreated',
+    version: 2,
+    fieldId: 'category-field-v2',
+    fieldKey: 'category',
+    kind: 'string'
+  }))
+  await fixture.db.insert(searchConfig).values({
+    schemaKey: 'recreated',
+    fieldId: 'category-field-v2',
+    fieldKey: 'category',
+    kind: 'string',
+    searchMode: 'exact',
+    filterable: true,
+    sortable: true
+  })
+  await insertPublished({
+    id: 'recreated-v1',
+    schemaKey: 'recreated',
+    workingVersion: 2,
+    publishedVersion: 1,
+    dataType: 'text',
+    value: 'archive',
+    fieldId: 'category-field-v1'
+  })
+
   searchHandler = (await import('../server/api/search.get')).default as EndpointHandler
 })
 
@@ -251,6 +292,14 @@ describe('versioned published search', () => {
     const result = await searchHandler(responseEvent(`/api/search?schemaKey=compatible&filters=${filters}&sort=label:asc`))
     expect(result.items).toHaveLength(1)
     expect(result.items[0]).toMatchObject({ id: 'compatible-v1', schemaVersion: 1 })
+  })
+
+  it('rejects a reused field key with a different stable ID', async () => {
+    const filters = encodeURIComponent(JSON.stringify({ field: 'category', value: 'archive' }))
+    await expect(searchHandler(responseEvent(`/api/search?schemaKey=recreated&filters=${filters}`)))
+      .rejects.toMatchObject({ statusCode: 409 })
+    await expect(searchHandler(responseEvent('/api/search?schemaKey=recreated&sort=category:asc')))
+      .rejects.toMatchObject({ statusCode: 409 })
   })
 
   it('allows filtering again after every published projection uses the active field contract', async () => {
