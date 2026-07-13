@@ -98,7 +98,9 @@ standalone-page routes and cannot be selected for a new schema. On upgraded site
 that already have a schema named `p`, `/p/:id` resolves a published standalone
 page first and falls back to a readable published legacy schema item only when no
 standalone page exists. Custom paths and public slugs are not part of this initial
-ID-based contract, and `/p` itself is not a public page listing.
+ID-based contract, and `/p` itself is not a public page listing. On upgraded sites
+with a readable legacy schema named `p`, `/p` remains that schema's collection
+index; otherwise the bare prefix returns 404.
 
 Page blocks come from a curated registry. Stored unknown or retired blocks remain
 in the document and render a safe fallback, while arbitrary Vue components,
