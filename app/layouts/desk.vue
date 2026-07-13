@@ -96,9 +96,8 @@ async function logout() {
     <UDashboardSidebar class="min-h-dvh" resizable collapsible :min-size="12" :max-size="25" :default-size="15">
       <template #header="{ collapsed }">
         <div class="flex items-center justify-between gap-2">
-          <NuxtLink to="/_desk" class="flex items-center gap-2">
-            <AppLogo class="w-auto h-6" />
-            <span v-if="!collapsed" class="font-semibold">Halopress</span>
+          <NuxtLink to="/_desk" aria-label="HaloPress Desk">
+            <AppLogo :mark-only="collapsed" class="h-7 w-auto" />
           </NuxtLink>
           <UDashboardSidebarToggle />
         </div>

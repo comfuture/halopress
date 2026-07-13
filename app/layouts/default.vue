@@ -6,9 +6,8 @@ const route = useRoute()
   <div>
     <UHeader>
       <template #left>
-        <NuxtLink to="/" class="flex items-center gap-2">
-          <AppLogo class="w-auto h-6 shrink-0" />
-          <span class="font-semibold">Halopress</span>
+        <NuxtLink to="/" aria-label="HaloPress home">
+          <AppLogo class="h-7 w-auto shrink-0" />
         </NuxtLink>
       </template>
 
@@ -34,7 +33,7 @@ const route = useRoute()
     <UFooter>
       <template #left>
         <p class="text-sm text-muted">
-          © {{ new Date().getFullYear() }} Halopress
+          © {{ new Date().getFullYear() }} HaloPress
         </p>
       </template>
       <template #right>
@@ -43,4 +42,3 @@ const route = useRoute()
     </UFooter>
   </div>
 </template>
-
