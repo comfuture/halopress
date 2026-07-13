@@ -1,15 +1,22 @@
 import { and, eq, inArray } from 'drizzle-orm'
 import { readBody } from 'h3'
 
+import { syncDocumentAssetRefs } from '../../../cms/asset-refs'
 import { getDb } from '../../../db/db'
-import { asset as assetTable, content as contentTable, contentRef, contentRefList } from '../../../db/schema'
+import { syncContentProjections } from '../../../cms/content-projections'
+import { parseContentJson } from '../../../cms/content-json'
+import { getSchemaVersion } from '../../../cms/repo'
+import {
+  asset as assetTable,
+  content as contentTable,
+  documentAssetRef,
+  page as pageTable
+} from '../../../db/schema'
+import { executeDbStatement, withDbTransaction } from '../../../db/transaction'
 import { deleteObject } from '../../../storage/assets'
 import { requireAdmin } from '../../../utils/auth'
-import { parseContentJson } from '../../../cms/content-json'
-import { badRequest, notFound } from '../../../utils/http'
-import { assertAssetIsNotRetained } from '../../../utils/asset-delivery'
-import { getActiveSchema } from '../../../cms/repo'
-import { upsertContentListingSnapshot } from '../../../cms/content-listing'
+import { assertAssetIsNotPublished, assertAssetIsNotRetained } from '../../../utils/asset-delivery'
+import { badRequest, conflict, notFound } from '../../../utils/http'
 import { queueWidgetCacheInvalidation } from '../../../utils/widget-cache'
 
 function replaceAssetRefs(value: unknown, fromId: string, toId?: string | null): { value: unknown; changed: boolean } {
@@ -102,8 +109,6 @@ export default defineEventHandler(async (event) => {
     .limit(1)
   if (!current[0]) throw notFound('Asset not found')
 
-  await assertAssetIsNotRetained(db, assetId)
-
   if (hasReplacement) {
     const replacement = await db
       .select({ id: assetTable.id })
@@ -111,92 +116,123 @@ export default defineEventHandler(async (event) => {
       .where(eq(assetTable.id, replacementId))
       .limit(1)
     if (!replacement[0]) throw badRequest('Replacement asset not found')
-  }
-
-  const refs = await db
-    .select({ contentId: contentRef.contentId })
-    .from(contentRef)
-    .where(and(eq(contentRef.targetKind, 'asset'), eq(contentRef.targetId, assetId)))
-
-  const listRefs = await db
-    .select({ contentId: contentRefList.ownerContentId })
-    .from(contentRefList)
-    .where(eq(contentRefList.assetId, assetId))
-
-  const contentIds = Array.from(new Set([
-    ...refs.map((ref: { contentId: string }) => ref.contentId),
-    ...listRefs.map((ref: { contentId: string }) => ref.contentId)
-  ]))
-
-  if (hasReplacement) {
-    await db
-      .update(contentRef)
-      .set({ targetId: replacementId })
-      .where(and(eq(contentRef.targetKind, 'asset'), eq(contentRef.targetId, assetId)))
-
-    await db
-      .update(contentRefList)
-      .set({ assetId: replacementId })
-      .where(eq(contentRefList.assetId, assetId))
+    await assertAssetIsNotPublished(db, assetId)
   } else {
-    await db
-      .delete(contentRef)
-      .where(and(eq(contentRef.targetKind, 'asset'), eq(contentRef.targetId, assetId)))
-
-    await db
-      .delete(contentRefList)
-      .where(eq(contentRefList.assetId, assetId))
+    await assertAssetIsNotRetained(db, assetId)
   }
+
+  const workingRefs: Array<{ documentKind: string, documentId: string }> = hasReplacement
+    ? await db
+        .select({ documentKind: documentAssetRef.documentKind, documentId: documentAssetRef.documentId })
+        .from(documentAssetRef)
+        .where(and(
+          eq(documentAssetRef.assetId, assetId),
+          eq(documentAssetRef.projectionScope, 'working')
+        ))
+    : []
+  const contentIds = [...new Set(workingRefs
+    .filter(ref => ref.documentKind === 'content')
+    .map(ref => ref.documentId))]
+  const pageIds = [...new Set(workingRefs
+    .filter(ref => ref.documentKind === 'page')
+    .map(ref => ref.documentId))]
 
   const changedSchemas = new Set<string>()
+  const contentUpdates: Array<{
+    row: typeof contentTable.$inferSelect
+    content: Record<string, unknown>
+    registry: NonNullable<Awaited<ReturnType<typeof getSchemaVersion>>>['registry']
+    updatedAt: Date
+  }> = []
   if (contentIds.length) {
     const contents = await db
-      .select({
-        id: contentTable.id,
-        schemaKey: contentTable.schemaKey,
-        schemaVersion: contentTable.schemaVersion,
-        status: contentTable.status,
-        createdAt: contentTable.createdAt,
-        updatedAt: contentTable.updatedAt,
-        contentJson: contentTable.contentJson
-      })
+      .select()
       .from(contentTable)
       .where(inArray(contentTable.id, contentIds))
 
-    const registryCache = new Map<string, any>()
     for (const row of contents) {
       try {
         const content = parseContentJson(row.contentJson)
         const result = replaceAssetRefs(content, assetId, hasReplacement ? replacementId : null)
-        if (result.changed) {
-          changedSchemas.add(row.schemaKey)
-          const nextUpdatedAt = new Date()
-          await db
-            .update(contentTable)
-            .set({ contentJson: JSON.stringify(result.value), updatedAt: nextUpdatedAt })
-            .where(eq(contentTable.id, row.id))
-
-          if (!registryCache.has(row.schemaKey)) {
-            const active = await getActiveSchema(db, row.schemaKey)
-            registryCache.set(row.schemaKey, active?.registry ?? null)
-          }
-
-          await upsertContentListingSnapshot({
-            db,
-            registry: registryCache.get(row.schemaKey) ?? null,
-            content: result.value as Record<string, unknown>,
-            contentId: row.id,
-            schemaKey: row.schemaKey,
-            schemaVersion: row.schemaVersion,
-            status: row.status,
-            createdAt: row.createdAt,
-            updatedAt: nextUpdatedAt
-          })
-        }
+        if (!result.changed) throw conflict('Asset reference could not be replaced')
+        const version = await getSchemaVersion(db, row.schemaKey, row.schemaVersion)
+        if (!version?.registry) throw conflict('Referenced content schema is unavailable')
+        changedSchemas.add(row.schemaKey)
+        contentUpdates.push({
+          row,
+          content: result.value as Record<string, unknown>,
+          registry: version.registry,
+          updatedAt: new Date()
+        })
       } catch {
-        // ignore invalid JSON
+        throw conflict('Asset reference could not be replaced')
       }
     }
+  }
+
+  const pageUpdates: Array<{
+    row: typeof pageTable.$inferSelect
+    content: Record<string, unknown>
+    updatedAt: Date
+  }> = []
+  if (pageIds.length) {
+    const pages = await db.select().from(pageTable).where(inArray(pageTable.id, pageIds))
+    for (const row of pages) {
+      try {
+        const result = replaceAssetRefs(JSON.parse(row.contentJson), assetId, replacementId)
+        if (!result.changed) throw conflict('Asset reference could not be replaced')
+        pageUpdates.push({
+          row,
+          content: result.value as Record<string, unknown>,
+          updatedAt: new Date()
+        })
+      } catch {
+        throw conflict('Asset reference could not be replaced')
+      }
+    }
+  }
+
+  if (contentUpdates.length !== contentIds.length || pageUpdates.length !== pageIds.length) {
+    throw conflict('Asset reference could not be replaced')
+  }
+
+  if (hasReplacement && workingRefs.length) {
+    await withDbTransaction(event, db, async (tx, statements) => {
+      for (const update of contentUpdates) {
+        await executeDbStatement(tx.update(contentTable).set({
+          contentJson: JSON.stringify(update.content),
+          updatedAt: update.updatedAt
+        }).where(eq(contentTable.id, update.row.id)), statements)
+        await syncContentProjections({
+          db: tx,
+          registry: update.registry!,
+          content: update.content,
+          contentId: update.row.id,
+          schemaKey: update.row.schemaKey,
+          schemaVersion: update.row.schemaVersion,
+          status: update.row.status,
+          createdAt: update.row.createdAt,
+          updatedAt: update.updatedAt,
+          projectionScope: 'working',
+          statements
+        })
+      }
+      for (const update of pageUpdates) {
+        await executeDbStatement(tx.update(pageTable).set({
+          contentJson: JSON.stringify(update.content),
+          updatedAt: update.updatedAt
+        }).where(eq(pageTable.id, update.row.id)), statements)
+        await syncDocumentAssetRefs({
+          db: tx,
+          documentKind: 'page',
+          documentId: update.row.id,
+          projectionScope: 'working',
+          content: update.content,
+          statements
+        })
+      }
+    })
+    await assertAssetIsNotRetained(db, assetId)
   }
 
   for (const schemaKey of changedSchemas) {
@@ -206,5 +242,5 @@ export default defineEventHandler(async (event) => {
   await db.delete(assetTable).where(eq(assetTable.id, assetId))
   await deleteObject(event, current[0].objectKey)
 
-  return { ok: true, replacedCount: contentIds.length }
+  return { ok: true, replacedCount: contentUpdates.length + pageUpdates.length }
 })

@@ -16,6 +16,18 @@ export async function assertAssetIsNotRetained(db: Awaited<ReturnType<typeof get
   if (retainedBy[0]) throw conflict('Asset is referenced by a working or published document')
 }
 
+export async function assertAssetIsNotPublished(db: Awaited<ReturnType<typeof getDb>>, assetId: string) {
+  const retainedBy = await db
+    .select({ documentId: documentAssetRef.documentId })
+    .from(documentAssetRef)
+    .where(and(
+      eq(documentAssetRef.assetId, assetId),
+      eq(documentAssetRef.projectionScope, 'published')
+    ))
+    .limit(1)
+  if (retainedBy[0]) throw conflict('Asset is referenced by a published document')
+}
+
 export async function requireAssetDelivery(event: H3Event, assetId: string) {
   const session = await getAuthSession(event)
   if (session?.user) {
