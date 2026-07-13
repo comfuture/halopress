@@ -167,6 +167,16 @@ function downloadJson() {
 
         <template #actions>
           <UButton
+            v-if="canUnpublish"
+            :to="`/_pages/${id}`"
+            target="_blank"
+            color="neutral"
+            variant="ghost"
+            icon="i-lucide-external-link"
+          >
+            <span class="hidden sm:inline">View published</span>
+          </UButton>
+          <UButton
             :to="`/_preview/pages/${id}`"
             target="_blank"
             color="neutral"

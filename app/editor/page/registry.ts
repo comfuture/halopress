@@ -1,4 +1,5 @@
 import type { PageBlockComponent, PageBlockRegistry } from './types'
+import { pageBlockDefinitions } from '~~/shared/page-blocks'
 
 const orientationOptions = [
   { label: 'Vertical', value: 'vertical' },
@@ -7,9 +8,7 @@ const orientationOptions = [
 
 const targetOptions = [
   { label: 'Same tab', value: '_self' },
-  { label: 'New tab', value: '_blank' },
-  { label: 'Parent', value: '_parent' },
-  { label: 'Top', value: '_top' }
+  { label: 'New tab', value: '_blank' }
 ]
 
 const colorOptions = [
@@ -27,9 +26,7 @@ const heroFields: PageBlockComponent['fields'] = [
   { key: 'title', label: 'Title', type: 'text' },
   { key: 'description', label: 'Description', type: 'textarea' },
   { key: 'orientation', label: 'Orientation', type: 'select', options: orientationOptions },
-  { key: 'reverse', label: 'Reverse', type: 'boolean' },
-  { key: 'links', label: 'Links (JSON)', type: 'json', help: 'Array of button props.' },
-  { key: 'ui', label: 'UI (JSON)', type: 'json', help: 'Override component UI classes.' }
+  { key: 'reverse', label: 'Reverse', type: 'boolean' }
 ]
 
 const ctaFields: PageBlockComponent['fields'] = [
@@ -43,9 +40,7 @@ const ctaFields: PageBlockComponent['fields'] = [
     { label: 'Soft', value: 'soft' },
     { label: 'Subtle', value: 'subtle' },
     { label: 'Naked', value: 'naked' }
-  ] },
-  { key: 'links', label: 'Links (JSON)', type: 'json', help: 'Array of button props.' },
-  { key: 'ui', label: 'UI (JSON)', type: 'json', help: 'Override component UI classes.' }
+  ] }
 ]
 
 const cardFields: PageBlockComponent['fields'] = [
@@ -67,19 +62,15 @@ const cardFields: PageBlockComponent['fields'] = [
   { key: 'spotlight', label: 'Spotlight', type: 'boolean' },
   { key: 'spotlightColor', label: 'Spotlight Color', type: 'select', options: colorOptions },
   { key: 'to', label: 'Link To', type: 'url', placeholder: 'https://' },
-  { key: 'target', label: 'Link Target', type: 'select', options: targetOptions },
-  { key: 'ui', label: 'UI (JSON)', type: 'json', help: 'Override component UI classes.' }
+  { key: 'target', label: 'Link Target', type: 'select', options: targetOptions }
 ]
 
 const components: PageBlockComponent[] = [
   {
     key: 'pageHero',
     label: 'Page Hero',
-    componentName: 'UPageHero',
-    defaultProps: {
-      title: 'New Hero',
-      description: ''
-    },
+    componentName: pageBlockDefinitions.pageHero.componentName,
+    defaultProps: pageBlockDefinitions.pageHero.defaultProps,
     defaultMedia: {
       url: '',
       alt: ''
@@ -89,11 +80,8 @@ const components: PageBlockComponent[] = [
   {
     key: 'pageCard',
     label: 'Page Card',
-    componentName: 'UPageCard',
-    defaultProps: {
-      title: 'New Card',
-      description: ''
-    },
+    componentName: pageBlockDefinitions.pageCard.componentName,
+    defaultProps: pageBlockDefinitions.pageCard.defaultProps,
     defaultMedia: {
       url: '',
       alt: ''
@@ -103,11 +91,8 @@ const components: PageBlockComponent[] = [
   {
     key: 'pageCTA',
     label: 'Page CTA',
-    componentName: 'UPageCTA',
-    defaultProps: {
-      title: 'New CTA',
-      description: ''
-    },
+    componentName: pageBlockDefinitions.pageCTA.componentName,
+    defaultProps: pageBlockDefinitions.pageCTA.defaultProps,
     defaultMedia: {
       url: '',
       alt: ''

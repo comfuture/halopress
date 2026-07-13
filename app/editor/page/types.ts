@@ -1,21 +1,22 @@
-export type PageBlockComponentKey = 'pageHero' | 'pageCard' | 'pageCTA'
+import type { PageBlockComponentKey } from '~~/shared/page-blocks'
+
+export type { PageBlockComponentKey } from '~~/shared/page-blocks'
 
 export type PageBlockMedia = {
   url?: string
   alt?: string
   width?: number
   height?: number
-  class?: string
 }
 
 export type PageBlockAttrs = {
-  component: PageBlockComponentKey
-  props: Record<string, any>
-  advanced: Record<string, any>
+  component: string
+  props: Record<string, unknown>
+  advanced: Record<string, unknown>
   media: PageBlockMedia
 }
 
-export type PageBlockFieldType = 'text' | 'textarea' | 'select' | 'boolean' | 'json' | 'url'
+export type PageBlockFieldType = 'text' | 'textarea' | 'select' | 'boolean' | 'url'
 
 export type PageBlockField = {
   key: string
@@ -30,7 +31,7 @@ export type PageBlockComponent = {
   key: PageBlockComponentKey
   label: string
   componentName: string
-  defaultProps: Record<string, any>
+  defaultProps: Record<string, unknown>
   defaultMedia: PageBlockMedia
   fields: PageBlockField[]
 }
