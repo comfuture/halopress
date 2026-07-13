@@ -1,6 +1,8 @@
 import { eq } from 'drizzle-orm'
 import type { Db } from '../db/db'
 import { content as contentTable, contentListing } from '../db/schema'
+import { executeDbStatement } from '../db/transaction'
+import type { DbStatement } from '../db/transaction'
 import type { SchemaRegistry } from './types'
 import { getActiveSchema } from './repo'
 import { parseContentJson } from './content-json'
@@ -42,9 +44,10 @@ export async function upsertContentListingSnapshot(args: {
   status: string
   createdAt: Date
   updatedAt: Date
+  statements?: DbStatement[]
 }) {
   const snapshot = buildContentListingSnapshot(args)
-  await args.db
+  await executeDbStatement(args.db
     .insert(contentListing)
     .values(snapshot)
     .onConflictDoUpdate({
@@ -59,7 +62,7 @@ export async function upsertContentListingSnapshot(args: {
         createdAt: snapshot.createdAt,
         updatedAt: snapshot.updatedAt
       }
-    })
+    }), args.statements)
 }
 
 export async function syncContentListing(args: {

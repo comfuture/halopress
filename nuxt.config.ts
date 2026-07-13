@@ -1,19 +1,10 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
+const isCloudflareBuild = process.env.WORKERS_CI === '1'
+  || Boolean(process.env.CF_PAGES || process.env.CF_PAGES_URL)
 const imageProvider = process.env.NUXT_IMAGE_PROVIDER
-  || (process.env.CF_PAGES || process.env.CF_PAGES_URL ? 'cloudflare' : 'ipx')
+  || (isCloudflareBuild ? 'cloudflare' : 'ipx')
 const cloudflareBaseURL = process.env.NUXT_IMAGE_CLOUDFLARE_BASE_URL || process.env.CF_PAGES_URL
-const siteURL = process.env.NUXT_PUBLIC_SITE_URL || process.env.CF_PAGES_URL || 'http://localhost:3000'
-const siteHost = (() => {
-  try {
-    return new URL(siteURL).hostname
-  } catch {
-    return 'localhost'
-  }
-})()
-const ipxHttpDomains = (process.env.NUXT_IPX_HTTP_DOMAINS
-  ? process.env.NUXT_IPX_HTTP_DOMAINS.split(',').map(domain => domain.trim()).filter(Boolean)
-  : [siteHost, 'localhost', '127.0.0.1'].filter(Boolean))
-const ipxAssetsAlias = process.env.NUXT_IPX_ALIAS_ASSETS || `${siteURL}/assets`
+const ipxAssetsAlias = process.env.NUXT_IPX_ALIAS_ASSETS || 'http://localhost:3000/assets'
 
 export default defineNuxtConfig({
   modules: ['@nuxt/eslint', '@nuxt/ui', '@nuxt/image', '@sidebase/nuxt-auth'],
@@ -32,10 +23,10 @@ export default defineNuxtConfig({
 
   image: {
     provider: imageProvider,
-    domains: ipxHttpDomains,
-    alias: {
-      '/assets': ipxAssetsAlias
-    },
+    alias: imageProvider === 'ipx'
+      ? { '/assets': ipxAssetsAlias }
+      : {},
+    cloudflare: cloudflareBaseURL ? { baseURL: cloudflareBaseURL } : {},
     presets: {
       avatar: {
         modifiers: {
@@ -57,9 +48,6 @@ export default defineNuxtConfig({
           fit: 'inside'
         }
       }
-    },
-    providers: {
-      cloudflare: cloudflareBaseURL ? { baseURL: cloudflareBaseURL } : {}
     }
   },
 

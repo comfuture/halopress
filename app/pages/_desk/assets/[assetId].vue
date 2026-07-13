@@ -86,7 +86,7 @@ function handleDeleted() {
           </template>
 
           <div class="rounded-md border border-default bg-elevated/30 p-4">
-            <NuxtImg
+            <AssetImage
               v-if="isImage"
               :src="previewUrl"
               class="w-full max-h-[420px] object-contain"

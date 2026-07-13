@@ -5,6 +5,7 @@ import { getAuthSession } from '../../../utils/auth'
 import { badRequest, notFound } from '../../../utils/http'
 import { newId } from '../../../utils/ids'
 import { content as contentTable } from '../../../db/schema'
+import { executeDbStatement, withDbTransaction } from '../../../db/transaction'
 import { getActiveSchema } from '../../../cms/repo'
 import { syncContentRefs } from '../../../cms/ref-sync'
 import { upsertContentListingSnapshot } from '../../../cms/content-listing'
@@ -33,10 +34,10 @@ export default defineEventHandler(async (event) => {
   if (typeof contentInput !== 'object' || Array.isArray(contentInput) || !contentInput) throw badRequest('Invalid content')
   const content = validateContentJson(active.jsonSchema, contentInput)
 
-  await db.transaction(async (tx: any) => {
-    await replaceBase64ImagesInContent({ event, db: tx, createdBy: actorId, content })
+  await withDbTransaction(event, db, async (tx: any, statements) => {
+    await replaceBase64ImagesInContent({ event, db: tx, createdBy: actorId, content, statements })
 
-    await tx.insert(contentTable).values({
+    await executeDbStatement(tx.insert(contentTable).values({
       id,
       schemaKey,
       schemaVersion: active.version,
@@ -45,9 +46,9 @@ export default defineEventHandler(async (event) => {
       createdBy: actorId,
       createdAt: now,
       updatedAt: now
-    })
+    }), statements)
 
-    await syncContentRefs({ db: tx, contentId: id, registry, content })
+    await syncContentRefs({ db: tx, contentId: id, registry, content, statements })
     await upsertContentListingSnapshot({
       db: tx,
       registry,
@@ -57,13 +58,15 @@ export default defineEventHandler(async (event) => {
       schemaVersion: active.version,
       status,
       createdAt: now,
-      updatedAt: now
+      updatedAt: now,
+      statements
     })
     await upsertContentSearchData({
       db: tx,
       contentId: id,
       registry,
-      content
+      content,
+      statements
     })
   })
 

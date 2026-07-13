@@ -1,6 +1,8 @@
 import { and, eq, inArray } from 'drizzle-orm'
 import type { Db } from '../db/db'
 import { content as contentTable, contentSearchData } from '../db/schema'
+import { executeDbStatement } from '../db/transaction'
+import type { DbStatement } from '../db/transaction'
 import type { SchemaRegistry } from './types'
 import { coerceSearchValue, isSearchEnabled, normalizeSearchConfig, searchDataTypeForKind } from './search-helpers'
 import { parseContentJson } from './content-json'
@@ -35,14 +37,14 @@ function buildIndexValue(field: SchemaRegistry['fields'][number], content: Recor
   }
 }
 
-async function deleteSearchValueByContent(db: Db, contentId: string, fieldId: string) {
-  await db
+async function deleteSearchValueByContent(db: Db, contentId: string, fieldId: string, statements?: DbStatement[]) {
+  await executeDbStatement(db
     .delete(contentSearchData)
-    .where(and(eq(contentSearchData.contentId, contentId), eq(contentSearchData.fieldId, fieldId)))
+    .where(and(eq(contentSearchData.contentId, contentId), eq(contentSearchData.fieldId, fieldId))), statements)
 }
 
-async function upsertSearchValue(db: Db, contentId: string, indexed: SearchIndexValue) {
-  await db
+async function upsertSearchValue(db: Db, contentId: string, indexed: SearchIndexValue, statements?: DbStatement[]) {
+  await executeDbStatement(db
     .insert(contentSearchData)
     .values({
       contentId,
@@ -58,7 +60,7 @@ async function upsertSearchValue(db: Db, contentId: string, indexed: SearchIndex
         text: indexed.dataType === 'text' ? String(indexed.value) : null,
         value: indexed.dataType === 'text' ? null : Number(indexed.value)
       }
-    })
+    }), statements)
 }
 
 export function buildContentSearchIndexValues(args: {
@@ -84,6 +86,7 @@ export async function upsertContentSearchData(args: {
   registry: SchemaRegistry
   content: Record<string, unknown>
   onlyFieldIds?: string[]
+  statements?: DbStatement[]
 }) {
   const onlySet = args.onlyFieldIds ? new Set(args.onlyFieldIds) : null
 
@@ -91,10 +94,10 @@ export async function upsertContentSearchData(args: {
     if (onlySet && !onlySet.has(field.fieldId)) continue
     const indexed = buildIndexValue(field, args.content)
     if (!indexed) {
-      await deleteSearchValueByContent(args.db, args.contentId, field.fieldId)
+      await deleteSearchValueByContent(args.db, args.contentId, field.fieldId, args.statements)
       continue
     }
-    await upsertSearchValue(args.db, args.contentId, indexed)
+    await upsertSearchValue(args.db, args.contentId, indexed, args.statements)
   }
 }
 

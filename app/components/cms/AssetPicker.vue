@@ -104,7 +104,7 @@ function clear() {
     </div>
 
     <div v-if="previewUrl" class="rounded-md border border-muted overflow-hidden">
-      <NuxtImg
+      <AssetImage
         :src="previewUrl"
         alt=""
         preset="content"
@@ -157,7 +157,7 @@ function clear() {
                 :class="item.active ? 'ring-2 ring-primary/50' : ''"
               >
                 <div class="w-full aspect-[4/3] max-h-24 overflow-hidden rounded-sm bg-elevated/50 flex items-center justify-center">
-                  <NuxtImg
+                  <AssetImage
                     v-if="item.imageUrl"
                     :src="item.imageUrl"
                     alt=""

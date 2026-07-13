@@ -146,7 +146,7 @@ const tocLinks = computed(() => richtextMeta.value.toc)
                     </div>
 
                     <div v-else-if="field.kind === 'asset' && renderedExtra[field.key]">
-                      <NuxtImg
+                      <AssetImage
                         class="max-w-full rounded-md border border-muted"
                         :src="`/assets/${renderedExtra[field.key]}/raw`"
                         alt=""
