@@ -18,6 +18,9 @@ describe('listing fields UI', () => {
     expect(source).toContain('aria-label="Listing row preview"')
     expect(source).toContain('Created is always shown')
     expect(source).toContain('Local date and time')
+    expect(source).toContain('v-if="listingPreviewFields.image"')
+    expect(source).toContain('<div class="size-10 shrink-0" aria-hidden="true">')
+    expect(source).not.toContain('Image: {{')
   })
 
   it('keeps created time fixed at the trailing edge of content rows', async () => {
