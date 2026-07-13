@@ -26,7 +26,8 @@ const heroFields: PageBlockComponent['fields'] = [
   { key: 'title', label: 'Title', type: 'text' },
   { key: 'description', label: 'Description', type: 'textarea' },
   { key: 'orientation', label: 'Orientation', type: 'select', options: orientationOptions },
-  { key: 'reverse', label: 'Reverse', type: 'boolean' }
+  { key: 'reverse', label: 'Reverse', type: 'boolean' },
+  { key: 'links', label: 'Links', type: 'link-list', help: 'Add up to 12 safe action links.' }
 ]
 
 const ctaFields: PageBlockComponent['fields'] = [
@@ -34,6 +35,7 @@ const ctaFields: PageBlockComponent['fields'] = [
   { key: 'description', label: 'Description', type: 'textarea' },
   { key: 'orientation', label: 'Orientation', type: 'select', options: orientationOptions },
   { key: 'reverse', label: 'Reverse', type: 'boolean' },
+  { key: 'links', label: 'Links', type: 'link-list', help: 'Add up to 12 safe action links.' },
   { key: 'variant', label: 'Variant', type: 'select', options: [
     { label: 'Outline', value: 'outline' },
     { label: 'Solid', value: 'solid' },

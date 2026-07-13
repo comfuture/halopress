@@ -8,6 +8,11 @@ import PageBlockNodeView from '~/editor/page/PageBlockNodeView.vue'
 import ImageUpload from '~/editor/RichEditorImageUpload'
 import RichEditorImageUploadNode from '~/editor/RichEditorImageUploadNode.vue'
 import { pageBlockRegistry, getPageBlockComponent } from '~/editor/page/registry'
+import {
+  commitPageBlockLink,
+  createPageBlockLinkDrafts,
+  type PageBlockLinkDraft
+} from '~/editor/page/links'
 import type { PageBlockAttrs, PageBlockComponentKey, PageBlockField } from '~/editor/page/types'
 import { createPageProfile } from '~/editor/profiles'
 import type { EditorProfileCustomization } from '~/editor/profiles'
@@ -68,6 +73,11 @@ const syncing = ref(false)
 
 const activeComponent = computed(() => getPageBlockComponent(selectedBlock.value?.attrs.component))
 const activeFields = computed<PageBlockField[]>(() => activeComponent.value?.fields ?? [])
+const linkDrafts = ref<PageBlockLinkDraft[]>([])
+const linkTargetOptions = [
+  { label: 'Same tab', value: '_self' },
+  { label: 'New tab', value: '_blank' }
+]
 
 function setEditingFromSelection(next: PageBlockAttrs) {
   syncing.value = true
@@ -75,10 +85,45 @@ function setEditingFromSelection(next: PageBlockAttrs) {
   editing.props = { ...next.props }
   editing.advanced = { ...next.advanced }
   editing.media = { ...next.media }
+  linkDrafts.value = createPageBlockLinkDrafts(editing.props.links)
 
   nextTick(() => {
     syncing.value = false
   })
+}
+
+function addLink() {
+  if (linkDrafts.value.length >= 12) return
+  linkDrafts.value.push({
+    label: '',
+    to: '',
+    target: '_self',
+    original: {}
+  })
+}
+
+function commitLink(index: number) {
+  const draft = linkDrafts.value[index]
+  if (!draft) return
+  const result = commitPageBlockLink(editing.props.links, index, draft)
+  draft.error = result.error
+  if (result.links) {
+    editing.props.links = result.links
+    draft.original = { ...result.links[index] }
+  }
+}
+
+function updateLinkTarget(index: number, value: unknown) {
+  const draft = linkDrafts.value[index]
+  if (!draft || (value !== '_self' && value !== '_blank')) return
+  draft.target = value
+  commitLink(index)
+}
+
+function removeLink(index: number) {
+  linkDrafts.value.splice(index, 1)
+  const current = Array.isArray(editing.props.links) ? editing.props.links : []
+  editing.props.links = current.filter((_item, itemIndex) => itemIndex !== index)
 }
 
 function syncSelection(editor: Editor) {
@@ -249,6 +294,59 @@ watch(getEditor, (editor, _prev, onCleanup) => {
                   v-else-if="field.type === 'boolean'"
                   v-model="editing.props[field.key]"
                 />
+                <div v-else-if="field.type === 'link-list'" class="space-y-3">
+                  <fieldset
+                    v-for="(link, index) in linkDrafts"
+                    :key="index"
+                    class="m-0 space-y-3 rounded-md border border-muted p-3"
+                  >
+                    <legend class="px-1 text-xs font-medium text-muted">
+                      Link {{ index + 1 }}
+                    </legend>
+                    <UFormField label="Label">
+                      <UInput
+                        v-model="link.label"
+                        class="w-full"
+                        @blur="commitLink(index)"
+                      />
+                    </UFormField>
+                    <UFormField label="Destination" :error="link.error">
+                      <UInput
+                        v-model="link.to"
+                        placeholder="/path, #section, or https://"
+                        class="w-full"
+                        @blur="commitLink(index)"
+                      />
+                    </UFormField>
+                    <UFormField label="Target">
+                      <USelect
+                        :model-value="link.target"
+                        :items="linkTargetOptions"
+                        class="w-full"
+                        @update:model-value="updateLinkTarget(index, $event)"
+                      />
+                    </UFormField>
+                    <UButton
+                      type="button"
+                      label="Remove link"
+                      icon="i-lucide-trash"
+                      color="neutral"
+                      variant="ghost"
+                      size="sm"
+                      @click="removeLink(index)"
+                    />
+                  </fieldset>
+                  <UButton
+                    type="button"
+                    label="Add link"
+                    icon="i-lucide-plus"
+                    color="neutral"
+                    variant="soft"
+                    size="sm"
+                    :disabled="linkDrafts.length >= 12"
+                    @click="addLink"
+                  />
+                </div>
               </UFormField>
             </div>
           </fieldset>

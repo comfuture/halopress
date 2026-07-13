@@ -3,10 +3,47 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import { buildPageDocumentSegments, sanitizePageDocument } from '../app/editor/page/render-document'
+import { commitPageBlockLink, createPageBlockLinkDrafts } from '../app/editor/page/links'
+import { pageBlockRegistry } from '../app/editor/page/registry'
 import { normalizePageContent } from '../server/cms/page-content'
 import { resolvePageBlock } from '../shared/page-blocks'
 
 describe('page block registry', () => {
+  it('exposes typed link controls only for hero and CTA blocks', () => {
+    expect(pageBlockRegistry.byKey.pageHero.fields.some(field => field.type === 'link-list')).toBe(true)
+    expect(pageBlockRegistry.byKey.pageCTA.fields.some(field => field.type === 'link-list')).toBe(true)
+    expect(pageBlockRegistry.byKey.pageCard.fields.some(field => field.type === 'link-list')).toBe(false)
+  })
+
+  it('commits safe link drafts while preserving curated optional properties', () => {
+    const [draft] = createPageBlockLinkDrafts([{
+      label: 'Old',
+      to: '/old',
+      target: '_blank',
+      icon: 'i-lucide-arrow-right',
+      color: 'primary',
+      unchecked: 'drop me'
+    }])
+    draft!.label = 'Docs'
+    draft!.to = '/docs'
+    draft!.target = '_self'
+
+    expect(commitPageBlockLink([draft!.original], 0, draft!)).toEqual({
+      links: [{
+        label: 'Docs',
+        to: '/docs',
+        icon: 'i-lucide-arrow-right',
+        color: 'primary'
+      }]
+    })
+    expect(commitPageBlockLink([], 0, {
+      label: 'Unsafe',
+      to: 'javascript:alert(1)',
+      target: '_self',
+      original: {}
+    })).toHaveProperty('error')
+  })
+
   it('resolves only code-owned components and strips unchecked properties', () => {
     const resolved = resolvePageBlock({
       component: 'pageCard',
