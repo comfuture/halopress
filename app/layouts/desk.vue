@@ -72,12 +72,20 @@ const navItems = computed(() => ([
     icon: 'i-lucide-settings',
     defaultOpen: isSettingsRoute.value,
     active: isSettingsRoute.value,
-    children: [{
-      label: 'Authentication',
-      to: '/_desk/settings/authentication',
-      icon: 'i-lucide-key-round',
-      active: route.path === '/_desk/settings/authentication'
-    }]
+    children: [
+      {
+        label: 'Onboarding',
+        to: '/_desk/settings',
+        icon: 'i-lucide-list-checks',
+        active: route.path === '/_desk/settings'
+      },
+      {
+        label: 'Authentication',
+        to: '/_desk/settings/authentication',
+        icon: 'i-lucide-key-round',
+        active: route.path === '/_desk/settings/authentication'
+      }
+    ]
   },
   {
     label: 'Viewer',

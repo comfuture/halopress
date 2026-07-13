@@ -17,9 +17,14 @@ import {
 import { newId } from './ids'
 import { SETUP_SESSION_TTL_MILLISECONDS } from './install-session'
 import { hashPassword } from './password'
+import {
+  BOOTSTRAP_CONTENT_ID,
+  BOOTSTRAP_SCHEMA_KEY,
+  BOOTSTRAP_SCHEMA_NOTE,
+  BOOTSTRAP_SCHEMA_VERSION
+} from './bootstrap'
 
 export const INSTALLATION_KEY = 'singleton'
-export const BOOTSTRAP_CONTENT_ID = 'halopress-welcome-guide'
 const INSTALL_LEASE_MILLISECONDS = 5 * 60 * 1000
 
 export const REQUIRED_INSTALL_TABLES = [
@@ -421,7 +426,8 @@ export async function completeInstallation(db: any, leaseToken: string, owner: s
 export async function ensureBootstrapSchema(db: any, createdBy: string) {
   const now = new Date()
   const ast = defaultArticleSchemaAst()
-  const version = 1
+  if (ast.schemaKey !== BOOTSTRAP_SCHEMA_KEY) throw new Error('Default Article schema key does not match the bootstrap schema key')
+  const version = BOOTSTRAP_SCHEMA_VERSION
   const compiled = compileSchemaAst(ast, version)
 
   await db
@@ -437,7 +443,7 @@ export async function ensureBootstrapSchema(db: any, createdBy: string) {
       diffJson: JSON.stringify({ from: null, to: 1 }),
       createdBy,
       createdAt: now,
-      note: 'bootstrap'
+      note: BOOTSTRAP_SCHEMA_NOTE
     })
     .onConflictDoNothing()
 
@@ -450,7 +456,7 @@ export async function ensureBootstrapSchema(db: any, createdBy: string) {
     .where(and(eq(schema.schemaKey, ast.schemaKey), eq(schema.version, version)))
     .get()
 
-  if (!storedSchema || storedSchema.note !== 'bootstrap') return null
+  if (!storedSchema || storedSchema.note !== BOOTSTRAP_SCHEMA_NOTE) return null
 
   await db
     .insert(schemaActive)
