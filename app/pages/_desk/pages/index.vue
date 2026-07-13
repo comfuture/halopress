@@ -14,7 +14,7 @@ const formatUpdatedAt = (value: string) => formatDateTime(value, locale.value)
 <template>
   <UDashboardPanel id="desk-pages">
     <template #header>
-      <DeskNavbar title="Pages" description="Standalone pages built with PageEditor.">
+      <DeskNavbar title="Pages" description="Build and publish standalone pages for your site.">
         <template #actions>
           <UButton icon="i-lucide-plus" color="primary" to="/_desk/pages/new">
             New Page

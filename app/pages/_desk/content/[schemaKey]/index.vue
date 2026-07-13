@@ -434,7 +434,7 @@ const columns = computed<TableColumn<ContentRow>[]>(() => {
     <template #header>
       <DeskNavbar
         :title="schema?.title || schemaKey"
-        description="Content entries"
+        description="Create, review, and publish entries."
       >
         <template #actions>
           <UButton

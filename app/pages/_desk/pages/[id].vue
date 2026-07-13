@@ -119,7 +119,10 @@ function downloadJson() {
     <template #header>
       <DeskNavbar :title="doc?.title || 'Page'">
         <template #title>
-          <UBreadcrumb :items="breadcrumbItems" />
+          <div class="flex min-w-0 flex-col">
+            <UBreadcrumb :items="breadcrumbItems" />
+            <span class="truncate text-xs text-muted">Update the page, then save a draft or publish.</span>
+          </div>
         </template>
 
         <template #actions>

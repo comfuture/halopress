@@ -241,7 +241,7 @@ const columns = computed<TableColumn<UserRow>[]>(() => ([
 <template>
   <UDashboardPanel id="desk-users">
     <template #header>
-      <DeskNavbar title="Users" description="Manage roles, status, and user profiles.">
+      <DeskNavbar title="Users" description="Control who can access your site and what they can do.">
         <template #actions>
           <div class="flex items-center gap-2">
             <UBadge variant="soft" color="neutral">
