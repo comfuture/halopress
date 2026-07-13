@@ -1,10 +1,11 @@
 import type { FieldKind, SearchConfig, SchemaRegistry } from './types'
-import { Node, generateHTML, generateText, mergeAttributes } from '@tiptap/core'
+import { Node, generateText, mergeAttributes } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
 import TextAlign from '@tiptap/extension-text-align'
 import HorizontalRule from '@tiptap/extension-horizontal-rule'
 import Image from '@tiptap/extension-image'
 import Mention from '@tiptap/extension-mention'
+import { generateHTML } from '@tiptap/html/server'
 
 type SearchMode = NonNullable<SearchConfig['mode']>
 

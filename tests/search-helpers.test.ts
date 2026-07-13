@@ -72,6 +72,37 @@ describe('coerceSearchValue', () => {
       enumValues: [{ label: 'Draft', value: 'draft' }]
     }, 'published')).toBeNull()
   })
+
+  it('renders the aligned server-side Tiptap extension cohort', () => {
+    const html = coerceSearchValue({ kind: 'richtext' }, {
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          attrs: { textAlign: 'center' },
+          content: [
+            { type: 'text', text: 'Hello ' },
+            { type: 'mention', attrs: { id: 'editor', label: 'Editor' } }
+          ]
+        },
+        { type: 'horizontalRule' },
+        {
+          type: 'image',
+          attrs: {
+            src: '/assets/cover.png',
+            alt: 'Cover',
+            title: null
+          }
+        }
+      ]
+    })
+
+    expect(html).toContain('text-align: center')
+    expect(html).toContain('data-type="mention"')
+    expect(html).toContain('data-id="editor"')
+    expect(html).toContain('<hr>')
+    expect(html).toContain('src="/assets/cover.png"')
+  })
 })
 
 describe('buildSearchDataRecord', () => {
