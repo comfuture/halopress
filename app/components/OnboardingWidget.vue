@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import {
-  EXPECTED_ONBOARDING_ITEM_COUNT,
+  formatOnboardingProgressLabel,
+  formatOnboardingProgressValue,
   getOnboardingItems,
-  hasCompletedOnboarding,
+  getOnboardingProgress,
   type OnboardingStatus
 } from '../utils/onboarding'
 
@@ -18,10 +19,20 @@ const { data, pending, error, refresh } = await useLazyFetch<OnboardingStatus>('
 })
 
 const items = computed(() => data.value ? getOnboardingItems(data.value) : [])
-const completedCount = computed(() => items.value.filter(item => item.complete).length)
-const isComplete = computed(() => hasCompletedOnboarding(items.value))
+const progress = computed(() => getOnboardingProgress(items.value))
+const completedCount = computed(() => progress.value.completed)
+const itemCount = computed(() => progress.value.total)
+const isComplete = computed(() => data.value ? progress.value.complete : false)
 const isVisible = computed(() => !dismissed.value && !isComplete.value)
 let lastRefreshAt = 0
+
+function getProgressLabel() {
+  return formatOnboardingProgressLabel()
+}
+
+function getProgressValue(value: number | null | undefined, max: number) {
+  return formatOnboardingProgressValue(value ?? 0, max)
+}
 
 function dismiss() {
   dismissed.value = true
@@ -65,7 +76,7 @@ onBeforeUnmount(() => {
         </h2>
         <p class="shrink-0 text-xs text-muted">
           <template v-if="data">
-            {{ completedCount }}/{{ EXPECTED_ONBOARDING_ITEM_COUNT }} complete
+            {{ completedCount }}/{{ itemCount }} complete
           </template>
           <template v-else-if="error">
             Unavailable
@@ -100,12 +111,13 @@ onBeforeUnmount(() => {
     </header>
 
     <UProgress
-      v-if="data"
+      v-if="data && itemCount > 0"
       :model-value="completedCount"
-      :max="EXPECTED_ONBOARDING_ITEM_COUNT"
+      :max="itemCount"
+      :get-value-label="getProgressLabel"
+      :get-value-text="getProgressValue"
       size="xs"
       class="mt-2"
-      aria-label="Onboarding progress"
     />
 
     <ul v-if="data" class="mt-2 space-y-0.5" aria-label="Recommended setup checklist">
