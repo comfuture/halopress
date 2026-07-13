@@ -213,7 +213,7 @@ const columns = computed<TableColumn<RoleItem>[]>(() => ([
 </script>
 
 <template>
-  <UButton color="neutral" variant="outline" icon="i-lucide-users" @click="open = true">
+  <UButton color="neutral" variant="outline" icon="i-lucide-users" @click="void (open = true)">
     Manage role
   </UButton>
 
@@ -263,7 +263,7 @@ const columns = computed<TableColumn<RoleItem>[]>(() => ([
       </div>
     </template>
     <template #footer>
-      <UButton color="neutral" variant="outline" @click="open = false">
+      <UButton color="neutral" variant="outline" @click="void (open = false)">
         Close
       </UButton>
     </template>
@@ -280,7 +280,7 @@ const columns = computed<TableColumn<RoleItem>[]>(() => ([
       </div>
     </template>
     <template #footer>
-      <UButton color="neutral" variant="outline" @click="editOpen = false">
+      <UButton color="neutral" variant="outline" @click="void (editOpen = false)">
         Cancel
       </UButton>
       <UButton color="primary" :loading="editing" @click="saveEdit">
@@ -326,7 +326,7 @@ const columns = computed<TableColumn<RoleItem>[]>(() => ([
       </div>
     </template>
     <template #footer>
-      <UButton color="neutral" variant="outline" @click="deleteOpen = false">
+      <UButton color="neutral" variant="outline" @click="void (deleteOpen = false)">
         Cancel
       </UButton>
       <UButton
