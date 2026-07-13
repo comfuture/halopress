@@ -9,7 +9,7 @@ import { content as contentTable, contentListing as contentListingTable } from '
 import { buildContentListingSnapshot } from '../../../cms/content-listing'
 import { getSchemaVersion } from '../../../cms/repo'
 import { getPublicationRevision, publicationMetadata } from '../../../cms/publication'
-import { hasStandalonePageRouteClaim } from '../../../cms/page-delivery'
+import { hasStandalonePageRouteClaim, standalonePageRouteIsUnclaimed } from '../../../cms/page-delivery'
 import { PUBLIC_PAGE_ROUTE_PREFIX } from '../../../../shared/public-routing'
 
 export default defineEventHandler(async (event) => {
@@ -22,11 +22,8 @@ export default defineEventHandler(async (event) => {
 
   const policy = await resolveDeliveryPolicy(event, schemaKey, { requestedStatus: q.status })
   const db = await getDb(event)
-  if (
-    schemaKey === PUBLIC_PAGE_ROUTE_PREFIX
-    && q.routeScope === 'public-page'
-    && await hasStandalonePageRouteClaim(db, id)
-  ) {
+  const respectStandalonePageClaims = schemaKey === PUBLIC_PAGE_ROUTE_PREFIX && q.routeScope === 'public-page'
+  if (respectStandalonePageClaims && await hasStandalonePageRouteClaim(db, id)) {
     throw notFound('Content not found')
   }
   const row = await db
@@ -107,6 +104,9 @@ export default defineEventHandler(async (event) => {
       eq(contentListingTable.schemaKey, schemaKey),
       eq(contentListingTable.projectionScope, projectionScope)
     ] as any[]
+    if (respectStandalonePageClaims) {
+      whereParts.push(standalonePageRouteIsUnclaimed(contentListingTable.contentId))
+    }
     if (status) {
       whereParts.push(eq(contentListingTable.status, status))
     }

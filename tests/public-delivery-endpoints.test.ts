@@ -432,6 +432,80 @@ describe('public delivery endpoint visibility', () => {
     expect(authenticated.header('cache-control')).toBe('private, no-store')
   })
 
+  it('excludes standalone page route claims from legacy p surroundings', async () => {
+    const rows = [
+      { id: 'surround-newer-free', title: 'Newer free', timestamp: '2026-07-13T00:03:05.000Z' },
+      { id: 'surround-newer-claimed', title: 'Newer claimed', timestamp: '2026-07-13T00:03:04.000Z' },
+      { id: 'surround-target', title: 'Target', timestamp: '2026-07-13T00:03:03.000Z' },
+      { id: 'surround-older-claimed', title: 'Older claimed', timestamp: '2026-07-13T00:03:02.000Z' },
+      { id: 'surround-older-free', title: 'Older free', timestamp: '2026-07-13T00:03:01.000Z' }
+    ]
+    for (const row of rows) {
+      await addContent({ ...row, schemaKey: 'p', status: 'published' })
+    }
+    for (const [id, status] of [
+      ['surround-newer-claimed', 'draft'],
+      ['surround-older-claimed', 'deleted']
+    ] as const) {
+      const timestamp = rows.find(row => row.id === id)!.timestamp
+      await fixture.db.insert(pageTable).values({
+        id,
+        title: id,
+        status,
+        contentJson: JSON.stringify({ type: 'doc', content: [] }),
+        createdAt: new Date(timestamp),
+        updatedAt: new Date(timestamp)
+      })
+    }
+
+    const routeScoped = responseEvent(
+      '/api/content/p/surround-target?status=published&routeScope=public-page&surroundings=1',
+      { schemaKey: 'p', id: 'surround-target' }
+    )
+    await expect(handlers.detail(routeScoped.event)).resolves.toMatchObject({
+      surroundings: {
+        prev: { id: 'surround-newer-free' },
+        next: { id: 'surround-older-free' }
+      }
+    })
+    expect(routeScoped.header('cache-control')).toMatch(/^public,/)
+
+    const ascending = responseEvent(
+      '/api/content/p/surround-target?status=published&routeScope=public-page&surroundings=1&order=asc',
+      { schemaKey: 'p', id: 'surround-target' }
+    )
+    await expect(handlers.detail(ascending.event)).resolves.toMatchObject({
+      surroundings: {
+        prev: { id: 'surround-older-free' },
+        next: { id: 'surround-newer-free' }
+      }
+    })
+
+    const generic = responseEvent(
+      '/api/content/p/surround-target?status=published&surroundings=1',
+      { schemaKey: 'p', id: 'surround-target' }
+    )
+    await expect(handlers.detail(generic.event)).resolves.toMatchObject({
+      surroundings: {
+        prev: { id: 'surround-newer-claimed' },
+        next: { id: 'surround-older-claimed' }
+      }
+    })
+
+    permissionState.roleKey = 'user'
+    const authenticated = responseEvent(
+      '/api/content/p/surround-target?status=published&routeScope=public-page&surroundings=1',
+      { schemaKey: 'p', id: 'surround-target' }
+    )
+    await expect(handlers.detail(authenticated.event)).resolves.toMatchObject({
+      surroundings: {
+        prev: { id: 'surround-newer-free' },
+        next: { id: 'surround-older-free' }
+      }
+    })
+    expect(authenticated.header('cache-control')).toBe('private, no-store')
+  })
+
   it('keeps the last published revision public while its working copy is edited', async () => {
     await fixture.db.update(contentTable).set({
       status: 'draft',
