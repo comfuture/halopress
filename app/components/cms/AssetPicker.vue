@@ -178,7 +178,7 @@ function clear() {
           </UCommandPalette>
         </template>
         <template #footer>
-          <UButton color="neutral" variant="outline" @click="void (paletteOpen = false)">
+          <UButton color="neutral" variant="outline" @click="paletteOpen = false;">
             Close
           </UButton>
         </template>

@@ -4,7 +4,7 @@ import { resolve } from 'node:path'
 import { AuthHandler } from 'next-auth/core'
 import { describe, expect, it } from 'vitest'
 
-const projectRoot = process.cwd()
+const projectRoot = resolve(import.meta.dirname, '..')
 
 async function readProjectFiles() {
   const [packageText, lockfile, authPatch, nuxtConfig] = await Promise.all([

@@ -159,10 +159,10 @@ watch(replaceOpen, (open) => {
 
 <template>
   <div v-if="variant === 'bar'" class="flex items-center gap-2">
-    <UButton size="sm" color="neutral" variant="outline" icon="i-lucide-refresh-ccw" @click="void (replaceOpen = true)">
+    <UButton size="sm" color="neutral" variant="outline" icon="i-lucide-refresh-ccw" @click="replaceOpen = true;">
       Replace
     </UButton>
-    <UButton size="sm" color="error" variant="solid" icon="i-lucide-trash-2" @click="void (deleteOpen = true)">
+    <UButton size="sm" color="error" variant="solid" icon="i-lucide-trash-2" @click="deleteOpen = true;">
       Delete
     </UButton>
   </div>
@@ -194,7 +194,7 @@ watch(replaceOpen, (open) => {
       </div>
     </template>
     <template #footer>
-      <UButton color="neutral" variant="outline" :disabled="replacing" @click="void (replaceOpen = false)">
+      <UButton color="neutral" variant="outline" :disabled="replacing" @click="replaceOpen = false;">
         Cancel
       </UButton>
       <UButton color="primary" :loading="replacing" :disabled="!replaceFile" @click="handleReplace">
@@ -260,7 +260,7 @@ watch(replaceOpen, (open) => {
             size="xs"
             color="neutral"
             variant="ghost"
-            @click="void (replacementId = null)"
+            @click="replacementId = null;"
           >
             Clear
           </UButton>
@@ -268,7 +268,7 @@ watch(replaceOpen, (open) => {
       </div>
     </template>
     <template #footer>
-      <UButton color="neutral" variant="outline" :disabled="deleting" @click="void (deleteOpen = false)">
+      <UButton color="neutral" variant="outline" :disabled="deleting" @click="deleteOpen = false;">
         Cancel
       </UButton>
       <UButton color="error" :loading="deleting" @click="handleDelete">
