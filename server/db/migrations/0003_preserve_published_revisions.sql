@@ -194,22 +194,35 @@ WITH RECURSIVE
 	FROM `page` p, json_tree(p.`content_json`) j
 	WHERE p.`published_revision_id` IS NOT NULL AND j.`type` = 'text'
 ),
+`asset_scans` (`document_kind`, `document_id`, `projection_scope`, `remaining`) AS (
+	SELECT `document_kind`, `document_id`, `projection_scope`, `value`
+	FROM `asset_urls`
+	UNION ALL
+	SELECT
+		`document_kind`, `document_id`, `projection_scope`,
+		substr(`remaining`, instr(`remaining`, '/assets/') + 8)
+	FROM `asset_scans`
+	WHERE instr(`remaining`, '/assets/') > 0
+),
 `asset_paths` (`document_kind`, `document_id`, `projection_scope`, `tail`, `raw_position`) AS (
 	SELECT
-		`document_kind`, `document_id`, `projection_scope`, substr(`value`, 9),
-		instr(substr(`value`, 9), '/raw')
-	FROM `asset_urls`
-	WHERE substr(`value`, 1, 8) = '/assets/'
+		`document_kind`, `document_id`, `projection_scope`,
+		substr(`remaining`, instr(`remaining`, '/assets/') + 8),
+		instr(substr(`remaining`, instr(`remaining`, '/assets/') + 8), '/raw')
+	FROM `asset_scans`
+	WHERE instr(`remaining`, '/assets/') > 0
+		AND (
+			instr(`remaining`, '/assets/') = 1
+			OR substr(`remaining`, instr(`remaining`, '/assets/') - 1, 1) IN ('"', '(', ' ')
+			OR substr(`remaining`, instr(`remaining`, '/assets/') - 1, 1) = char(39)
+			OR unicode(substr(`remaining`, instr(`remaining`, '/assets/') - 1, 1)) BETWEEN 9 AND 13
+		)
 ),
 `asset_candidates` (`document_kind`, `document_id`, `projection_scope`, `encoded_id`) AS (
 	SELECT
 		`document_kind`, `document_id`, `projection_scope`, substr(`tail`, 1, `raw_position` - 1)
 	FROM `asset_paths`
 	WHERE `raw_position` > 1
-		AND (
-			substr(`tail`, `raw_position` + 4) = ''
-			OR substr(`tail`, `raw_position` + 4, 1) IN ('?', '#')
-		)
 ),
 `decoded_ids` (
 	`document_kind`, `document_id`, `projection_scope`, `encoded_id`, `position`, `hex_value`, `valid`
