@@ -554,6 +554,17 @@ const listingPreview = computed(() => {
   }
 })
 
+function findListingPreviewField(key: string | null) {
+  if (!key) return null
+  return state.fields.find(field => field.key === key) ?? null
+}
+
+const listingPreviewFields = computed(() => ({
+  title: findListingPreviewField(listingPreview.value.titleFieldKey),
+  description: findListingPreviewField(listingPreview.value.descriptionFieldKey),
+  image: findListingPreviewField(listingPreview.value.imageFieldKey)
+}))
+
 function getSearchModeOptions(kind: string) {
   return searchModeOptionsByKind[kind] ?? [{ label: 'Off', value: 'off' }]
 }
@@ -967,62 +978,6 @@ async function confirmPublish() {
         </fieldset>
       </UForm>
 
-      <fieldset class="min-w-0 space-y-4">
-        <legend class="text-sm font-semibold text-highlighted">
-          Listing Cache
-        </legend>
-        <p class="text-sm text-muted">
-          Choose which fields should populate the normalized listing projection. Defaults are inferred from common field names.
-        </p>
-
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <UFormField label="Title field">
-            <USelectMenu
-              :model-value="state.listing.titleFieldKey ?? undefined"
-              :items="listingFieldOptions.title"
-              value-key="value"
-              label-key="label"
-              clear
-              placeholder="Select a title field"
-              class="w-full"
-              @update:model-value="state.listing.titleFieldKey = $event || null"
-            />
-          </UFormField>
-          <UFormField label="Description field">
-            <USelectMenu
-              :model-value="state.listing.descriptionFieldKey ?? undefined"
-              :items="listingFieldOptions.description"
-              value-key="value"
-              label-key="label"
-              clear
-              placeholder="Select a description field"
-              class="w-full"
-              @update:model-value="state.listing.descriptionFieldKey = $event || null"
-            />
-          </UFormField>
-          <UFormField label="Image field">
-            <USelectMenu
-              :model-value="state.listing.imageFieldKey ?? undefined"
-              :items="listingFieldOptions.image"
-              value-key="value"
-              label-key="label"
-              clear
-              placeholder="Select an image field"
-              class="w-full"
-              @update:model-value="state.listing.imageFieldKey = $event || null"
-            />
-          </UFormField>
-        </div>
-
-        <UAlert
-          class="mt-4"
-          icon="i-lucide-sparkles"
-          variant="subtle"
-          title="Resolved defaults"
-          :description="`title=${listingPreview.titleFieldKey || 'none'} · description=${listingPreview.descriptionFieldKey || 'none'} · image=${listingPreview.imageFieldKey || 'none'}`"
-        />
-      </fieldset>
-
       <section class="min-w-0 space-y-3" aria-labelledby="schema-fields-heading">
         <div class="flex items-center justify-between gap-4">
           <h2 id="schema-fields-heading" class="text-sm font-semibold text-highlighted">
@@ -1097,6 +1052,82 @@ async function confirmPublish() {
           </div>
         </UPageList>
       </section>
+
+      <fieldset class="min-w-0 space-y-4">
+        <legend class="text-sm font-semibold text-highlighted">
+          Listing Fields
+        </legend>
+        <p class="text-sm text-muted">
+          Choose the fields used for each content row. Common field names are selected automatically.
+        </p>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <UFormField label="Title field">
+            <USelectMenu
+              :model-value="state.listing.titleFieldKey ?? undefined"
+              :items="listingFieldOptions.title"
+              value-key="value"
+              label-key="label"
+              clear
+              placeholder="Select a title field"
+              class="w-full"
+              @update:model-value="state.listing.titleFieldKey = $event || null"
+            />
+          </UFormField>
+          <UFormField label="Description field">
+            <USelectMenu
+              :model-value="state.listing.descriptionFieldKey ?? undefined"
+              :items="listingFieldOptions.description"
+              value-key="value"
+              label-key="label"
+              clear
+              placeholder="Select a description field"
+              class="w-full"
+              @update:model-value="state.listing.descriptionFieldKey = $event || null"
+            />
+          </UFormField>
+          <UFormField label="Image field">
+            <USelectMenu
+              :model-value="state.listing.imageFieldKey ?? undefined"
+              :items="listingFieldOptions.image"
+              value-key="value"
+              label-key="label"
+              clear
+              placeholder="Select an image field"
+              class="w-full"
+              @update:model-value="state.listing.imageFieldKey = $event || null"
+            />
+          </UFormField>
+        </div>
+
+        <div class="overflow-hidden rounded-lg border border-default" aria-label="Listing row preview">
+          <div class="flex items-center justify-between gap-3 border-b border-default bg-elevated/40 px-3 py-2">
+            <span class="text-xs font-medium text-highlighted">Row preview</span>
+            <span class="text-xs text-muted">Created is always shown</span>
+          </div>
+          <div class="flex items-center gap-3 px-3 py-3">
+            <UAvatar icon="i-lucide-image" size="lg" class="shrink-0" />
+            <div class="min-w-0 flex-1">
+              <p class="truncate text-sm font-medium text-highlighted">
+                {{ listingPreviewFields.title?.title || listingPreviewFields.title?.key || 'Content ID' }}
+              </p>
+              <p v-if="listingPreviewFields.description" class="line-clamp-2 text-sm text-muted">
+                {{ listingPreviewFields.description.title || listingPreviewFields.description.key }}
+              </p>
+              <p v-else class="text-sm text-dimmed">
+                No description field selected
+              </p>
+              <p class="mt-1 text-xs text-dimmed">
+                Image: {{ listingPreviewFields.image?.title || listingPreviewFields.image?.key || 'none' }}
+              </p>
+            </div>
+            <div class="shrink-0 text-right">
+              <p class="text-xs font-medium text-muted">Created</p>
+              <p class="text-xs text-dimmed">Local date and time</p>
+            </div>
+          </div>
+        </div>
+      </fieldset>
       <UModal
         v-model:open="addFieldModalOpen"
         title="New Field"

@@ -23,6 +23,7 @@ type ContentRow = {
   description: string | null
   image: string | null
   status: string
+  createdAt: string
   updatedAt: string
   searchData?: Record<string, string | number | null>
 }
@@ -122,7 +123,7 @@ const sortableFields = computed(() => normalizedFields.value.filter(field => fie
 const displayFields = computed(() => normalizedFields.value.filter(field => {
   const enabled = field.searchMode !== 'off' || field.filterable || field.sortable
   if (!enabled) return false
-  if (field.key === 'title' || field.key === 'updated_at') return false
+  if (field.key === 'title' || field.key === 'created_at' || field.key === 'updated_at') return false
   return true
 }))
 const displayFieldKeys = computed(() => displayFields.value.map(field => field.key))
@@ -359,22 +360,20 @@ const columns = computed<TableColumn<ContentRow>[]>(() => {
       cell: ({ row }) => {
         const title = row.original.title || row.original.id
         return h('div', { class: 'flex items-center gap-3 min-w-0' }, [
-          row.original.image
-            ? h(UAvatar, {
-              size: 'lg',
-              src: row.original.image,
-              icon: 'i-lucide-image',
-              loading: 'lazy',
-              class: 'shrink-0'
-            })
-            : null,
+          h(UAvatar, {
+            size: 'lg',
+            src: row.original.image || undefined,
+            icon: 'i-lucide-image',
+            loading: 'lazy',
+            class: 'shrink-0'
+          }),
           h('div', { class: 'min-w-0 flex-1' }, [
             h(NuxtLink, {
               to: `/_desk/content/${schemaKey.value}/${row.original.id}`,
-              class: 'text-highlighted hover:underline font-medium truncate'
+              class: 'block text-highlighted hover:underline font-medium truncate'
             }, () => title),
             row.original.description
-              ? h('p', { class: 'text-sm text-muted truncate max-w-full' }, row.original.description)
+              ? h('p', { class: 'max-w-full line-clamp-2 whitespace-normal text-sm text-muted' }, row.original.description)
               : null
           ])
         ])
@@ -414,6 +413,15 @@ const columns = computed<TableColumn<ContentRow>[]>(() => {
       accessorKey: 'updatedAt',
       header: 'Updated',
       cell: ({ row }) => formatDateTime(row.getValue('updatedAt') as string, locale.value)
+    },
+    {
+      accessorKey: 'createdAt',
+      header: 'Created',
+      meta: { class: { th: 'text-right', td: 'text-right' } },
+      cell: ({ row }) => h('time', {
+        datetime: row.original.createdAt,
+        class: 'text-sm text-muted'
+      }, formatDateTime(row.getValue('createdAt') as string, locale.value))
     }
   ]
 
