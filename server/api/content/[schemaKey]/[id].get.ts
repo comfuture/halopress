@@ -7,7 +7,7 @@ import { applyPrivateDeliveryHeaders, applyPublicDeliveryHeaders, normalizeDeliv
 import { notFound } from '../../../utils/http'
 import { content as contentTable, contentListing as contentListingTable } from '../../../db/schema'
 import { buildContentListingSnapshot } from '../../../cms/content-listing'
-import { getActiveSchema } from '../../../cms/repo'
+import { getSchemaVersion } from '../../../cms/repo'
 import { getPublicationRevision, publicationMetadata } from '../../../cms/publication'
 
 export default defineEventHandler(async (event) => {
@@ -15,6 +15,7 @@ export default defineEventHandler(async (event) => {
   const id = event.context.params?.id as string
   const q = getQuery(event)
   const includeSurroundings = ['1', 'true'].includes(String(q.surroundings ?? q.includeSurroundings ?? ''))
+  const includeSchema = ['1', 'true'].includes(String(q.includeSchema ?? ''))
   const order = q.order === 'asc' ? 'asc' : 'desc'
 
   const policy = await resolveDeliveryPolicy(event, schemaKey, { requestedStatus: q.status })
@@ -41,6 +42,7 @@ export default defineEventHandler(async (event) => {
   const sourceUpdatedAt = revision?.createdAt ?? row.updatedAt
   const projectionScope = revision ? 'published' : 'working'
   const content = parseContentJson(sourceContentJson)
+  let sourceSchema: Awaited<ReturnType<typeof getSchemaVersion>> | null = null
   let item = await db
     .select({
       id: contentListingTable.contentId,
@@ -61,9 +63,10 @@ export default defineEventHandler(async (event) => {
     .get()
 
   if (!item) {
-    const active = await getActiveSchema(db, schemaKey)
+    sourceSchema = await getSchemaVersion(db, schemaKey, sourceSchemaVersion)
+    if (!sourceSchema) throw notFound('Content not found')
     item = buildContentListingSnapshot({
-      registry: active?.registry ?? null,
+      registry: sourceSchema.registry,
       content,
       contentId: row.id,
       schemaKey: row.schemaKey,
@@ -73,6 +76,11 @@ export default defineEventHandler(async (event) => {
       updatedAt: sourceUpdatedAt,
       projectionScope
     })
+  }
+
+  if (includeSchema && !sourceSchema) {
+    sourceSchema = await getSchemaVersion(db, schemaKey, sourceSchemaVersion)
+    if (!sourceSchema) throw notFound('Content not found')
   }
 
   let surroundings: { prev: any; next: any } | undefined
@@ -166,6 +174,7 @@ export default defineEventHandler(async (event) => {
     description: item.description ?? null,
     image: item.image ?? null,
     content,
+    ...(includeSchema ? { schema: sourceSchema } : {}),
     createdAt: row.createdAt,
     updatedAt: sourceUpdatedAt,
     ...(policy.isPublic
