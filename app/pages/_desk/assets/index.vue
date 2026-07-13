@@ -70,7 +70,7 @@ watch(files, async (selected) => {
               </p>
             </template>
             <template #footer>
-              <UButton color="neutral" variant="outline" :disabled="uploading" @click="uploadOpen = false">
+              <UButton color="neutral" variant="outline" :disabled="uploading" @click="void (uploadOpen = false)">
                 Close
               </UButton>
             </template>
