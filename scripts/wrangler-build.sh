@@ -17,4 +17,4 @@ if [ "${WORKERS_CI:-}" = "1" ] \
 fi
 
 echo "Building Nuxt output for Cloudflare Workers..."
-pnpm build
+NUXT_IMAGE_PROVIDER="${NUXT_IMAGE_PROVIDER:-cloudflare}" pnpm build

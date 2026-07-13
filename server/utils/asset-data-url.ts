@@ -1,6 +1,8 @@
 import type { H3Event } from 'h3'
 
 import { asset as assetTable } from '../db/schema'
+import { executeDbStatement } from '../db/transaction'
+import type { DbStatement } from '../db/transaction'
 import { assetObjectKey, putObject } from '../storage/assets'
 import { newId } from './ids'
 
@@ -28,6 +30,7 @@ type ReplaceOptions = {
   createdBy?: string | null
   content: Record<string, unknown>
   urlPrefix?: string
+  statements?: DbStatement[]
 }
 
 export async function replaceBase64ImagesInContent(options: ReplaceOptions) {
@@ -47,7 +50,7 @@ export async function replaceBase64ImagesInContent(options: ReplaceOptions) {
     await putObject(event, objectKey, parsed.bytes, parsed.mimeType)
 
     const now = new Date()
-    await db.insert(assetTable).values({
+    await executeDbStatement(db.insert(assetTable).values({
       id: assetId,
       kind: kindFromMime(parsed.mimeType),
       status: 'ready',
@@ -60,7 +63,7 @@ export async function replaceBase64ImagesInContent(options: ReplaceOptions) {
       durationMs: null,
       createdBy: createdBy ?? null,
       createdAt: now
-    })
+    }), options.statements)
 
     const url = `${urlPrefix}/${assetId}/raw`
     cache.set(dataUrl, url)

@@ -550,10 +550,42 @@ migrations_dir = "migrations"
 
     const wranglerConfig = parseJsonc(await readFile(join(projectRoot, 'wrangler.jsonc'), 'utf8'))
     expect(wranglerConfig.secrets).toBeUndefined()
+    expect(wranglerConfig.compatibility_flags).toContain('global_fetch_strictly_public')
 
     const packageJson = JSON.parse(await readFile(join(projectRoot, 'package.json'), 'utf8'))
     expect(Object.keys(packageJson.cloudflare.bindings)).not.toContain('NUXT_AUTH_SECRET')
     expect(Object.keys(packageJson.cloudflare.bindings)).not.toContain('NUXT_OAUTH_GOOGLE_CLIENT_ID')
     expect(Object.keys(packageJson.cloudflare.bindings)).not.toContain('NUXT_OAUTH_GOOGLE_CLIENT_SECRET')
+  })
+
+  it('uses Cloudflare image transforms in Workers builds with a raw asset fallback', async () => {
+    const imageComponent = await readFile(join(projectRoot, 'app/components/AssetImage.vue'), 'utf8')
+    expect(imageComponent).not.toContain('provider="none"')
+    expect(imageComponent).toContain('<NuxtImg')
+    expect(imageComponent).toContain('optimizedImageFailed')
+    expect(imageComponent).toContain('<img')
+
+    const nuxtConfig = await readFile(join(projectRoot, 'nuxt.config.ts'), 'utf8')
+    expect(nuxtConfig).toContain('process.env.WORKERS_CI === \'1\'')
+    expect(nuxtConfig).toContain('isCloudflareBuild ? \'cloudflare\' : \'ipx\'')
+    expect(nuxtConfig).toContain('imageProvider === \'ipx\'')
+    expect(nuxtConfig).toContain('? { \'/assets\': ipxAssetsAlias }')
+    expect(nuxtConfig).toContain('cloudflare: cloudflareBaseURL ? { baseURL: cloudflareBaseURL } : {}')
+    expect(nuxtConfig).not.toContain('providers: {')
+
+    const wranglerBuildScript = await readFile(join(projectRoot, 'scripts/wrangler-build.sh'), 'utf8')
+    expect(wranglerBuildScript).toContain('NUXT_IMAGE_PROVIDER="${NUXT_IMAGE_PROVIDER:-cloudflare}" pnpm build')
+
+    const assetImageViews = [
+      'app/pages/_desk/assets/index.vue',
+      'app/pages/_desk/assets/[assetId].vue',
+      'app/pages/[schema]/[id].vue',
+      'app/components/cms/AssetPicker.vue',
+      'app/components/AssetActions.vue'
+    ]
+    for (const path of assetImageViews) {
+      expect(await readFile(join(projectRoot, path), 'utf8')).toContain('<AssetImage')
+    }
+    expect(await readFile(join(projectRoot, 'app/pages/_desk/assets/index.vue'), 'utf8')).toContain('preset="card"')
   })
 })

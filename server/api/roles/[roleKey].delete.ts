@@ -3,6 +3,7 @@ import { and, eq, sql } from 'drizzle-orm'
 
 import { getDb } from '../../db/db'
 import { schemaRole as schemaRoleTable, user as userTable, userRole as userRoleTable } from '../../db/schema'
+import { executeDbStatement, withDbTransaction } from '../../db/transaction'
 import { requireAdmin } from '../../utils/auth'
 import { badRequest, notFound } from '../../utils/http'
 
@@ -52,29 +53,29 @@ export default defineEventHandler(async (event) => {
     if (!target) throw badRequest('Replacement role not found')
   }
 
-  await db.transaction(async (tx: any) => {
+  await withDbTransaction(event, db, async (tx: any, statements) => {
     if (transferRoleKey) {
-      await tx
+      await executeDbStatement(tx
         .update(userTable)
         .set({ roleKey: transferRoleKey })
-        .where(eq(userTable.roleKey, roleKey))
+        .where(eq(userTable.roleKey, roleKey)), statements)
 
-      await tx
+      await executeDbStatement(tx
         .delete(schemaRoleTable)
         .where(and(
           eq(schemaRoleTable.roleKey, roleKey),
           sql`${schemaRoleTable.schemaKey} in (select ${schemaRoleTable.schemaKey} from ${schemaRoleTable} where ${schemaRoleTable.roleKey} = ${transferRoleKey})`
-        ))
+        )), statements)
 
-      await tx
+      await executeDbStatement(tx
         .update(schemaRoleTable)
         .set({ roleKey: transferRoleKey })
-        .where(eq(schemaRoleTable.roleKey, roleKey))
+        .where(eq(schemaRoleTable.roleKey, roleKey)), statements)
     }
 
-    await tx
+    await executeDbStatement(tx
       .delete(userRoleTable)
-      .where(eq(userRoleTable.roleKey, roleKey))
+      .where(eq(userRoleTable.roleKey, roleKey)), statements)
   })
 
   return { ok: true }

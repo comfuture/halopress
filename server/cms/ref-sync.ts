@@ -1,6 +1,8 @@
 import { and, eq } from 'drizzle-orm'
 import type { Db } from '../db/db'
 import { contentRef, contentRefList } from '../db/schema'
+import { executeDbStatement } from '../db/transaction'
+import type { DbStatement } from '../db/transaction'
 import type { SchemaRegistry } from './types'
 
 type TargetKind = 'content' | 'user' | 'asset'
@@ -10,22 +12,23 @@ export async function syncContentRefs(args: {
   contentId: string
   registry: SchemaRegistry
   content: Record<string, unknown>
+  statements?: DbStatement[]
 }) {
-  const { db, contentId, registry, content } = args
+  const { db, contentId, registry, content, statements } = args
 
   const relations = registry.relations
   if (!relations.length) return
 
   // Clear existing refs for known fields.
   for (const rel of relations) {
-    await db
+    await executeDbStatement(db
       .delete(contentRef)
-      .where(and(eq(contentRef.contentId, contentId), eq(contentRef.fieldPath, rel.fieldKey)))
+      .where(and(eq(contentRef.contentId, contentId), eq(contentRef.fieldPath, rel.fieldKey))), statements)
   }
   for (const rel of relations) {
-    await db
+    await executeDbStatement(db
       .delete(contentRefList)
-      .where(and(eq(contentRefList.ownerContentId, contentId), eq(contentRefList.fieldKey, rel.fieldKey)))
+      .where(and(eq(contentRefList.ownerContentId, contentId), eq(contentRefList.fieldKey, rel.fieldKey))), statements)
   }
 
   // Insert current refs (MVP: top-level fields only).
@@ -37,15 +40,15 @@ export async function syncContentRefs(args: {
     const targetSchemaKey = rel.targetSchemaKey ?? null
 
     const pushOne = async (targetId: string, position?: number) => {
-      await db.insert(contentRef).values({
+      await executeDbStatement(db.insert(contentRef).values({
         contentId,
         fieldPath: rel.fieldKey,
         targetKind,
         targetSchemaKey,
         targetId
-      })
+      }), statements)
       if (typeof position === 'number') {
-        await db.insert(contentRefList).values({
+        await executeDbStatement(db.insert(contentRefList).values({
           ownerContentId: contentId,
           fieldKey: rel.fieldKey,
           position,
@@ -54,7 +57,7 @@ export async function syncContentRefs(args: {
           itemId: targetKind === 'asset' ? null : targetId,
           assetId: targetKind === 'asset' ? targetId : null,
           metaJson: null
-        })
+        }), statements)
       }
     }
 

@@ -165,6 +165,17 @@ HaloPress runs as a Cloudflare Worker with:
 - Worker entry: `.output/server/index.mjs`
 - Automatically managed Worker secret: `NUXT_AUTH_SECRET`
 
+Local development uses Nuxt Image's `ipx` provider and proxies dynamic
+`/assets` URLs through the local application. Workers Builds automatically use
+the Cloudflare provider, as do terminal deployments started through Wrangler.
+The Cloudflare provider serves optimized thumbnails through `/cdn-cgi/image/`.
+Enable **Images > Transformations** for custom domains. When transformations are
+unavailable (including a `workers.dev` host without URL transformations), asset
+previews fall back to their same-origin R2-backed raw URL instead of displaying a
+broken thumbnail. The default Wrangler configuration also enables
+`global_fetch_strictly_public` so Cloudflare's image service can fetch an original
+asset from the same Worker without error 1042.
+
 The Nuxt build may already have run before the deploy script in Workers Builds,
 while terminal deployments build during `wrangler deploy`. Both paths preserve the
 same publishing guarantee:
