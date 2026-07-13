@@ -131,6 +131,13 @@ function assertPublishedFieldCompatibility(args: {
   capability: 'filterable' | 'sortable'
 }) {
   for (const stored of args.publishedSchemas) {
+    const reusedKey = stored.fields.find(candidate => (
+      candidate.key === args.config.fieldKey
+      && candidate.fieldId !== args.config.fieldId
+    ))
+    if (reusedKey) {
+      throw conflict(`Published search field spans incompatible schema versions: ${args.config.fieldKey}`)
+    }
     const field = stored.fields.find(candidate => candidate.fieldId === args.config.fieldId)
     if (!field) continue
     const normalized = normalizeSearchConfig(field)
