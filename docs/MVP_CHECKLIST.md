@@ -30,6 +30,10 @@
 - [x] Search/filter/sort toggles in schema editor field dialog
 - [x] Content write indexing + publish-time reindex for search toggles
 - [x] Search API (`/api/search`) with EXISTS-based filters + range support
+- [x] Shared rich-text/page editor profiles with fresh Tiptap extension instances
+- [x] Immutable published revisions with independent working projections
+- [x] Draft preview, discard, republish, and unpublish transitions
+- [x] Published/draft asset retention and published-only anonymous delivery
 - [ ] Nested object/array fields (post-MVP)
 
 ## 5. Assets (local / R2)
@@ -42,7 +46,16 @@
 - [ ] Direct-to-R2 presigned uploads (post-MVP)
 - [ ] Variants/thumb pipeline (Cloudflare Images) (post-MVP)
 
-## 6. UI
+## 6. Standalone pages
+- [x] Page editor with ordinary Tiptap content and curated page blocks
+- [x] Shared Desk/SSR/client page document renderer
+- [x] Published-only page resolver and `/_pages/:id` public route
+- [x] Authenticated private/noindex draft preview
+- [x] Safe fallback for unknown, retired, or malformed page blocks
+- [ ] Public slugs and custom paths (post-MVP)
+- [ ] Themes and expanded block catalog (post-MVP)
+
+## 7. UI
 - [x] Viewer: home / collection / detail pages
 - [x] Desk: dashboard / schemas / content / assets
 - [ ] Polishing: validations, empty states, better relation picker (iterative)
