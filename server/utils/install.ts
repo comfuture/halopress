@@ -34,8 +34,10 @@ export const REQUIRED_INSTALL_TABLES = [
   'content_ref',
   'content_ref_list',
   'content_search_data',
+  'document_asset_ref',
   'installation',
   'page',
+  'publication_revision',
   'schema',
   'schema_active',
   'schema_draft',
@@ -123,21 +125,20 @@ async function ensureMigrationsTable(db: any) {
   )
 }
 
-async function getLastMigrationTimestamp(db: any) {
+async function getAppliedMigrationTimestamps(db: any) {
   const rows = await db.values(
-    sql.raw('SELECT created_at FROM __drizzle_migrations ORDER BY created_at DESC LIMIT 1')
+    sql.raw('SELECT created_at FROM __drizzle_migrations')
   )
-  const value = rows?.[0]?.[0]
-  return value ? Number(value) : 0
+  return new Set((rows ?? []).map((row: unknown[]) => Number(row[0])).filter(Number.isFinite))
 }
 
 async function runMigrationsInternal(db: any) {
   await ensureMigrationsTable(db)
-  let lastTimestamp = await getLastMigrationTimestamp(db)
+  const appliedTimestamps = await getAppliedMigrationTimestamps(db)
   const migrations = await loadMigrations()
 
   for (const migration of migrations) {
-    if (lastTimestamp && lastTimestamp >= migration.when) continue
+    if (appliedTimestamps.has(migration.when)) continue
     await db.transaction(async (tx: any) => {
       for (const statement of migration.statements) {
         await tx.run(sql.raw(statement))
@@ -146,7 +147,7 @@ async function runMigrationsInternal(db: any) {
         sql`INSERT INTO __drizzle_migrations ("hash", "created_at") VALUES (${migration.hash}, ${migration.when})`
       )
     })
-    lastTimestamp = migration.when
+    appliedTimestamps.add(migration.when)
   }
 }
 

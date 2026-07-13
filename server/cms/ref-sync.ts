@@ -12,24 +12,19 @@ export async function syncContentRefs(args: {
   contentId: string
   registry: SchemaRegistry
   content: Record<string, unknown>
+  projectionScope?: 'working' | 'published'
   statements?: DbStatement[]
 }) {
   const { db, contentId, registry, content, statements } = args
+  const projectionScope = args.projectionScope ?? 'working'
 
   const relations = registry.relations
-  if (!relations.length) return
-
-  // Clear existing refs for known fields.
-  for (const rel of relations) {
-    await executeDbStatement(db
-      .delete(contentRef)
-      .where(and(eq(contentRef.contentId, contentId), eq(contentRef.fieldPath, rel.fieldKey))), statements)
-  }
-  for (const rel of relations) {
-    await executeDbStatement(db
-      .delete(contentRefList)
-      .where(and(eq(contentRefList.ownerContentId, contentId), eq(contentRefList.fieldKey, rel.fieldKey))), statements)
-  }
+  await executeDbStatement(db
+    .delete(contentRef)
+    .where(and(eq(contentRef.contentId, contentId), eq(contentRef.projectionScope, projectionScope))), statements)
+  await executeDbStatement(db
+    .delete(contentRefList)
+    .where(and(eq(contentRefList.ownerContentId, contentId), eq(contentRefList.projectionScope, projectionScope))), statements)
 
   // Insert current refs (MVP: top-level fields only).
   for (const rel of relations) {
@@ -42,6 +37,7 @@ export async function syncContentRefs(args: {
     const pushOne = async (targetId: string, position?: number) => {
       await executeDbStatement(db.insert(contentRef).values({
         contentId,
+        projectionScope,
         fieldPath: rel.fieldKey,
         targetKind,
         targetSchemaKey,
@@ -50,6 +46,7 @@ export async function syncContentRefs(args: {
       if (typeof position === 'number') {
         await executeDbStatement(db.insert(contentRefList).values({
           ownerContentId: contentId,
+          projectionScope,
           fieldKey: rel.fieldKey,
           position,
           itemKind: targetKind,

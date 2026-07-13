@@ -1,0 +1,96 @@
+import { readFile } from 'node:fs/promises'
+import { resolve } from 'node:path'
+import { afterEach, describe, expect, it } from 'vitest'
+
+const databases: Array<{ close: () => void }> = []
+
+afterEach(() => {
+  while (databases.length) databases.pop()?.close()
+})
+
+async function openLegacyDatabase() {
+  const { DatabaseSync } = await import('node:sqlite')
+  const sqlite = new DatabaseSync(':memory:')
+  databases.push(sqlite)
+  const root = resolve(import.meta.dirname, '..')
+  const baseline = await readFile(resolve(root, 'server/db/migrations/0000_restore_materialized_search_index.sql'), 'utf8')
+  sqlite.exec(baseline.replaceAll('--> statement-breakpoint', ''))
+
+  sqlite.exec(`
+    INSERT INTO schema (schema_key, version, title, ast_json, json_schema, registry_json, created_at)
+    VALUES ('article', 1, 'Article', '{"fields":[]}', '{"type":"object"}', '{"fields":[],"relations":[]}', 1000);
+
+    INSERT INTO content (id, schema_key, schema_version, status, content_json, created_at, updated_at)
+    VALUES
+      ('published-content', 'article', 1, 'published', '{"title":"Live","cover":"/assets/live-asset/raw"}', 1000, 2000),
+      ('draft-content', 'article', 1, 'draft', '{"title":"Draft"}', 1000, 3000);
+
+    INSERT INTO content_listing (content_id, schema_key, schema_version, title, status, created_at, updated_at)
+    VALUES
+      ('published-content', 'article', 1, 'Live', 'published', 1000, 2000),
+      ('draft-content', 'article', 1, 'Draft', 'draft', 1000, 3000);
+
+    INSERT INTO content_search_data (content_id, field_id, data_type, text)
+    VALUES ('published-content', 'title-field', 'text', 'Live');
+
+    INSERT INTO content_ref (content_id, field_path, target_kind, target_id)
+    VALUES ('published-content', 'cover', 'asset', 'live-asset');
+
+    INSERT INTO page (id, title, status, content_json, created_at, updated_at)
+    VALUES
+      ('published-page', 'Public Page', 'published', '{"type":"doc","content":[{"type":"image","attrs":{"src":"/assets/page-asset/raw"}}]}', 1000, 2500),
+      ('draft-page', 'Draft Page', 'draft', '{"type":"doc"}', 1000, 3500);
+  `)
+  return sqlite
+}
+
+describe('preserve published revisions migration', () => {
+  it('backfills published pointers, immutable snapshots, scoped projections, and assets without changing IDs or JSON', async () => {
+    const sqlite = await openLegacyDatabase()
+    const root = resolve(import.meta.dirname, '..')
+    const migration = await readFile(resolve(root, 'server/db/migrations/0003_preserve_published_revisions.sql'), 'utf8')
+    sqlite.exec(migration.replaceAll('--> statement-breakpoint', ''))
+
+    const published = sqlite.prepare(`
+      SELECT id, content_json, published_revision_id, first_published_at, published_at
+      FROM content WHERE id = 'published-content'
+    `).get() as any
+    expect(published).toEqual({
+      id: 'published-content',
+      content_json: '{"title":"Live","cover":"/assets/live-asset/raw"}',
+      published_revision_id: 'legacy:content:published-content',
+      first_published_at: 2000,
+      published_at: 2000
+    })
+
+    expect(sqlite.prepare(`SELECT published_revision_id FROM content WHERE id = 'draft-content'`).get()).toEqual({
+      published_revision_id: null
+    })
+    expect(sqlite.prepare(`SELECT id, document_kind, document_id, content_json FROM publication_revision ORDER BY id`).all()).toEqual([
+      {
+        id: 'legacy:content:published-content',
+        document_kind: 'content',
+        document_id: 'published-content',
+        content_json: '{"title":"Live","cover":"/assets/live-asset/raw"}'
+      },
+      {
+        id: 'legacy:page:published-page',
+        document_kind: 'page',
+        document_id: 'published-page',
+        content_json: '{"type":"doc","content":[{"type":"image","attrs":{"src":"/assets/page-asset/raw"}}]}'
+      }
+    ])
+
+    expect(sqlite.prepare(`SELECT content_id, projection_scope, title, status FROM content_listing ORDER BY content_id, projection_scope`).all()).toEqual([
+      { content_id: 'draft-content', projection_scope: 'working', title: 'Draft', status: 'draft' },
+      { content_id: 'published-content', projection_scope: 'published', title: 'Live', status: 'published' },
+      { content_id: 'published-content', projection_scope: 'working', title: 'Live', status: 'published' }
+    ])
+    expect(sqlite.prepare(`SELECT document_kind, document_id, projection_scope, asset_id FROM document_asset_ref ORDER BY document_kind, document_id, projection_scope, asset_id`).all()).toEqual([
+      { document_kind: 'content', document_id: 'published-content', projection_scope: 'published', asset_id: 'live-asset' },
+      { document_kind: 'content', document_id: 'published-content', projection_scope: 'working', asset_id: 'live-asset' },
+      { document_kind: 'page', document_id: 'published-page', projection_scope: 'published', asset_id: 'page-asset' },
+      { document_kind: 'page', document_id: 'published-page', projection_scope: 'working', asset_id: 'page-asset' }
+    ])
+  })
+})
