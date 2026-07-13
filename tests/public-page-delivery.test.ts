@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { eq } from 'drizzle-orm'
 import { afterAll, describe, expect, it, vi } from 'vitest'
@@ -203,7 +204,7 @@ describe('published standalone page delivery', () => {
     }
   })
 
-  it('uses the reserved page prefix while retaining general schema content routes', () => {
+  it('uses published content on the reserved page prefix and general schema routes', async () => {
     const root = resolve(import.meta.dirname, '..')
     expect(existsSync(resolve(root, 'app/pages/p/[id].vue'))).toBe(false)
     expect(existsSync(resolve(root, 'app/pages/p/index.vue'))).toBe(false)
@@ -212,5 +213,8 @@ describe('published standalone page delivery', () => {
     expect(existsSync(resolve(root, 'app/pages/[schema]/index.vue'))).toBe(true)
     expect(existsSync(resolve(root, 'app/pages/_desk/index.vue'))).toBe(true)
     expect(existsSync(resolve(root, 'server/api/delivery/page/[id].get.ts'))).toBe(true)
+
+    const publicDetailRoute = await readFile(resolve(root, 'app/pages/[schema]/[id].vue'), 'utf8')
+    expect(publicDetailRoute).toMatch(/useHalopressContent\(schemaKey, \{[\s\S]*?status: 'published',[\s\S]*?respectStandalonePageClaim:/)
   })
 })

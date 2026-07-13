@@ -37,6 +37,7 @@ if (!standalonePage.value) {
 
   const contentResult = await useHalopressContent(schemaKey, {
     id,
+    status: 'published',
     respectStandalonePageClaim: schemaKey.value === PUBLIC_PAGE_ROUTE_PREFIX
   })
   if (contentResult.error.value || !contentResult.content.value) {
