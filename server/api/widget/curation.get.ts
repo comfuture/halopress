@@ -4,7 +4,7 @@ import { getQuery, setHeader } from 'h3'
 import { getDb } from '../../db/db'
 import { contentListing as contentListingTable, contentRefList, contentSearchData, searchConfig } from '../../db/schema'
 import { coerceSearchValue, searchDataTypeForKind } from '../../cms/search-helpers'
-import { applyPrivateDeliveryHeaders, requirePublicContentOwner, resolveDeliveryPolicy } from '../../utils/delivery-policy'
+import { applyPrivateDeliveryHeaders, requireContentOwnerDelivery, resolveDeliveryPolicy } from '../../utils/delivery-policy'
 import { badRequest } from '../../utils/http'
 import { applyWidgetCacheHeaders, resolveWidgetCacheKey, withWidgetCache } from '../../utils/widget-cache'
 
@@ -54,9 +54,7 @@ export default defineEventHandler(async (event) => {
 
   const limit = Math.min(Number(q.limit ?? 6) || 6, 50)
   const status = policy.effectiveStatus
-  const publicOwner = ownerId && policy.isPublic
-    ? await requirePublicContentOwner(event, ownerId)
-    : null
+  const owner = ownerId ? await requireContentOwnerDelivery(event, ownerId) : null
 
   const loadItems = async () => {
     const db = await getDb(event)
@@ -175,7 +173,7 @@ export default defineEventHandler(async (event) => {
       fieldKey,
       values,
       ownerId,
-      ownerUpdatedAt: publicOwner?.updatedAt?.getTime(),
+      ownerUpdatedAt: owner?.updatedAt?.getTime(),
       limit,
       status,
       visibility: policy.cacheVisibility

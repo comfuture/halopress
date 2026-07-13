@@ -23,6 +23,12 @@ type DeliveryStatusInput = {
   defaultStatus?: DeliveryStatus
 }
 
+type DeliveryPolicyOptions = {
+  requestedStatus?: unknown
+  defaultStatus?: DeliveryStatus
+  notFoundMessage?: string
+}
+
 /**
  * Anonymous delivery is always published-only. Any authenticated role with
  * effective schema read permission keeps its existing Desk status access,
@@ -45,11 +51,11 @@ export function normalizeDeliveryStatus({
 export async function resolveDeliveryPolicy(
   event: H3Event,
   schemaKey: string,
-  options: { requestedStatus?: unknown; defaultStatus?: DeliveryStatus } = {}
+  options: DeliveryPolicyOptions = {}
 ): Promise<DeliveryPolicy> {
   const permission = await getSchemaPermission(event, schemaKey)
   if (!hasSchemaPermission(permission, 'read')) {
-    throw notFound('Schema not found')
+    throw notFound(options.notFoundMessage ?? 'Schema not found')
   }
 
   const isPublic = permission.roleKey === 'anonymous'
@@ -68,7 +74,7 @@ export async function resolveDeliveryPolicy(
   }
 }
 
-export async function requirePublicContentOwner(event: H3Event, ownerId: string) {
+export async function requireContentOwnerDelivery(event: H3Event, ownerId: string) {
   const db = await getDb(event)
   const owner = await db
     .select({
@@ -80,11 +86,18 @@ export async function requirePublicContentOwner(event: H3Event, ownerId: string)
     .where(eq(contentTable.id, ownerId))
     .get()
 
-  if (!owner || owner.status !== 'published') {
+  if (!owner) {
     throw notFound('Content not found')
   }
 
-  await resolveDeliveryPolicy(event, owner.schemaKey, { defaultStatus: 'published' })
+  const policy = await resolveDeliveryPolicy(event, owner.schemaKey, {
+    defaultStatus: owner.status,
+    notFoundMessage: 'Content not found'
+  })
+  if (policy.isPublic && owner.status !== 'published') {
+    throw notFound('Content not found')
+  }
+
   return owner
 }
 

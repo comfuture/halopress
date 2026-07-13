@@ -366,7 +366,7 @@ describe('public delivery endpoint visibility', () => {
 
     for (const path of [
       '/api/widget/curation?schema=article&field=category&values=news&status=all',
-      '/api/widget/curation?schema=article&field=items&ownerId=owner-public&status=all'
+      '/api/widget/curation?schema=article&field=items&ownerId=owner-draft&status=all'
     ]) {
       const curation = responseEvent(path)
       const result = await handlers.curation(curation.event)
@@ -381,6 +381,7 @@ describe('public delivery endpoint visibility', () => {
   })
 
   it.each([
+    { ownerId: 'owner-missing', deniedSchema: null, message: 'missing' },
     { ownerId: 'owner-draft', deniedSchema: null, message: 'draft' },
     { ownerId: 'owner-deleted', deniedSchema: null, message: 'deleted' },
     { ownerId: 'owner-private', deniedSchema: 'private-curation', message: 'private' }
@@ -390,7 +391,23 @@ describe('public delivery endpoint visibility', () => {
       `/api/widget/curation?schema=article&field=items&ownerId=${ownerId}&status=all`
     )
 
-    await expect(handlers.curation(request.event)).rejects.toMatchObject({ statusCode: 404 })
+    await expect(handlers.curation(request.event)).rejects.toMatchObject({
+      statusCode: 404,
+      statusMessage: 'Content not found'
+    })
+  })
+
+  it('denies authenticated owner-based curation when the owner schema is unreadable', async () => {
+    permissionState.roleKey = 'user'
+    permissionState.deniedSchemas.add('private-curation')
+    const request = responseEvent(
+      '/api/widget/curation?schema=article&field=items&ownerId=owner-private&status=all'
+    )
+
+    await expect(handlers.curation(request.event)).rejects.toMatchObject({
+      statusCode: 404,
+      statusMessage: 'Content not found'
+    })
   })
 
   it('checks revoked permission before returning cached widget data', async () => {
