@@ -1,13 +1,14 @@
 import { and, eq, gt, isNull, lte, ne, or, sql } from 'drizzle-orm'
 import { compileSchemaAst } from '../cms/compiler'
 import { parseContentJson } from '../cms/content-json'
+import { syncContentProjections } from '../cms/content-projections'
 import { defaultArticleSchemaAst } from '../cms/defaults'
-import { upsertContentListingSnapshot } from '../cms/content-listing'
+import { getPublicationRevision, publicationRevisionValues } from '../cms/publication'
 import { syncSearchConfig } from '../cms/search-config'
-import { upsertContentSearchData } from '../cms/search-index'
 import {
   content,
   installation,
+  publicationRevision,
   schema,
   schemaActive,
   schemaRole,
@@ -19,6 +20,7 @@ import { SETUP_SESSION_TTL_MILLISECONDS } from './install-session'
 import { hashPassword } from './password'
 import {
   BOOTSTRAP_CONTENT_ID,
+  BOOTSTRAP_PUBLICATION_REVISION_ID,
   BOOTSTRAP_SCHEMA_KEY,
   BOOTSTRAP_SCHEMA_NOTE,
   BOOTSTRAP_SCHEMA_VERSION
@@ -529,7 +531,47 @@ export async function ensureBootstrapSchema(db: any, createdBy: string) {
   if (!storedContent || storedContent.schemaKey !== ast.schemaKey) return null
   const storedContentJson = parseContentJson(storedContent.contentJson)
 
-  await upsertContentListingSnapshot({
+  let publishedRevision = await getPublicationRevision(
+    db,
+    'content',
+    storedContent.id,
+    storedContent.publishedRevisionId
+  )
+  if (!publishedRevision && storedContent.status === 'published') {
+    await db
+      .insert(publicationRevision)
+      .values(publicationRevisionValues({
+        id: BOOTSTRAP_PUBLICATION_REVISION_ID,
+        documentKind: 'content',
+        documentId: storedContent.id,
+        schemaKey: storedContent.schemaKey,
+        schemaVersion: storedContent.schemaVersion,
+        content: storedContentJson,
+        createdBy,
+        createdAt: now
+      }))
+      .onConflictDoNothing()
+
+    publishedRevision = await getPublicationRevision(
+      db,
+      'content',
+      storedContent.id,
+      BOOTSTRAP_PUBLICATION_REVISION_ID
+    )
+    if (!publishedRevision) throw new Error('Bootstrap publication revision ID is already in use')
+
+    await db
+      .update(content)
+      .set({
+        publishedRevisionId: BOOTSTRAP_PUBLICATION_REVISION_ID,
+        firstPublishedAt: storedContent.firstPublishedAt ?? now,
+        publishedAt: storedContent.publishedAt ?? now,
+        updatedAt: now
+      })
+      .where(eq(content.id, storedContent.id))
+  }
+
+  await syncContentProjections({
     db,
     registry,
     content: storedContentJson,
@@ -538,14 +580,24 @@ export async function ensureBootstrapSchema(db: any, createdBy: string) {
     schemaVersion: storedContent.schemaVersion,
     status: storedContent.status,
     createdAt: storedContent.createdAt,
-    updatedAt: storedContent.updatedAt
+    updatedAt: storedContent.updatedAt,
+    projectionScope: 'working'
   })
-  await upsertContentSearchData({
-    db,
-    contentId: storedContent.id,
-    registry,
-    content: storedContentJson
-  })
+
+  if (publishedRevision) {
+    await syncContentProjections({
+      db,
+      registry,
+      content: parseContentJson(publishedRevision.contentJson),
+      contentId: storedContent.id,
+      schemaKey: storedContent.schemaKey,
+      schemaVersion: publishedRevision.schemaVersion ?? storedContent.schemaVersion,
+      status: 'published',
+      createdAt: storedContent.createdAt,
+      updatedAt: publishedRevision.createdAt,
+      projectionScope: 'published'
+    })
+  }
 
   return ast.schemaKey
 }

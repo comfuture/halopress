@@ -1,8 +1,16 @@
-import { sql } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 
-import { content, contentListing, installation, schema, user } from '../server/db/schema'
+import {
+  content,
+  contentListing,
+  installation,
+  publicationRevision,
+  schema,
+  user
+} from '../server/db/schema'
 import { installInputSchema } from '../server/utils/install-input'
+import { publicationRevisionValues } from '../server/cms/publication'
 import {
   hasStrongInstallToken,
   isAuthRuntimeReady,
@@ -30,7 +38,7 @@ import {
   runMigrations,
   seedRoles
 } from '../server/utils/install'
-import { BOOTSTRAP_CONTENT_ID } from '../server/utils/bootstrap'
+import { BOOTSTRAP_CONTENT_ID, BOOTSTRAP_PUBLICATION_REVISION_ID } from '../server/utils/bootstrap'
 import { createTestSqliteDb } from './fixtures/sqlite'
 
 const TEST_SIGNING_SECRET = 'test-signing-secret-0123456789abcdef'
@@ -183,13 +191,120 @@ describe('installation state', () => {
       await seedRoles(db)
 
       expect(await ensureBootstrapSchema(db, 'user:admin')).toBe('article')
+      const firstPublished = await db.select().from(content)
+        .where(eq(content.id, BOOTSTRAP_CONTENT_ID)).get()
       expect(await ensureBootstrapSchema(db, 'user:admin')).toBe('article')
 
       expect(await db.select().from(schema)).toHaveLength(1)
       const contents = await db.select().from(content)
       expect(contents).toHaveLength(1)
       expect(contents[0]?.id).toBe(BOOTSTRAP_CONTENT_ID)
-      expect(await db.select().from(contentListing)).toHaveLength(1)
+      expect(contents[0]).toMatchObject({
+        status: 'published',
+        publishedRevisionId: BOOTSTRAP_PUBLICATION_REVISION_ID
+      })
+      expect(contents[0]?.firstPublishedAt).toBeInstanceOf(Date)
+      expect(contents[0]?.publishedAt).toBeInstanceOf(Date)
+      expect(contents[0]?.publishedRevisionId).toBe(firstPublished?.publishedRevisionId)
+      expect(contents[0]?.firstPublishedAt).toEqual(firstPublished?.firstPublishedAt)
+      expect(contents[0]?.publishedAt).toEqual(firstPublished?.publishedAt)
+      expect(await db.select().from(publicationRevision)).toHaveLength(1)
+      expect(await db.select().from(publicationRevision).get()).toMatchObject({
+        id: BOOTSTRAP_PUBLICATION_REVISION_ID,
+        documentKind: 'content',
+        documentId: BOOTSTRAP_CONTENT_ID,
+        schemaKey: 'article',
+        schemaVersion: 1
+      })
+      expect((await db.select().from(contentListing)).map(row => row.projectionScope).sort()).toEqual([
+        'published',
+        'working'
+      ])
+    })
+  })
+
+  it('repairs a partial published bootstrap row without auto-publishing a draft', async () => {
+    await withDatabase(async (db) => {
+      await runMigrations(db)
+      await seedRoles(db)
+      await ensureBootstrapSchema(db, 'user:admin')
+      await db.update(content).set({
+        publishedRevisionId: null,
+        firstPublishedAt: null,
+        publishedAt: null
+      }).where(eq(content.id, BOOTSTRAP_CONTENT_ID))
+      await db.delete(publicationRevision)
+      await db.delete(contentListing).where(and(
+        eq(contentListing.contentId, BOOTSTRAP_CONTENT_ID),
+        eq(contentListing.projectionScope, 'published')
+      ))
+
+      expect(await ensureBootstrapSchema(db, 'user:admin')).toBe('article')
+      expect(await db.select().from(content).where(eq(content.id, BOOTSTRAP_CONTENT_ID)).get()).toMatchObject({
+        status: 'published',
+        publishedRevisionId: BOOTSTRAP_PUBLICATION_REVISION_ID
+      })
+      expect(await db.select().from(contentListing).where(and(
+        eq(contentListing.contentId, BOOTSTRAP_CONTENT_ID),
+        eq(contentListing.projectionScope, 'published')
+      ))).toHaveLength(1)
+
+      await db.update(content).set({
+        status: 'draft',
+        publishedRevisionId: null,
+        publishedAt: null
+      }).where(eq(content.id, BOOTSTRAP_CONTENT_ID))
+      await db.delete(publicationRevision)
+      await db.delete(contentListing).where(and(
+        eq(contentListing.contentId, BOOTSTRAP_CONTENT_ID),
+        eq(contentListing.projectionScope, 'published')
+      ))
+
+      expect(await ensureBootstrapSchema(db, 'user:admin')).toBe('article')
+      expect(await db.select().from(content).where(eq(content.id, BOOTSTRAP_CONTENT_ID)).get()).toMatchObject({
+        status: 'draft',
+        publishedRevisionId: null
+      })
+      expect(await db.select().from(publicationRevision)).toHaveLength(0)
+      expect(await db.select().from(contentListing).where(and(
+        eq(contentListing.contentId, BOOTSTRAP_CONTENT_ID),
+        eq(contentListing.projectionScope, 'published')
+      ))).toHaveLength(0)
+    })
+  })
+
+  it('preserves an existing valid bootstrap publication pointer', async () => {
+    await withDatabase(async (db) => {
+      await runMigrations(db)
+      await seedRoles(db)
+      await ensureBootstrapSchema(db, 'user:admin')
+      const row = await db.select().from(content).where(eq(content.id, BOOTSTRAP_CONTENT_ID)).get()
+      const republishedAt = new Date('2026-07-13T01:00:00.000Z')
+      await db.insert(publicationRevision).values(publicationRevisionValues({
+        id: 'welcome-guide-republished',
+        documentKind: 'content',
+        documentId: BOOTSTRAP_CONTENT_ID,
+        schemaKey: 'article',
+        schemaVersion: 1,
+        content: { title: 'Republished welcome guide' },
+        createdBy: 'user:admin',
+        createdAt: republishedAt
+      }))
+      await db.update(content).set({
+        publishedRevisionId: 'welcome-guide-republished',
+        publishedAt: republishedAt
+      }).where(eq(content.id, BOOTSTRAP_CONTENT_ID))
+
+      expect(await ensureBootstrapSchema(db, 'user:admin')).toBe('article')
+      expect(await db.select().from(content).where(eq(content.id, BOOTSTRAP_CONTENT_ID)).get()).toMatchObject({
+        publishedRevisionId: 'welcome-guide-republished',
+        firstPublishedAt: row?.firstPublishedAt,
+        publishedAt: republishedAt
+      })
+      expect(await db.select().from(contentListing).where(and(
+        eq(contentListing.contentId, BOOTSTRAP_CONTENT_ID),
+        eq(contentListing.projectionScope, 'published')
+      )).get()).toMatchObject({ title: 'Republished welcome guide' })
     })
   })
 
