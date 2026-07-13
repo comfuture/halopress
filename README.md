@@ -20,7 +20,8 @@
 
 <p align="center">
   A batteries-included, schema-driven CMS with an editorial Desk, media library,
-  access control, public delivery, and Cloudflare deployment in one Nuxt app.
+  access control, public delivery, and local, Node, or Cloudflare runtimes in one
+  Nuxt app.
 </p>
 
 <p align="center">
@@ -56,8 +57,8 @@ together so a new site can move from deployment to its first article in one path
   users, roles, and per-schema access.
 - **Guided first run** — create the first administrator and optionally start with
   an editable Article schema and welcome guide.
-- **Deployment stack** — SQLite and local files during development; Cloudflare D1
-  and R2 when deployed.
+- **Deployment stack** — SQLite and local files without Cloudflare bindings;
+  Cloudflare D1 and R2 in Worker production or local Worker emulation.
 
 ## One click. One guided setup.
 
@@ -131,6 +132,13 @@ OAuth can also be configured through global database settings:
 - `auth.oauth.google.clientId` (string)
 - `auth.oauth.google.clientSecret` (string, encrypted)
 - `auth.oauth.credentials.enabled` (boolean)
+
+## Deployment and Desk onboarding
+
+The Desk setup checklist adapts to local development, production Node servers,
+and Cloudflare Workers. See the [deployment and onboarding guide](docs/deployment.md)
+for the environment matrix, Node build and persistent-storage requirements,
+public-origin behavior, and Cloudflare-specific checks.
 
 ## Database migrations
 
