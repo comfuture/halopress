@@ -1,19 +1,27 @@
 <script setup lang="ts">
 import type { Editor, JSONContent } from '@tiptap/vue-3'
+import { VueNodeViewRenderer } from '@tiptap/vue-3'
 import { markRaw, nextTick } from 'vue'
 
 import PageBlock from '~/editor/page/PageBlock'
+import PageBlockNodeView from '~/editor/page/PageBlockNodeView.vue'
+import ImageUpload from '~/editor/RichEditorImageUpload'
+import RichEditorImageUploadNode from '~/editor/RichEditorImageUploadNode.vue'
 import { pageBlockRegistry, getPageBlockComponent } from '~/editor/page/registry'
 import type { PageBlockAttrs, PageBlockComponentKey, PageBlockField } from '~/editor/page/types'
+import { createPageProfile } from '~/editor/profiles'
+import type { EditorProfileCustomization } from '~/editor/profiles'
 
 defineOptions({ inheritAttrs: false })
 
 const props = withDefaults(defineProps<{
   modelValue: JSONContent | null
   editable?: boolean
+  profile?: EditorProfileCustomization
 }>(), {
   modelValue: null,
-  editable: true
+  editable: true,
+  profile: () => ({})
 })
 
 const emit = defineEmits<{
@@ -25,9 +33,21 @@ const value = computed({
   set: (nextValue) => emit('update:modelValue', nextValue)
 })
 
-const extensions = markRaw([
-  markRaw(PageBlock)
-])
+const PageBlockEditor = PageBlock.extend({
+  addNodeView() {
+    return VueNodeViewRenderer(PageBlockNodeView)
+  }
+})
+const ImageUploadEditor = ImageUpload.extend({
+  addNodeView() {
+    return VueNodeViewRenderer(RichEditorImageUploadNode)
+  }
+})
+const editorProfile = createPageProfile(props.profile, {
+  pageBlockFactory: () => PageBlockEditor.configure({}),
+  imageUploadFactory: () => ImageUploadEditor.configure({})
+})
+const extensions = markRaw(editorProfile.extensions.map(extension => markRaw(extension)))
 
 const editorRef = ref<any>(null)
 

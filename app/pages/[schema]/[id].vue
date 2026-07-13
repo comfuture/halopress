@@ -132,17 +132,11 @@ const tocLinks = computed(() => richtextMeta.value.toc)
                 >
                   <template #body>
                     <div v-if="field.kind === 'richtext'">
-                      <ClientOnly>
-                        <UEditor
-                          :model-value="asEditorContent(renderedExtra[field.key])"
-                          content-type="json"
-                          :editable="false"
-                          class="w-full min-h-24"
-                        />
-                        <template #fallback>
-                          <USkeleton class="h-24 w-full" />
-                        </template>
-                      </ClientOnly>
+                      <CmsRichEditor
+                        :model-value="asEditorContent(renderedExtra[field.key])"
+                        :editable="false"
+                        class="w-full min-h-24"
+                      />
                     </div>
 
                     <div v-else-if="field.kind === 'asset' && renderedExtra[field.key]">

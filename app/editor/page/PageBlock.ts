@@ -1,8 +1,4 @@
 import { Node, mergeAttributes } from '@tiptap/core'
-import type { NodeViewRenderer } from '@tiptap/core'
-import { VueNodeViewRenderer } from '@tiptap/vue-3'
-
-import PageBlockNodeView from './PageBlockNodeView.vue'
 import type { PageBlockAttrs, PageBlockComponentKey } from './types'
 
 declare module '@tiptap/core' {
@@ -32,9 +28,6 @@ export default Node.create({
   },
   renderHTML({ HTMLAttributes }) {
     return ['div', mergeAttributes(HTMLAttributes, { 'data-type': 'page-block' })]
-  },
-  addNodeView(): NodeViewRenderer {
-    return VueNodeViewRenderer(PageBlockNodeView)
   },
   addCommands() {
     return {
