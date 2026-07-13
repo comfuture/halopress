@@ -80,6 +80,7 @@ export async function requireContentOwnerDelivery(event: H3Event, ownerId: strin
     .select({
       schemaKey: contentTable.schemaKey,
       status: contentTable.status,
+      publishedRevisionId: contentTable.publishedRevisionId,
       updatedAt: contentTable.updatedAt
     })
     .from(contentTable)
@@ -94,7 +95,7 @@ export async function requireContentOwnerDelivery(event: H3Event, ownerId: strin
     defaultStatus: owner.status,
     notFoundMessage: 'Content not found'
   })
-  if (policy.isPublic && owner.status !== 'published') {
+  if (policy.isPublic && (!owner.publishedRevisionId || owner.status === 'deleted')) {
     throw notFound('Content not found')
   }
 
@@ -103,5 +104,15 @@ export async function requireContentOwnerDelivery(event: H3Event, ownerId: strin
 
 export function applyPrivateDeliveryHeaders(event: H3Event) {
   setHeader(event, 'Cache-Control', 'private, no-store')
+  setHeader(event, 'Vary', 'Cookie')
+}
+
+export function applyPreviewDeliveryHeaders(event: H3Event) {
+  applyPrivateDeliveryHeaders(event)
+  setHeader(event, 'X-Robots-Tag', 'noindex, nofollow, noarchive')
+}
+
+export function applyPublicDeliveryHeaders(event: H3Event) {
+  setHeader(event, 'Cache-Control', 'public, max-age=60, stale-while-revalidate=300')
   setHeader(event, 'Vary', 'Cookie')
 }

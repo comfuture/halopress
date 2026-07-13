@@ -6,6 +6,7 @@ import { content as contentTable, contentListing as contentListingTable } from '
 import { executeDbStatement, withDbTransaction } from '../../../db/transaction'
 import { queueWidgetCacheInvalidation } from '../../../utils/widget-cache'
 import { requireSchemaPermission } from '../../../utils/schema-permission'
+import { deleteContentProjections } from '../../../cms/content-projections'
 
 export default defineEventHandler(async (event) => {
   const schemaKey = event.context.params?.schemaKey as string
@@ -24,13 +25,17 @@ export default defineEventHandler(async (event) => {
     const now = new Date()
     await executeDbStatement(tx
       .update(contentTable)
-      .set({ status: 'deleted', updatedAt: now })
+      .set({ status: 'deleted', publishedRevisionId: null, publishedAt: null, updatedAt: now })
       .where(eq(contentTable.id, id)), statements)
 
     await executeDbStatement(tx
       .update(contentListingTable)
       .set({ status: 'deleted', updatedAt: now })
-      .where(eq(contentListingTable.contentId, id)), statements)
+      .where(and(
+        eq(contentListingTable.contentId, id),
+        eq(contentListingTable.projectionScope, 'working')
+      )), statements)
+    await deleteContentProjections({ db: tx, contentId: id, projectionScope: 'published', statements })
   })
 
   queueWidgetCacheInvalidation(event, `schema:${schemaKey}`)

@@ -1,55 +1,33 @@
-import { readBody } from 'h3'
 import { eq } from 'drizzle-orm'
+import { readBody } from 'h3'
 
+import { normalizePageContent } from '../../cms/page-content'
+import { publishPageWorking, savePageWorking } from '../../cms/page-publication'
 import { getDb } from '../../db/db'
 import { page as pageTable } from '../../db/schema'
 import { requireAdmin } from '../../utils/auth'
-import { badRequest, notFound } from '../../utils/http'
-
-const emptyDoc = { type: 'doc', content: [{ type: 'paragraph' }] }
-
-function normalizeContent(value: unknown) {
-  if (value == null) return emptyDoc
-  let parsed = value
-  if (typeof value === 'string') {
-    try {
-      parsed = JSON.parse(value)
-    } catch {
-      throw badRequest('Invalid content JSON')
-    }
-  }
-
-  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-    return parsed
-  }
-
-  throw badRequest('Invalid content JSON')
-}
+import { notFound } from '../../utils/http'
 
 export default defineEventHandler(async (event) => {
-  await requireAdmin(event)
+  const session = await requireAdmin(event)
   const id = event.context.params?.id as string
   if (!id) throw notFound('Page not found')
-
-  const body = await readBody<{ title?: string; status?: string; content?: unknown }>(event)
-
-  const updates: Record<string, any> = {
-    updatedAt: new Date()
-  }
-
-  if (body?.title !== undefined) updates.title = body.title?.trim() || null
-  if (body?.status !== undefined) updates.status = body.status || 'draft'
-  if (body?.content !== undefined) updates.contentJson = JSON.stringify(normalizeContent(body.content))
-
+  const body = await readBody<{ title?: string, status?: string, content?: unknown }>(event)
   const db = await getDb(event)
-  const existing = await db
-    .select({ id: pageTable.id })
-    .from(pageTable)
-    .where(eq(pageTable.id, id))
-    .get()
-
+  const existing = await db.select().from(pageTable).where(eq(pageTable.id, id)).get()
   if (!existing) throw notFound('Page not found')
 
-  await db.update(pageTable).set(updates).where(eq(pageTable.id, id))
-  return { ok: true }
+  const title = body?.title !== undefined ? body.title.trim() || null : existing.title
+  const content = body?.content !== undefined ? normalizePageContent(body.content) : normalizePageContent(existing.contentJson)
+  const publication = body?.status === 'published'
+    ? await publishPageWorking({
+        event,
+        db,
+        existing,
+        title,
+        content,
+        actorId: (session.user as any)?.id ?? null
+      })
+    : await savePageWorking({ event, db, existing, title, content })
+  return { ok: true, ...publication }
 })

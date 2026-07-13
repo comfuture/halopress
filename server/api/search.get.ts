@@ -8,7 +8,7 @@ import {
   coerceSearchValue,
   searchDataTypeForKind
 } from '../cms/search-helpers'
-import { resolveDeliveryPolicy } from '../utils/delivery-policy'
+import { applyPrivateDeliveryHeaders, applyPublicDeliveryHeaders, resolveDeliveryPolicy } from '../utils/delivery-policy'
 import { badRequest } from '../utils/http'
 
 type FilterInput = {
@@ -62,23 +62,26 @@ function searchMatchCondition(args: {
   fieldId: string
   dataType: string
   condition: SQL | undefined
+  projectionScope: string
 }) {
   return sql`exists (
     select 1
     from content_search_data csd
     where csd.content_id = ${args.contentIdColumn}
+      and csd.projection_scope = ${args.projectionScope}
       and csd.field_id = ${args.fieldId}
       and csd.data_type = ${args.dataType}
       and ${args.condition}
   )`
 }
 
-function searchSortExpression(fieldId: string, dataType: string) {
+function searchSortExpression(fieldId: string, dataType: string, projectionScope: string) {
   const column = searchColumnForDataType(dataType)
   return sql`(
     select ${column}
     from content_search_data csd
     where csd.content_id = ${contentListingTable.contentId}
+      and csd.projection_scope = ${projectionScope}
       and csd.field_id = ${fieldId}
       and csd.data_type = ${dataType}
     limit 1
@@ -90,6 +93,9 @@ export default defineEventHandler(async (event) => {
   const schemaKey = typeof q.schemaKey === 'string' ? q.schemaKey : null
   if (!schemaKey) throw badRequest('schemaKey required')
   const policy = await resolveDeliveryPolicy(event, schemaKey, { requestedStatus: q.status })
+  const projectionScope = policy.isPublic || q.status === 'published' ? 'published' : 'working'
+  if (policy.isPublic) applyPublicDeliveryHeaders(event)
+  else applyPrivateDeliveryHeaders(event)
 
   const limit = Math.min(Number(q.limit ?? 20) || 20, 50)
   const cursor = q.cursor ? new Date(Number(q.cursor)) : null
@@ -118,7 +124,10 @@ export default defineEventHandler(async (event) => {
 
   const fieldByKey = new Map(fieldRows.map(row => [row.fieldKey, row]))
 
-  const whereParts = [eq(contentListingTable.schemaKey, schemaKey)] as any[]
+  const whereParts = [
+    eq(contentListingTable.schemaKey, schemaKey),
+    eq(contentListingTable.projectionScope, projectionScope)
+  ] as any[]
   if (status) whereParts.push(eq(contentListingTable.status, status))
   if (cursor && !sortKey) whereParts.push(lt(contentListingTable.updatedAt, cursor))
 
@@ -144,6 +153,7 @@ export default defineEventHandler(async (event) => {
           contentIdColumn: contentListingTable.contentId,
           fieldId: config.fieldId,
           dataType,
+          projectionScope,
           condition: sql`${searchColumnForDataType(dataType)} = ${value as string}`
         }))
       } else if (op === 'exact_set') {
@@ -155,6 +165,7 @@ export default defineEventHandler(async (event) => {
           contentIdColumn: contentListingTable.contentId,
           fieldId: config.fieldId,
           dataType,
+          projectionScope,
           condition: sql`${searchColumnForDataType(dataType)} in (${sqlValueList(values)})`
         }))
       } else {
@@ -170,6 +181,7 @@ export default defineEventHandler(async (event) => {
         contentIdColumn: contentListingTable.contentId,
         fieldId: config.fieldId,
         dataType,
+        projectionScope,
         condition: sql`${searchColumnForDataType(dataType)} = ${value}`
       }))
       continue
@@ -184,6 +196,7 @@ export default defineEventHandler(async (event) => {
         contentIdColumn: contentListingTable.contentId,
         fieldId: config.fieldId,
         dataType,
+        projectionScope,
         condition: sql`${searchColumnForDataType(dataType)} in (${sqlValueList(values)})`
       }))
       continue
@@ -202,6 +215,7 @@ export default defineEventHandler(async (event) => {
         contentIdColumn: contentListingTable.contentId,
         fieldId: config.fieldId,
         dataType,
+        projectionScope,
         condition: and(...rangeParts)
       }))
       continue
@@ -233,7 +247,7 @@ export default defineEventHandler(async (event) => {
 
     const dataType = searchDataTypeForKind(config.kind as FieldKind)
     if (!dataType) throw badRequest(`Unsupported sort field: ${sortKey}`)
-    const sortExpr = searchSortExpression(config.fieldId, dataType)
+    const sortExpr = searchSortExpression(config.fieldId, dataType, projectionScope)
     query = query.orderBy(
       sortDir === 'desc' ? desc(sortExpr) : asc(sortExpr),
       desc(contentListingTable.updatedAt),
@@ -268,7 +282,8 @@ export default defineEventHandler(async (event) => {
       .from(contentSearchData)
       .where(and(
         inArray(contentSearchData.contentId, contentIds),
-        inArray(contentSearchData.fieldId, fieldIds)
+        inArray(contentSearchData.fieldId, fieldIds),
+        eq(contentSearchData.projectionScope, projectionScope)
       ))
 
     for (const row of searchRows) {

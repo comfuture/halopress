@@ -5,9 +5,11 @@ import { getDb } from '../../../db/db'
 import { asset as assetTable } from '../../../db/schema'
 import { getObject } from '../../../storage/assets'
 import { notFound } from '../../../utils/http'
+import { requireAssetDelivery } from '../../../utils/asset-delivery'
 
 export default defineEventHandler(async (event) => {
   const assetId = event.context.params?.assetId as string
+  await requireAssetDelivery(event, assetId)
   const db = await getDb(event)
   const row = await db
     .select({

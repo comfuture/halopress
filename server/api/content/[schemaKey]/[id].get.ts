@@ -3,11 +3,12 @@ import { getQuery } from 'h3'
 
 import { getDb } from '../../../db/db'
 import { parseContentJson } from '../../../cms/content-json'
-import { normalizeDeliveryStatus, resolveDeliveryPolicy } from '../../../utils/delivery-policy'
+import { applyPrivateDeliveryHeaders, applyPublicDeliveryHeaders, normalizeDeliveryStatus, resolveDeliveryPolicy } from '../../../utils/delivery-policy'
 import { notFound } from '../../../utils/http'
 import { content as contentTable, contentListing as contentListingTable } from '../../../db/schema'
 import { buildContentListingSnapshot } from '../../../cms/content-listing'
 import { getActiveSchema } from '../../../cms/repo'
+import { getPublicationRevision, publicationMetadata } from '../../../cms/publication'
 
 export default defineEventHandler(async (event) => {
   const schemaKey = event.context.params?.schemaKey as string
@@ -26,11 +27,20 @@ export default defineEventHandler(async (event) => {
 
   if (!row) throw notFound('Content not found')
 
-  if (row.status !== 'published' && policy.isPublic) {
-    throw notFound('Content not found')
-  }
+  const usePublished = policy.isPublic || q.status === 'published'
+  const revision = usePublished
+    ? await getPublicationRevision(db, 'content', row.id, row.publishedRevisionId)
+    : null
+  if (usePublished && !revision) throw notFound('Content not found')
+  if (policy.isPublic) applyPublicDeliveryHeaders(event)
+  else applyPrivateDeliveryHeaders(event)
 
-  const content = parseContentJson(row.contentJson)
+  const sourceContentJson = revision?.contentJson ?? row.contentJson
+  const sourceSchemaVersion = revision?.schemaVersion ?? row.schemaVersion
+  const sourceStatus = revision ? 'published' : row.status
+  const sourceUpdatedAt = revision?.createdAt ?? row.updatedAt
+  const projectionScope = revision ? 'published' : 'working'
+  const content = parseContentJson(sourceContentJson)
   let item = await db
     .select({
       id: contentListingTable.contentId,
@@ -44,7 +54,10 @@ export default defineEventHandler(async (event) => {
       updatedAt: contentListingTable.updatedAt
     })
     .from(contentListingTable)
-    .where(eq(contentListingTable.contentId, id))
+    .where(and(
+      eq(contentListingTable.contentId, id),
+      eq(contentListingTable.projectionScope, projectionScope)
+    ))
     .get()
 
   if (!item) {
@@ -54,24 +67,28 @@ export default defineEventHandler(async (event) => {
       content,
       contentId: row.id,
       schemaKey: row.schemaKey,
-      schemaVersion: row.schemaVersion,
-      status: row.status,
+      schemaVersion: sourceSchemaVersion,
+      status: sourceStatus,
       createdAt: row.createdAt,
-      updatedAt: row.updatedAt
+      updatedAt: sourceUpdatedAt,
+      projectionScope
     })
   }
 
   let surroundings: { prev: any; next: any } | undefined
   if (includeSurroundings) {
-    const status = normalizeDeliveryStatus({
-      roleKey: policy.permission.roleKey,
-      requestedStatus: q.status,
-      defaultStatus: row.status
-    })
+    const status = revision
+      ? 'published'
+      : normalizeDeliveryStatus({
+          roleKey: policy.permission.roleKey,
+          requestedStatus: q.status,
+          defaultStatus: row.status
+        })
     const baseUpdatedAt = item.updatedAt
     const baseId = item.contentId ?? item.id ?? row.id
     const whereParts = [
-      eq(contentListingTable.schemaKey, schemaKey)
+      eq(contentListingTable.schemaKey, schemaKey),
+      eq(contentListingTable.projectionScope, projectionScope)
     ] as any[]
     if (status) {
       whereParts.push(eq(contentListingTable.status, status))
@@ -143,14 +160,22 @@ export default defineEventHandler(async (event) => {
   const response = {
     id: row.id,
     schemaKey: row.schemaKey,
-    schemaVersion: row.schemaVersion,
+    schemaVersion: sourceSchemaVersion,
     title: item.title ?? null,
-    status: row.status,
+    status: sourceStatus,
     description: item.description ?? null,
     image: item.image ?? null,
     content,
     createdAt: row.createdAt,
-    updatedAt: row.updatedAt
+    updatedAt: sourceUpdatedAt,
+    ...(policy.isPublic
+      ? {
+          publicationState: 'published',
+          hasPublishedRevision: true,
+          hasDraftChanges: false,
+          publishedAt: row.publishedAt
+        }
+      : publicationMetadata(row))
   }
   return includeSurroundings ? { ...response, surroundings } : response
 })
