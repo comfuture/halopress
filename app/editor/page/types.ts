@@ -16,7 +16,7 @@ export type PageBlockAttrs = {
   media: PageBlockMedia
 }
 
-export type PageBlockFieldType = 'text' | 'textarea' | 'select' | 'boolean' | 'url'
+export type PageBlockFieldType = 'text' | 'textarea' | 'select' | 'boolean' | 'url' | 'link-list'
 
 export type PageBlockField = {
   key: string
