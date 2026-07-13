@@ -1,5 +1,6 @@
 import type { H3Event } from 'h3'
 import { getSettingValue, isSettingsTableReady } from './settings'
+import { hasStrongInstallToken, resolveAuthSigningSecret } from './install-token'
 
 export type OAuthProviderId = 'google'
 
@@ -42,10 +43,22 @@ function resolveSettingsSource(event?: H3Event): SettingsSource {
 
 export function resolveEncryptionKey(providerId: OAuthProviderId, event?: H3Event) {
   const config = useRuntimeConfig(event)
-  const providerKey = providerId === 'google' ? config.oauthGoogleEncryptionKey : ''
-  if (providerKey) return providerKey
-  const baseKey = config.secretKey || process.env.NUXT_SECRET || ''
-  return baseKey
+  const providerKey = String(providerId === 'google' ? config.oauthGoogleEncryptionKey : '').trim()
+  const sharedKey = String(config.secretKey || '').trim()
+  const authSigningSecret = resolveAuthSigningSecret(event)
+  return selectOAuthEncryptionKey(providerId, providerKey, sharedKey, authSigningSecret)
+}
+
+export function selectOAuthEncryptionKey(
+  providerId: OAuthProviderId,
+  providerKey: string,
+  sharedKey: string,
+  authSigningSecret: string
+) {
+  if (hasStrongInstallToken(providerKey)) return providerKey
+  if (hasStrongInstallToken(sharedKey)) return sharedKey
+  if (!hasStrongInstallToken(authSigningSecret)) return ''
+  return `halopress:oauth:${providerId}:v1:${authSigningSecret}`
 }
 
 function buildEnvConfig(providerId: OAuthProviderId, event?: H3Event): OAuthProviderConfig {
