@@ -17,12 +17,14 @@ export function buildContentListingSnapshot(args: {
   status: string
   createdAt: Date
   updatedAt: Date
+  projectionScope?: 'working' | 'published'
 }) {
   const { registry, content, contentId, schemaKey, schemaVersion, status, createdAt, updatedAt } = args
   const listing = buildListingProjection({ registry, content })
 
   return {
     contentId,
+    projectionScope: args.projectionScope ?? 'working',
     schemaKey,
     schemaVersion,
     title: listing.title,
@@ -44,6 +46,7 @@ export async function upsertContentListingSnapshot(args: {
   status: string
   createdAt: Date
   updatedAt: Date
+  projectionScope?: 'working' | 'published'
   statements?: DbStatement[]
 }) {
   const snapshot = buildContentListingSnapshot(args)
@@ -51,9 +54,10 @@ export async function upsertContentListingSnapshot(args: {
     .insert(contentListing)
     .values(snapshot)
     .onConflictDoUpdate({
-      target: contentListing.contentId,
+      target: [contentListing.contentId, contentListing.projectionScope],
       set: {
         schemaKey: snapshot.schemaKey,
+        projectionScope: snapshot.projectionScope,
         schemaVersion: snapshot.schemaVersion,
         title: snapshot.title,
         description: snapshot.description,
@@ -136,7 +140,8 @@ export async function syncContentListing(args: {
         schemaVersion: row.schemaVersion,
         status: row.status,
         createdAt,
-        updatedAt
+        updatedAt,
+        projectionScope: 'working'
       })
       updated += 1
     } catch {

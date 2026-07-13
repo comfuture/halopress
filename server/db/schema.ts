@@ -107,6 +107,9 @@ export const content = sqliteTable('content', {
   schemaVersion: integer('schema_version').notNull(),
   status: text('status').notNull(),
   contentJson: text('content_json').notNull(),
+  publishedRevisionId: text('published_revision_id'),
+  firstPublishedAt: integer('first_published_at', { mode: 'timestamp' }),
+  publishedAt: integer('published_at', { mode: 'timestamp' }),
   createdBy: text('created_by'),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull()
@@ -121,6 +124,9 @@ export const page = sqliteTable('page', {
   title: text('title'),
   status: text('status').notNull().default('draft'),
   contentJson: text('content_json').notNull(),
+  publishedRevisionId: text('published_revision_id'),
+  firstPublishedAt: integer('first_published_at', { mode: 'timestamp' }),
+  publishedAt: integer('published_at', { mode: 'timestamp' }),
   createdBy: text('created_by'),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull()
@@ -130,8 +136,24 @@ export const page = sqliteTable('page', {
   byUpdatedAt: index('idx_page_updated_at').on(t.updatedAt)
 }))
 
+export const publicationRevision = sqliteTable('publication_revision', {
+  id: text('id').notNull(),
+  documentKind: text('document_kind').notNull(), // content|page
+  documentId: text('document_id').notNull(),
+  schemaKey: text('schema_key'),
+  schemaVersion: integer('schema_version'),
+  title: text('title'),
+  contentJson: text('content_json').notNull(),
+  createdBy: text('created_by'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull()
+}, t => ({
+  pk: primaryKey({ columns: [t.id] }),
+  byDocument: index('idx_publication_revision_document').on(t.documentKind, t.documentId, t.createdAt)
+}))
+
 export const contentListing = sqliteTable('content_listing', {
   contentId: text('content_id').notNull(),
+  projectionScope: text('projection_scope').notNull().default('working'),
   schemaKey: text('schema_key').notNull(),
   schemaVersion: integer('schema_version').notNull(),
   title: text('title'),
@@ -141,11 +163,11 @@ export const contentListing = sqliteTable('content_listing', {
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull()
 }, t => ({
-  pk: primaryKey({ columns: [t.contentId] }),
-  bySchemaUpdated: index('idx_content_listing_schema_updated').on(t.schemaKey, t.updatedAt),
-  byStatusUpdated: index('idx_content_listing_status_updated').on(t.schemaKey, t.status, t.updatedAt),
-  byStatusCreated: index('idx_content_listing_status_created').on(t.schemaKey, t.status, t.createdAt),
-  byContent: index('idx_content_listing_content').on(t.contentId),
+  pk: primaryKey({ columns: [t.contentId, t.projectionScope] }),
+  bySchemaUpdated: index('idx_content_listing_schema_updated').on(t.projectionScope, t.schemaKey, t.updatedAt),
+  byStatusUpdated: index('idx_content_listing_status_updated').on(t.projectionScope, t.schemaKey, t.status, t.updatedAt),
+  byStatusCreated: index('idx_content_listing_status_created').on(t.projectionScope, t.schemaKey, t.status, t.createdAt),
+  byContent: index('idx_content_listing_content').on(t.contentId, t.projectionScope),
   contentFk: foreignKey({
     columns: [t.contentId],
     foreignColumns: [content.id],
@@ -174,30 +196,33 @@ export const searchConfig = sqliteTable('search_config', {
 
 export const contentSearchData = sqliteTable('content_search_data', {
   contentId: text('content_id').notNull(),
+  projectionScope: text('projection_scope').notNull().default('working'),
   fieldId: text('field_id').notNull(),
   dataType: text('data_type').notNull(),
   text: text('text'),
   value: real('value')
 }, t => ({
-  pk: primaryKey({ columns: [t.contentId, t.fieldId] }),
-  idxFilterText: index('idx_filter_content_search_text').on(t.fieldId, t.dataType, t.text, t.contentId),
-  idxFilterValue: index('idx_filter_content_search_value').on(t.fieldId, t.dataType, t.value, t.contentId)
+  pk: primaryKey({ columns: [t.contentId, t.projectionScope, t.fieldId] }),
+  idxFilterText: index('idx_filter_content_search_text').on(t.projectionScope, t.fieldId, t.dataType, t.text, t.contentId),
+  idxFilterValue: index('idx_filter_content_search_value').on(t.projectionScope, t.fieldId, t.dataType, t.value, t.contentId)
 }))
 
 export const contentRef = sqliteTable('content_ref', {
   contentId: text('content_id').notNull(),
+  projectionScope: text('projection_scope').notNull().default('working'),
   fieldPath: text('field_path').notNull(),
   targetKind: text('target_kind').notNull(), // content|user|asset
   targetSchemaKey: text('target_schema_key'),
   targetId: text('target_id').notNull()
 }, t => ({
-  pk: primaryKey({ columns: [t.contentId, t.fieldPath, t.targetKind, t.targetId] }),
-  byTarget: index('idx_content_ref_target').on(t.targetKind, t.targetId),
-  byContent: index('idx_content_ref_content').on(t.contentId)
+  pk: primaryKey({ columns: [t.contentId, t.projectionScope, t.fieldPath, t.targetKind, t.targetId] }),
+  byTarget: index('idx_content_ref_target').on(t.projectionScope, t.targetKind, t.targetId),
+  byContent: index('idx_content_ref_content').on(t.contentId, t.projectionScope)
 }))
 
 export const contentRefList = sqliteTable('content_ref_list', {
   ownerContentId: text('owner_content_id').notNull(),
+  projectionScope: text('projection_scope').notNull().default('working'),
   fieldKey: text('field_key').notNull(),
   position: integer('position').notNull(),
   itemKind: text('item_kind').notNull(), // content|user|asset
@@ -206,8 +231,18 @@ export const contentRefList = sqliteTable('content_ref_list', {
   assetId: text('asset_id'),
   metaJson: text('meta_json')
 }, t => ({
-  pk: primaryKey({ columns: [t.ownerContentId, t.fieldKey, t.position] }),
-  byOwner: index('idx_content_ref_list_owner').on(t.ownerContentId, t.fieldKey)
+  pk: primaryKey({ columns: [t.ownerContentId, t.projectionScope, t.fieldKey, t.position] }),
+  byOwner: index('idx_content_ref_list_owner').on(t.ownerContentId, t.projectionScope, t.fieldKey)
+}))
+
+export const documentAssetRef = sqliteTable('document_asset_ref', {
+  documentKind: text('document_kind').notNull(),
+  documentId: text('document_id').notNull(),
+  projectionScope: text('projection_scope').notNull(),
+  assetId: text('asset_id').notNull()
+}, t => ({
+  pk: primaryKey({ columns: [t.documentKind, t.documentId, t.projectionScope, t.assetId] }),
+  byAsset: index('idx_document_asset_ref_asset').on(t.assetId, t.projectionScope)
 }))
 
 export const asset = sqliteTable('asset', {

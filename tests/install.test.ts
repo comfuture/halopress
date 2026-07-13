@@ -203,7 +203,7 @@ describe('installation state', () => {
         password: 'correct horse battery staple'
       })
 
-      await db.run(sql.raw('DELETE FROM __drizzle_migrations WHERE created_at >= 1783909586488'))
+      await db.run(sql.raw('DELETE FROM __drizzle_migrations WHERE created_at >= 1783909586488 AND created_at < 1783943602176'))
       await db.run(sql.raw('DROP TABLE installation'))
       await runMigrations(db)
 

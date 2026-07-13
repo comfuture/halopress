@@ -37,24 +37,29 @@ function buildIndexValue(field: SchemaRegistry['fields'][number], content: Recor
   }
 }
 
-async function deleteSearchValueByContent(db: Db, contentId: string, fieldId: string, statements?: DbStatement[]) {
+async function deleteSearchValueByContent(db: Db, contentId: string, projectionScope: string, fieldId: string, statements?: DbStatement[]) {
   await executeDbStatement(db
     .delete(contentSearchData)
-    .where(and(eq(contentSearchData.contentId, contentId), eq(contentSearchData.fieldId, fieldId))), statements)
+    .where(and(
+      eq(contentSearchData.contentId, contentId),
+      eq(contentSearchData.projectionScope, projectionScope),
+      eq(contentSearchData.fieldId, fieldId)
+    )), statements)
 }
 
-async function upsertSearchValue(db: Db, contentId: string, indexed: SearchIndexValue, statements?: DbStatement[]) {
+async function upsertSearchValue(db: Db, contentId: string, projectionScope: string, indexed: SearchIndexValue, statements?: DbStatement[]) {
   await executeDbStatement(db
     .insert(contentSearchData)
     .values({
       contentId,
+      projectionScope,
       fieldId: indexed.fieldId,
       dataType: indexed.dataType,
       text: indexed.dataType === 'text' ? String(indexed.value) : null,
       value: indexed.dataType === 'text' ? null : Number(indexed.value)
     })
     .onConflictDoUpdate({
-      target: [contentSearchData.contentId, contentSearchData.fieldId],
+      target: [contentSearchData.contentId, contentSearchData.projectionScope, contentSearchData.fieldId],
       set: {
         dataType: indexed.dataType,
         text: indexed.dataType === 'text' ? String(indexed.value) : null,
@@ -86,28 +91,42 @@ export async function upsertContentSearchData(args: {
   registry: SchemaRegistry
   content: Record<string, unknown>
   onlyFieldIds?: string[]
+  projectionScope?: 'working' | 'published'
   statements?: DbStatement[]
 }) {
   const onlySet = args.onlyFieldIds ? new Set(args.onlyFieldIds) : null
+  const projectionScope = args.projectionScope ?? 'working'
+
+  if (!onlySet) {
+    await executeDbStatement(args.db
+      .delete(contentSearchData)
+      .where(and(
+        eq(contentSearchData.contentId, args.contentId),
+        eq(contentSearchData.projectionScope, projectionScope)
+      )), args.statements)
+  }
 
   for (const field of args.registry.fields) {
     if (onlySet && !onlySet.has(field.fieldId)) continue
     const indexed = buildIndexValue(field, args.content)
     if (!indexed) {
-      await deleteSearchValueByContent(args.db, args.contentId, field.fieldId, args.statements)
+      await deleteSearchValueByContent(args.db, args.contentId, projectionScope, field.fieldId, args.statements)
       continue
     }
-    await upsertSearchValue(args.db, args.contentId, indexed, args.statements)
+    await upsertSearchValue(args.db, args.contentId, projectionScope, indexed, args.statements)
   }
 }
 
 export async function deleteContentSearchData(args: {
   db: Db
   contentId: string
+  projectionScope?: 'working' | 'published'
 }) {
   await args.db
     .delete(contentSearchData)
-    .where(eq(contentSearchData.contentId, args.contentId))
+    .where(args.projectionScope
+      ? and(eq(contentSearchData.contentId, args.contentId), eq(contentSearchData.projectionScope, args.projectionScope))
+      : eq(contentSearchData.contentId, args.contentId))
 }
 
 export async function deleteContentSearchDataForFields(args: {
@@ -141,7 +160,8 @@ export async function syncSearchIndexForSchema(args: {
       contentId: row.id,
       registry: args.registry,
       content: parseContentJson(row.contentJson),
-      onlyFieldIds: args.onlyFieldIds
+      onlyFieldIds: args.onlyFieldIds,
+      projectionScope: 'working'
     })
     indexed += 1
   }
