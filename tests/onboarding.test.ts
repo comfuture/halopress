@@ -2,12 +2,28 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 
+import {
+  EXPECTED_ONBOARDING_ITEM_COUNT,
+  getOnboardingItems,
+  hasCompletedOnboarding,
+  type OnboardingStatus
+} from '../app/utils/onboarding'
 import { isBootstrapSchema } from '../server/utils/bootstrap'
 import { hasCustomDomain, hasImageTransformations } from '../server/utils/onboarding'
 
 const projectRoot = join(import.meta.dirname, '..')
 
-describe('settings onboarding', () => {
+function onboardingStatus(complete: boolean): OnboardingStatus {
+  return {
+    schemas: { complete, firstSchemaKey: complete ? 'article' : null },
+    content: { complete },
+    customDomain: { complete },
+    imageTransformations: { complete },
+    googleOAuth: { complete }
+  }
+}
+
+describe('dashboard onboarding', () => {
   it('distinguishes custom domains from local and Cloudflare platform hosts', () => {
     expect(hasCustomDomain('cms.example.com')).toBe(true)
     expect(hasCustomDomain('CMS.EXAMPLE.COM.')).toBe(true)
@@ -21,6 +37,15 @@ describe('settings onboarding', () => {
     expect(isBootstrapSchema({ schemaKey: 'article', version: 1, note: 'bootstrap' })).toBe(true)
     expect(isBootstrapSchema({ schemaKey: 'article', version: 2, note: null })).toBe(false)
     expect(isBootstrapSchema({ schemaKey: 'product', version: 1, note: 'bootstrap' })).toBe(false)
+  })
+
+  it('only completes onboarding when all five items are complete', () => {
+    const completeItems = getOnboardingItems(onboardingStatus(true))
+    expect(completeItems).toHaveLength(EXPECTED_ONBOARDING_ITEM_COUNT)
+    expect(hasCompletedOnboarding(completeItems)).toBe(true)
+
+    expect(hasCompletedOnboarding(getOnboardingItems(onboardingStatus(false)))).toBe(false)
+    expect(hasCompletedOnboarding(completeItems.slice(0, 4))).toBe(false)
   })
 
   it('only probes Image Transformations in the Cloudflare runtime', async () => {
@@ -95,8 +120,9 @@ describe('settings onboarding', () => {
     expect(failedBodyCancel).toHaveBeenCalledOnce()
   })
 
-  it('keeps the five recommended setup guides on the default Settings page', async () => {
-    const page = await readFile(join(projectRoot, 'app/pages/_desk/settings/index.vue'), 'utf8')
+  it('keeps the five recommended setup guides in a dismissible dashboard widget', async () => {
+    const widget = await readFile(join(projectRoot, 'app/components/OnboardingWidget.vue'), 'utf8')
+    const itemDefinitions = await readFile(join(projectRoot, 'app/utils/onboarding.ts'), 'utf8')
     for (const title of [
       'Create a schema',
       'Publish new content',
@@ -104,10 +130,23 @@ describe('settings onboarding', () => {
       'Enable Image Transformations',
       'Configure Google OAuth'
     ]) {
-      expect(page).toContain(title)
+      expect(itemDefinitions).toContain(title)
     }
-    expect(page).toContain('<UProgress')
-    expect(page).toContain('item.complete ? \'i-lucide-circle-check-big\' : \'i-lucide-circle\'')
+    expect(widget).toContain('<UProgress')
+    expect(widget).toContain('item.complete ? \'i-lucide-circle-check-big\' : \'i-lucide-circle\'')
+    expect(widget).toContain('hasCompletedOnboarding(items.value)')
+    expect(widget).toContain('useCookie<boolean>(\'halopress_onboarding_dismissed_v1\'')
+    expect(widget).toContain('server: false')
+    expect(widget).toContain('label="Dismiss for now"')
+    expect(widget).toContain('aria-label="Onboarding progress"')
+    expect(widget).toContain('item.complete ? \'Complete\' : \'Not complete\'')
+    expect(widget).toContain('opens in a new tab')
+
+    const dashboard = await readFile(join(projectRoot, 'app/pages/_desk/index.vue'), 'utf8')
+    expect(dashboard).toContain('<OnboardingWidget')
+
+    const settings = await readFile(join(projectRoot, 'app/pages/_desk/settings/index.vue'), 'utf8')
+    expect(settings).toContain('await navigateTo(\'/_desk\', { replace: true })')
 
     const statusApi = await readFile(join(projectRoot, 'server/api/settings/onboarding.get.ts'), 'utf8')
     expect(statusApi).toContain('BOOTSTRAP_CONTENT_ID')
