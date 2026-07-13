@@ -30,8 +30,10 @@ export async function saveContentWorking(args: {
   active: ActiveContentSchema
   content: Record<string, unknown>
   actorId: string | null
+  status?: string
 }) {
   const now = new Date()
+  const status = args.status ?? 'draft'
   await withDbTransaction(args.event, args.db, async (tx: Db, statements) => {
     await replaceBase64ImagesInContent({
       event: args.event,
@@ -41,7 +43,7 @@ export async function saveContentWorking(args: {
       statements
     })
     await executeDbStatement(tx.update(contentTable).set({
-      status: 'draft',
+      status,
       contentJson: JSON.stringify(args.content),
       schemaVersion: args.active.version,
       updatedAt: now
@@ -53,14 +55,14 @@ export async function saveContentWorking(args: {
       contentId: args.existing.id,
       schemaKey: args.schemaKey,
       schemaVersion: args.active.version,
-      status: 'draft',
+      status,
       createdAt: asDate(args.existing.createdAt),
       updatedAt: now,
       projectionScope: 'working',
       statements
     })
   })
-  return publicationMetadata({ ...args.existing, status: 'draft' })
+  return publicationMetadata({ ...args.existing, status })
 }
 
 export async function publishContentWorking(args: {
