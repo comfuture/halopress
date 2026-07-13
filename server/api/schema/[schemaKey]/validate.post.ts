@@ -1,6 +1,10 @@
 import { readBody } from 'h3'
 import { getDb } from '../../../db/db'
-import { assertSchemaKeyCanBePersisted } from '../../../cms/schema-key'
+import {
+  assertSchemaKeyCanBePersisted,
+  isReservedSchemaKeyError,
+  RESERVED_SCHEMA_KEY_MESSAGE
+} from '../../../cms/schema-key'
 import { schemaAstSchema } from '../../../cms/zod'
 
 export default defineEventHandler(async (event) => {
@@ -13,12 +17,13 @@ export default defineEventHandler(async (event) => {
   }
   try {
     await assertSchemaKeyCanBePersisted(await getDb(event), schemaKey)
-  } catch {
+  } catch (error) {
+    if (!isReservedSchemaKeyError(error)) throw error
     return {
       ok: false,
       error: {
         formErrors: [],
-        fieldErrors: { schemaKey: ['Schema key is reserved for a public route'] }
+        fieldErrors: { schemaKey: [RESERVED_SCHEMA_KEY_MESSAGE] }
       }
     }
   }
