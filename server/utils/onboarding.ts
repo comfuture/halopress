@@ -24,14 +24,20 @@ export async function hasImageTransformations(
       headers: { accept: 'image/webp,image/*' },
       signal: AbortSignal.timeout(4000)
     })
+    if (!response.ok) {
+      await response.body?.cancel()
+      return false
+    }
+
     const contentType = response.headers.get('content-type') || ''
     const cfResized = response.headers.get('cf-resized') || ''
+    if (!contentType.startsWith('image/webp') || !cfResized || /\berr=/.test(cfResized)) {
+      await response.body?.cancel()
+      return false
+    }
+
     const bytes = await response.arrayBuffer()
-    return response.ok
-      && contentType.startsWith('image/webp')
-      && Boolean(cfResized)
-      && !/\berr=/.test(cfResized)
-      && bytes.byteLength > 0
+    return bytes.byteLength > 0
   } catch {
     return false
   }

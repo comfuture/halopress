@@ -3,7 +3,7 @@ const isCloudflareBuild = process.env.WORKERS_CI === '1'
   || Boolean(process.env.CF_PAGES || process.env.CF_PAGES_URL)
 const imageProvider = process.env.NUXT_IMAGE_PROVIDER
   || (isCloudflareBuild ? 'cloudflare' : 'ipx')
-const cloudflareBaseURL = process.env.NUXT_IMAGE_CLOUDFLARE_BASE_URL || process.env.CF_PAGES_URL
+const cloudflareBaseURL = process.env.NUXT_IMAGE_CLOUDFLARE_BASE_URL
 const ipxAssetsAlias = process.env.NUXT_IPX_ALIAS_ASSETS || 'http://localhost:3000/assets'
 
 export default defineNuxtConfig({

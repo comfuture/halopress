@@ -57,25 +57,42 @@ describe('settings onboarding', () => {
   })
 
   it('rejects raw and failed image responses as transformation evidence', async () => {
-    const rawResponse = vi.fn(async () => new Response(new Uint8Array([1]), {
+    const error = new Response('<html>Error</html>', {
+      status: 500,
+      headers: { 'content-type': 'text/html' }
+    })
+    const raw = new Response(new Uint8Array([1]), {
       status: 200,
       headers: { 'content-type': 'image/png' }
-    }))
-    const failedResponse = vi.fn(async () => new Response(new Uint8Array([1]), {
+    })
+    const failed = new Response(new Uint8Array([1]), {
       status: 200,
       headers: {
         'content-type': 'image/webp',
         'cf-resized': 'err=9422'
       }
-    }))
+    })
+    const errorBodyReader = vi.spyOn(error, 'arrayBuffer')
+    const rawBodyReader = vi.spyOn(raw, 'arrayBuffer')
+    const failedBodyReader = vi.spyOn(failed, 'arrayBuffer')
+    const errorBodyCancel = vi.spyOn(error.body!, 'cancel')
+    const rawBodyCancel = vi.spyOn(raw.body!, 'cancel')
+    const failedBodyCancel = vi.spyOn(failed.body!, 'cancel')
     const event = {
       context: { cloudflare: {} },
       path: '/',
       node: { req: { url: '/', headers: { host: 'cms.example.com' } } }
     }
 
-    await expect(hasImageTransformations(event as any, rawResponse as any)).resolves.toBe(false)
-    await expect(hasImageTransformations(event as any, failedResponse as any)).resolves.toBe(false)
+    await expect(hasImageTransformations(event as any, vi.fn(async () => error) as any)).resolves.toBe(false)
+    await expect(hasImageTransformations(event as any, vi.fn(async () => raw) as any)).resolves.toBe(false)
+    await expect(hasImageTransformations(event as any, vi.fn(async () => failed) as any)).resolves.toBe(false)
+    expect(errorBodyReader).not.toHaveBeenCalled()
+    expect(rawBodyReader).not.toHaveBeenCalled()
+    expect(failedBodyReader).not.toHaveBeenCalled()
+    expect(errorBodyCancel).toHaveBeenCalledOnce()
+    expect(rawBodyCancel).toHaveBeenCalledOnce()
+    expect(failedBodyCancel).toHaveBeenCalledOnce()
   })
 
   it('keeps the five recommended setup guides on the default Settings page', async () => {
