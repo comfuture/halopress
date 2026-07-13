@@ -55,74 +55,72 @@ onBeforeUnmount(() => {
     variant="subtle"
     aria-labelledby="onboarding-widget-title"
     :ui="{
-      header: 'p-4 sm:px-5',
-      body: 'p-2 sm:p-3'
+      body: 'p-3 sm:p-3'
     }"
   >
-    <template #header>
-      <div class="space-y-3">
-        <div class="flex items-start justify-between gap-3">
-          <div class="min-w-0">
-            <h2 id="onboarding-widget-title" class="font-semibold text-highlighted">
-              Finish setting up HaloPress
-            </h2>
-            <p class="mt-0.5 text-xs text-muted">
-              <template v-if="data">
-                {{ completedCount }} of {{ EXPECTED_ONBOARDING_ITEM_COUNT }} complete
-              </template>
-              <template v-else-if="error">
-                Setup progress is unavailable
-              </template>
-              <template v-else>
-                Checking setup progress…
-              </template>
-            </p>
-          </div>
+    <header class="flex items-start justify-between gap-2">
+      <div class="flex min-w-0 items-baseline gap-2">
+        <h2 id="onboarding-widget-title" class="truncate text-sm font-semibold text-highlighted">
+          Setup checklist
+        </h2>
+        <p class="shrink-0 text-xs text-muted">
+          <template v-if="data">
+            {{ completedCount }}/{{ EXPECTED_ONBOARDING_ITEM_COUNT }} complete
+          </template>
+          <template v-else-if="error">
+            Unavailable
+          </template>
+          <template v-else>
+            Checking…
+          </template>
+        </p>
+      </div>
 
-          <div v-if="data" class="flex shrink-0 items-center gap-1">
-            <UButton
-              icon="i-lucide-rotate-cw"
-              aria-label="Refresh onboarding status"
-              color="neutral"
-              variant="ghost"
-              size="xs"
-              square
-              :loading="pending"
-              @click="refresh()"
-            />
-            <UButton
-              label="Dismiss for now"
-              color="neutral"
-              variant="ghost"
-              size="xs"
-              @click="dismiss"
-            />
-          </div>
-        </div>
-
-        <UProgress
+      <div class="flex shrink-0 items-center gap-0.5">
+        <UButton
           v-if="data"
-          :model-value="completedCount"
-          :max="EXPECTED_ONBOARDING_ITEM_COUNT"
+          icon="i-lucide-rotate-cw"
+          aria-label="Refresh onboarding status"
+          color="neutral"
+          variant="ghost"
           size="xs"
-          aria-label="Onboarding progress"
+          square
+          :loading="pending"
+          @click="refresh()"
+        />
+        <UButton
+          label="Dismiss"
+          aria-label="Dismiss onboarding for now"
+          color="neutral"
+          variant="ghost"
+          size="xs"
+          @click="dismiss"
         />
       </div>
-    </template>
+    </header>
 
-    <ul v-if="data" class="space-y-1" aria-label="Recommended setup checklist">
+    <UProgress
+      v-if="data"
+      :model-value="completedCount"
+      :max="EXPECTED_ONBOARDING_ITEM_COUNT"
+      size="xs"
+      class="mt-2"
+      aria-label="Onboarding progress"
+    />
+
+    <ul v-if="data" class="mt-2 space-y-0.5" aria-label="Recommended setup checklist">
       <li v-for="item in items" :key="item.key">
         <ULink
           :to="item.to"
           :external="item.external"
           :target="item.external ? '_blank' : undefined"
           raw
-          class="group flex min-h-10 items-center gap-3 rounded-md px-2.5 py-2 outline-primary/25 transition-colors hover:bg-elevated focus-visible:outline-3"
+          class="group flex min-h-8 items-center gap-2 rounded-md px-2 py-1.5 outline-primary/25 transition-colors hover:bg-elevated focus-visible:outline-3"
         >
           <UIcon
             :name="item.complete ? 'i-lucide-circle-check-big' : 'i-lucide-circle'"
             :class="item.complete ? 'text-success' : 'text-dimmed group-hover:text-primary'"
-            class="size-5 shrink-0 transition-colors"
+            class="size-4 shrink-0 transition-colors"
             aria-hidden="true"
           />
           <span
@@ -138,7 +136,7 @@ onBeforeUnmount(() => {
       </li>
     </ul>
 
-    <div v-else-if="error" class="flex items-center justify-between gap-3 px-2.5 py-2 text-sm text-muted">
+    <div v-else-if="error" class="mt-2 flex items-center justify-between gap-2 px-2 py-1.5 text-xs text-muted">
       <span>Could not load the checklist.</span>
       <UButton
         label="Retry"
@@ -151,7 +149,7 @@ onBeforeUnmount(() => {
       />
     </div>
 
-    <div v-else class="flex min-h-32 items-center justify-center" aria-live="polite">
+    <div v-else class="flex min-h-20 items-center justify-center" aria-live="polite">
       <UIcon name="i-lucide-loader-circle" class="size-5 animate-spin text-muted" />
       <span class="sr-only">Loading onboarding status</span>
     </div>
