@@ -1106,7 +1106,13 @@ async function confirmPublish() {
             <span class="text-xs text-muted">Created is always shown</span>
           </div>
           <div class="flex items-center gap-3 px-3 py-3">
-            <UAvatar icon="i-lucide-image" size="lg" class="shrink-0" />
+            <div class="size-10 shrink-0" aria-hidden="true">
+              <UAvatar
+                v-if="listingPreviewFields.image"
+                icon="i-lucide-image"
+                size="lg"
+              />
+            </div>
             <div class="min-w-0 flex-1">
               <p class="truncate text-sm font-medium text-highlighted">
                 {{ listingPreviewFields.title?.title || listingPreviewFields.title?.key || 'Content ID' }}
@@ -1116,9 +1122,6 @@ async function confirmPublish() {
               </p>
               <p v-else class="text-sm text-dimmed">
                 No description field selected
-              </p>
-              <p class="mt-1 text-xs text-dimmed">
-                Image: {{ listingPreviewFields.image?.title || listingPreviewFields.image?.key || 'none' }}
               </p>
             </div>
             <div class="shrink-0 text-right">
