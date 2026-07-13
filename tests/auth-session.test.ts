@@ -4,6 +4,7 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { encode, getToken } from 'next-auth/jwt'
 
+import { decodeAuthToken, encodeAuthToken } from '../server/utils/auth-jwt'
 import { authSessionFromToken, hasSecureAuthSessionCookie } from '../server/utils/auth-session'
 
 const secret = '1bccd7d3097bff829c970eb6a2c4a9232a3d65bfe74932a0c7317b1e9fef471e'
@@ -87,6 +88,26 @@ describe('protected API session verification', () => {
     })
 
     expect(decoded).toMatchObject({ id: 'user_2', role: 'admin', tenantKey: 'example.com' })
+  })
+
+  it('shares the Cloudflare-safe JWT codec between login and protected APIs', async () => {
+    const encoded = await encodeAuthToken({
+      secret,
+      token: { id: 'user_3', role: 'admin', tenantKey: 'example.com' }
+    })
+    const decoded = await getToken({
+      secret,
+      secureCookie: true,
+      decode: decodeAuthToken,
+      req: {
+        cookies: {
+          '__Secure-next-auth.session-token': encoded
+        },
+        headers: {}
+      } as any
+    })
+
+    expect(decoded).toMatchObject({ id: 'user_3', role: 'admin', tenantKey: 'example.com' })
   })
 
   it('detects secure session cookies without relying on the internal request URL', () => {

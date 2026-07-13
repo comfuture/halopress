@@ -3,6 +3,7 @@ import { parseCookies } from 'h3'
 import { eq, or } from 'drizzle-orm'
 import { getToken } from '#auth'
 
+import { decodeAuthToken } from './auth-jwt'
 import { authSessionFromToken, hasSecureAuthSessionCookie, type AuthSession } from './auth-session'
 import { unauthorized } from './http'
 import { resolveAuthSigningSecret } from './install-token'
@@ -16,6 +17,7 @@ export async function getAuthSession(event: H3Event): Promise<AuthSession> {
   const token = await getToken({
     event,
     secureCookie,
+    decode: decodeAuthToken,
     secret: resolveAuthSigningSecret(event)
   })
   return authSessionFromToken(token)
