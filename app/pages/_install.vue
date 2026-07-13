@@ -1,173 +1,368 @@
 <script setup lang="ts">
-import type { FormError, StepperItem } from '@nuxt/ui'
+import type { FormErrorEvent, StepperItem } from '@nuxt/ui'
+import { z } from 'zod'
 
 definePageMeta({
-  layout: 'default'
+  layout: 'blank'
 })
 
-const { data } = await useFetch('/api/system/install/status', { server: true })
-if (data.value?.ready) {
-  throw createError({ statusCode: 404, statusMessage: 'Not Found' })
+type InstallPhase =
+  | 'binding_missing'
+  | 'migration_required'
+  | 'configuration_required'
+  | 'ready_for_setup'
+  | 'installing'
+  | 'setup_locked'
+  | 'resume_required'
+  | 'complete'
+
+type InstallStatus = {
+  ready: boolean
+  canStartSetup?: boolean
+  canInstall: boolean
+  phase: InstallPhase
+  missingTables?: string[]
+  roleCount?: number
+  userCount?: number
+  schemaCount?: number
+  hasSecret?: boolean
+  setupSessionOwned?: boolean
+  retryAfterSeconds?: number
+  missingBindings?: string[]
+  hasLastError?: boolean
+}
+
+type InstallIssue = {
+  path?: string
+  message?: string
+}
+
+type InstallFailureDetails = {
+  phase?: InstallPhase
+  issues?: InstallIssue[]
+  missingTables?: string[]
+}
+
+type FetchFailure = {
+  status?: number
+  statusCode?: number
+  statusMessage?: string
+  message?: string
+  data?: {
+    statusMessage?: string
+    phase?: InstallPhase
+    issues?: InstallIssue[]
+    missingTables?: string[]
+    data?: InstallFailureDetails
+  }
 }
 
 const steps = [
-  {
-    title: 'Admin account',
-    description: 'Create the first admin login for the desk',
-    icon: 'i-lucide-user-cog',
-    slot: 'admin' as const
-  },
-  {
-    title: 'Auth methods',
-    description: 'Choose how you want to sign in',
-    icon: 'i-lucide-shield-check',
-    slot: 'auth' as const
-  },
-  {
-    title: 'Sample schema',
-    description: 'Decide if you want starter content',
-    icon: 'i-lucide-sparkles',
-    slot: 'sample' as const
-  },
-  {
-    title: 'Review',
-    description: 'Confirm and complete setup',
-    icon: 'i-lucide-check-circle-2',
-    slot: 'review' as const
-  }
+  { value: 1, title: 'Ready', icon: 'i-lucide-cloud-check' },
+  { value: 2, title: 'Your account', icon: 'i-lucide-user-cog' },
+  { value: 3, title: 'Starter content', icon: 'i-lucide-sparkles' },
+  { value: 4, title: 'Review', icon: 'i-lucide-list-checks' }
 ] satisfies StepperItem[]
 
-const activeStep = ref(0)
-const adminForm = ref<any>(null)
-const authForm = ref<any>(null)
-const lastStepIndex = steps.length - 1
+const activeStep = ref(1)
+const stepHeading = ref<HTMLElement | null>(null)
+const stateHeading = ref<HTMLElement | null>(null)
+const refreshing = ref(false)
+const claimingSession = ref(false)
+const submitting = ref(false)
+const installationComplete = ref(false)
+const completedInThisSession = ref(false)
+const signedIn = ref(false)
+const signInWarning = ref('')
+const installError = ref<{ title: string; description: string } | null>(null)
+const reservationError = ref<{ title: string; description: string } | null>(null)
+const serverFieldErrors = reactive<Record<string, string | undefined>>({})
+const { signIn, status: authStatus } = useAuth()
 
 const state = reactive({
   email: '',
   name: '',
   password: '',
   passwordConfirm: '',
-  sampleData: true,
-  auth: {
-    credentialsEnabled: true,
-    googleEnabled: false,
-    googleClientId: '',
-    googleClientSecret: ''
+  sampleData: true
+})
+
+const {
+  data: installStatus,
+  error: installStatusError,
+  status: installStatusRequest,
+  refresh: refreshInstallStatus
+} = await useFetch<InstallStatus>('/api/system/install/status', { server: true })
+
+installationComplete.value = Boolean(installStatus.value?.ready || installStatus.value?.phase === 'complete')
+
+const phase = computed(() => installStatus.value?.phase)
+const isCheckingReadiness = computed(() => refreshing.value || claimingSession.value || installStatusRequest.value === 'pending')
+const setupSessionOwned = computed(() => Boolean(installStatus.value?.setupSessionOwned))
+const canEnterSetup = computed(() => Boolean(
+  !installStatus.value?.ready
+  && (installStatus.value?.canStartSetup || (setupSessionOwned.value && installStatus.value?.canInstall))
+))
+const isReadinessReady = computed(() => Boolean(
+  !installStatus.value?.ready
+  && setupSessionOwned.value
+  && installStatus.value?.canInstall
+))
+const showExternalInstalling = computed(() => (
+  phase.value === 'installing' || phase.value === 'setup_locked'
+) && !submitting.value && !installationComplete.value)
+const showSuccess = computed(() => installationComplete.value && !submitting.value)
+const hasDeskSession = computed(() => signedIn.value || authStatus.value === 'authenticated')
+const currentStep = computed(() => steps[activeStep.value - 1] || steps[0]!)
+
+const administratorSchema = z.object({
+  email: z.string().trim().email('Enter a valid email address.').max(254, 'Email is too long.'),
+  name: z.string().trim().max(100, 'Name must be 100 characters or fewer.'),
+  password: z.string().min(12, 'Use at least 12 characters.').max(256, 'Password is too long.'),
+  passwordConfirm: z.string().min(1, 'Confirm your password.')
+}).refine(values => values.password === values.passwordConfirm, {
+  path: ['passwordConfirm'],
+  message: 'Passwords do not match.'
+})
+
+const summaryItems = computed(() => [
+  { label: 'Account email', value: state.email || 'Not set' },
+  { label: 'Name', value: state.name.trim() || 'Not set' },
+  { label: 'Starter content', value: state.sampleData ? 'Article schema + Welcome guide' : 'Skip' }
+])
+
+const missingBindingsDescription = computed(() => {
+  const bindings = installStatus.value?.missingBindings || []
+  const requirements: string[] = []
+  if (bindings.includes('DB')) requirements.push('a D1 database binding named DB')
+  if (bindings.includes('CONTENT_ASSETS')) requirements.push('an R2 bucket binding named CONTENT_ASSETS')
+  const unknown = bindings.filter(binding => binding !== 'DB' && binding !== 'CONTENT_ASSETS')
+  requirements.push(...unknown.map(binding => `a binding named ${binding}`))
+  return requirements.length
+    ? `Add ${requirements.join(' and ')} to this Worker, redeploy, and check again.`
+    : 'Add the required Cloudflare bindings to this Worker, redeploy, and check again.'
+})
+
+const readinessMessage = computed(() => {
+  if (installStatusError.value) {
+    return {
+      color: 'error' as const,
+      icon: 'i-lucide-cloud-off',
+      title: 'We could not check your Halopress',
+      description: 'Check your connection and try again. If this keeps happening, ask the deployment owner to review the logs.'
+    }
+  }
+
+  switch (phase.value) {
+    case 'binding_missing':
+      return {
+        color: 'error' as const,
+        icon: 'i-lucide-database-zap',
+        title: 'Storage needs attention',
+        description: 'Halopress cannot reach all the storage it needs yet. Open the troubleshooting details for repair steps.'
+      }
+    case 'migration_required':
+      return {
+        color: 'warning' as const,
+        icon: 'i-lucide-database-backup',
+        title: 'Deployment setup needs a quick repair',
+        description: 'A required setup step is unfinished. Open the troubleshooting details for the repair command.'
+      }
+    case 'configuration_required':
+      return {
+        color: 'warning' as const,
+        icon: 'i-lucide-settings',
+        title: 'Deployment setup needs a quick repair',
+        description: 'The automatic deployment configuration is incomplete. Open the troubleshooting details for repair steps.'
+      }
+    case 'resume_required':
+      return {
+        color: 'warning' as const,
+        icon: 'i-lucide-rotate-ccw',
+        title: 'Continue setting up Halopress',
+        description: 'A previous attempt stopped before completion. Continue with the same account email and password.'
+      }
+    case 'ready_for_setup':
+      return {
+        color: 'success' as const,
+        icon: 'i-lucide-circle-check-big',
+        title: 'Your Halopress is ready to set up',
+        description: setupSessionOwned.value
+          ? 'Continue where you left off in this browser.'
+          : 'Start setup to begin. This browser will hold your place while you finish.'
+      }
+    default:
+      return {
+        color: 'neutral' as const,
+        icon: 'i-lucide-loader-circle',
+        title: 'Checking your Halopress',
+        description: 'This will only take a moment.'
+      }
   }
 })
 
-const loading = ref(false)
-const toast = useToast()
-const { signIn } = useAuth()
-const hasSecret = computed(() => Boolean(data.value?.hasSecret))
-const oauthEnv = computed(() => data.value?.oauthEnv || { googleClientId: false, googleClientSecret: false })
-const googleEnvReady = computed(() => oauthEnv.value.googleClientId && oauthEnv.value.googleClientSecret)
-
-const summaryItems = computed(() => [
-  {
-    label: 'Admin email',
-    value: state.email || 'Not set yet'
-  },
-  {
-    label: 'Admin name',
-    value: state.name?.trim() ? state.name.trim() : 'Not set'
-  },
-  {
-    label: 'Auth methods',
-    value: [
-      state.auth.credentialsEnabled ? 'Email + password' : null,
-      state.auth.googleEnabled ? 'Google OAuth' : null
-    ].filter(Boolean).join(', ') || 'Not set'
-  },
-  {
-    label: 'Sample schema + Welcome guide',
-    value: state.sampleData ? 'Create' : 'Skip'
+const remediationCommand = computed(() => {
+  if (phase.value === 'migration_required') {
+    return 'pnpm exec wrangler d1 migrations apply DB --remote'
   }
-])
+  return ''
+})
 
-function validate(values: typeof state): FormError[] {
-  const errors: FormError[] = []
-  if (!values.email) errors.push({ name: 'email', message: 'Email is required' })
-  if (!values.password) errors.push({ name: 'password', message: 'Password is required' })
-  if (!values.passwordConfirm) errors.push({ name: 'passwordConfirm', message: 'Please confirm your password' })
-  if (values.password && values.passwordConfirm && values.password !== values.passwordConfirm) {
-    errors.push({ name: 'passwordConfirm', message: 'Passwords do not match' })
-  }
-  return errors
+watch(() => state.email, () => {
+  serverFieldErrors.email = undefined
+})
+watch(() => state.password, () => {
+  serverFieldErrors.password = undefined
+})
+watch(activeStep, () => {
+  void focusHeading(stepHeading)
+})
+
+watch([showExternalInstalling, showSuccess], ([installing, complete]) => {
+  if (installing || complete) void focusHeading(stateHeading)
+})
+
+async function focusHeading(target: Ref<HTMLElement | null>) {
+  await nextTick()
+  if (!import.meta.client || !target.value) return
+  target.value.focus({ preventScroll: true })
+  target.value.scrollIntoView({ block: 'start', behavior: 'auto' })
 }
 
-function validateAuth(values: typeof state): FormError[] {
-  const errors: FormError[] = []
-  if (!values.auth.credentialsEnabled && !values.auth.googleEnabled) {
-    errors.push({ name: 'authMethods', message: 'Enable at least one sign-in method.' })
-  }
-
-  if (values.auth.googleEnabled) {
-    if (!hasSecret.value) {
-      errors.push({
-        name: 'googleClientSecret',
-        message: 'NUXT_SECRET_KEY or NUXT_OAUTH_GOOGLE_ENCRYPTION_KEY is required to encrypt OAuth secrets.'
-      })
-    }
-    if (!values.auth.googleClientId && !oauthEnv.value.googleClientId) {
-      errors.push({ name: 'googleClientId', message: 'Google client ID is required.' })
-    }
-    if (!values.auth.googleClientSecret && !oauthEnv.value.googleClientSecret) {
-      errors.push({ name: 'googleClientSecret', message: 'Google client secret is required.' })
-    }
-  }
-
-  return errors
+function goToStep(step: number) {
+  if (submitting.value) return
+  activeStep.value = Math.min(Math.max(step, 1), steps.length)
 }
 
-async function advanceFromAdmin() {
-  if (loading.value) return
-  const errors = await adminForm.value?.validate()
-  if (errors?.length) return
-  activeStep.value = 1
-}
-
-async function advanceFromAuth() {
-  if (loading.value) return
-  const errors = await authForm.value?.validate()
-  if (errors?.length) return
-  activeStep.value = 2
-}
-
-function goBack() {
-  if (loading.value) return
-  activeStep.value = Math.max(0, activeStep.value - 1)
-}
-
-function goNext() {
-  if (loading.value) return
-  activeStep.value = Math.min(lastStepIndex, activeStep.value + 1)
-}
-
-async function fireConfetti() {
+async function onFormError(event: FormErrorEvent) {
   if (!import.meta.client) return
-  const module = await import('canvas-confetti')
-  const confetti = module.default
-  const endAt = Date.now() + 3000
-  const interval = window.setInterval(() => {
-    if (Date.now() > endAt) {
-      window.clearInterval(interval)
-      return
+  const firstError = event.errors[0]
+  if (!firstError) return
+  await nextTick()
+  await new Promise<void>((resolve) => {
+    window.requestAnimationFrame(() => resolve())
+  })
+  const byId = firstError.id ? document.getElementById(firstError.id) : null
+  const byName = firstError.name
+    ? document.querySelector<HTMLElement>(`[name="${firstError.name}"]`)
+    : null
+  const invalidField = document.querySelector<HTMLElement>('[aria-invalid="true"]')
+  const target = byName || invalidField || byId
+  target?.focus()
+}
+
+async function refreshReadiness() {
+  if (refreshing.value) return
+  refreshing.value = true
+  installError.value = null
+  reservationError.value = null
+  try {
+    await refreshInstallStatus()
+    if (installStatus.value?.ready || installStatus.value?.phase === 'complete') {
+      installationComplete.value = true
     }
-    confetti({
-      particleCount: 6,
-      spread: 70,
-      startVelocity: 25,
-      gravity: 0.9,
-      origin: { x: Math.random(), y: 0.15 }
+  } finally {
+    refreshing.value = false
+  }
+}
+
+async function reserveSetupSession() {
+  if (claimingSession.value || !canEnterSetup.value) return
+  if (isReadinessReady.value) {
+    goToStep(2)
+    return
+  }
+  claimingSession.value = true
+  reservationError.value = null
+  try {
+    await $fetch('/api/system/install/session', {
+      method: 'POST',
+      credentials: 'include'
     })
-  }, 180)
-  await new Promise(resolve => setTimeout(resolve, 3000))
+    await refreshInstallStatus()
+    goToStep(2)
+  } catch (rawError) {
+    const error = rawError as FetchFailure
+    await refreshInstallStatus()
+    const statusCode = error.statusCode || error.status
+    reservationError.value = {
+      title: statusCode === 409 ? 'Setup is reserved in another browser' : 'Could not start setup',
+      description: statusCode === 409
+        ? `Another browser is setting up this site. Try again${installStatus.value?.retryAfterSeconds ? ` in about ${installStatus.value.retryAfterSeconds} seconds` : ' after the current session expires'}.`
+        : failureMessage(error)
+    }
+  } finally {
+    claimingSession.value = false
+  }
+}
+
+function clearServerErrors() {
+  for (const key of Object.keys(serverFieldErrors)) {
+    serverFieldErrors[key] = undefined
+  }
+}
+
+function failureDetails(error: FetchFailure): InstallFailureDetails {
+  return error.data?.data || error.data || {}
+}
+
+function failureMessage(error: FetchFailure) {
+  return error.statusMessage
+    || error.data?.statusMessage
+    || error.message
+    || 'Please check the setup details and try again.'
+}
+
+function applyServerIssues(issues: InstallIssue[]) {
+  let targetStep = activeStep.value
+  for (const issue of issues) {
+    if (!issue.path || !issue.message) continue
+    serverFieldErrors[issue.path] = issue.message
+    if (['email', 'name', 'password'].includes(issue.path)) targetStep = 2
+  }
+  goToStep(targetStep)
+}
+
+async function attemptAutomaticSignIn() {
+  signedIn.value = false
+  signInWarning.value = ''
+
+  try {
+    const result = await signIn('credentials', {
+      identifier: state.email,
+      password: state.password,
+      redirect: false,
+      callbackUrl: '/_desk'
+    })
+    if (result?.error) throw new Error(result.error)
+    signedIn.value = true
+  } catch {
+    signInWarning.value = 'Setup finished successfully, but automatic sign-in did not. Sign in with the administrator account you just created.'
+  }
+}
+
+async function recoverAmbiguousInstall() {
+  try {
+    await refreshInstallStatus()
+  } catch {
+    return false
+  }
+
+  if (!installStatus.value?.ready && installStatus.value?.phase !== 'complete') return false
+  completedInThisSession.value = true
+  await attemptAutomaticSignIn()
+  installationComplete.value = true
+  return true
 }
 
 async function completeSetup() {
-  if (loading.value) return
-  loading.value = true
+  if (submitting.value || !isReadinessReady.value) return
+  submitting.value = true
+  installError.value = null
+  signInWarning.value = ''
+  clearServerErrors()
+  await focusHeading(stateHeading)
+
   try {
     await $fetch('/api/system/install', {
       method: 'POST',
@@ -176,287 +371,499 @@ async function completeSetup() {
         email: state.email,
         name: state.name,
         password: state.password,
-        sampleData: state.sampleData,
-        auth: {
-          credentialsEnabled: state.auth.credentialsEnabled,
-          googleEnabled: state.auth.googleEnabled,
-          googleClientId: state.auth.googleClientId,
-          googleClientSecret: state.auth.googleClientSecret
-        }
+        sampleData: state.sampleData
       }
     })
 
-    if (state.auth.credentialsEnabled) {
-      const result = await signIn('credentials', {
-        identifier: state.email,
-        password: state.password,
-        redirect: false,
-        callbackUrl: '/_desk'
-      })
+    completedInThisSession.value = true
+    await refreshInstallStatus()
+    await attemptAutomaticSignIn()
+    installationComplete.value = true
+  } catch (rawError) {
+    const error = rawError as FetchFailure
+    if (await recoverAmbiguousInstall()) return
 
-      if (result?.error) {
-        throw new Error(result.error)
-      }
+    const details = failureDetails(error)
+    if (details.issues?.length) applyServerIssues(details.issues)
 
-      await fireConfetti()
-      await navigateTo('/_desk', { replace: true })
-      return
+    const statusCode = error.statusCode || error.status
+    const message = failureMessage(error)
+    const normalizedMessage = message.toLowerCase()
+    const invalidSetupSession = statusCode === 401 && normalizedMessage.includes('setup session')
+    const invalidAdminCredentials = statusCode === 401 && normalizedMessage.includes('admin credentials')
+
+    if (invalidSetupSession) {
+      goToStep(1)
+      await refreshInstallStatus()
+    } else if (invalidAdminCredentials) {
+      serverFieldErrors.email = 'Use the administrator email from the previous setup attempt.'
+      serverFieldErrors.password = 'The administrator email and password did not match.'
+      goToStep(2)
+    } else if (details.phase === 'binding_missing'
+      || details.phase === 'migration_required'
+      || details.phase === 'configuration_required') {
+      goToStep(1)
+      await refreshInstallStatus()
     }
 
-    await fireConfetti()
-    await navigateTo('/_desk/login', { replace: true })
-  } catch (e: any) {
-    toast.add({
-      title: 'Setup failed',
-      description: e?.statusMessage || 'Please check the inputs and try again.',
-      color: 'error'
-    })
+    installError.value = {
+      title: statusCode === 409
+        ? 'Setup is already running'
+        : invalidAdminCredentials
+          ? 'Administrator credentials did not match'
+          : 'Setup did not finish',
+      description: statusCode === 409
+        ? 'Another setup request is in progress. Wait a moment, check readiness, and then continue.'
+        : invalidAdminCredentials
+          ? 'This is a resumed setup. Enter the same administrator email and password used by the previous attempt.'
+          : message
+    }
   } finally {
-    loading.value = false
+    submitting.value = false
   }
 }
-
 </script>
 
 <template>
-  <UContainer class="py-12">
-    <div class="max-w-3xl mx-auto space-y-6">
-      <div class="space-y-2">
-        <h1 class="text-2xl font-semibold">
-          Halopress setup wizard
-        </h1>
-        <p class="text-sm text-muted">
-          Follow the steps below to prepare your database, create an admin account, and optionally
-          generate a starter Article schema with a Welcome guide.
-        </p>
-      </div>
+  <div class="min-h-screen bg-muted/30">
+    <header class="border-b border-default bg-default/90 backdrop-blur">
+      <UContainer class="flex min-h-16 items-center justify-between gap-4">
+        <div class="flex items-center gap-3" aria-label="Halopress">
+          <AppLogo class="h-6 w-auto shrink-0" />
+          <span class="font-semibold text-highlighted">Halopress</span>
+        </div>
+        <UColorModeButton class="min-h-11 min-w-11" />
+      </UContainer>
+    </header>
 
-      <UCard>
-        <UStepper v-model="activeStep" :items="steps" disabled class="w-full">
-          <template #admin>
-            <div class="space-y-6">
-              <div class="space-y-2">
-                <h2 class="text-lg font-semibold">
-                  Step 1: Create your admin account
+    <main>
+      <UContainer class="py-8 sm:py-12">
+        <div class="mx-auto max-w-4xl space-y-6">
+          <div class="space-y-2">
+            <p class="text-sm font-medium text-primary">
+              First-run setup
+            </p>
+            <h1 class="text-2xl font-semibold text-highlighted sm:text-3xl">
+              Welcome to Halopress
+            </h1>
+            <p class="max-w-2xl text-sm text-muted sm:text-base">
+              Create your account, choose helpful starter content, and start publishing.
+              Halopress will guide you through each step.
+            </p>
+          </div>
+
+          <UCard v-if="submitting || showExternalInstalling" variant="subtle">
+            <div class="space-y-6 py-4 sm:px-4 sm:py-8">
+              <div class="mx-auto flex size-14 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <UIcon name="i-lucide-loader-circle" class="size-7 animate-spin motion-reduce:animate-none" />
+              </div>
+              <div class="mx-auto max-w-xl space-y-2 text-center">
+                <h2
+                  ref="stateHeading"
+                  tabindex="-1"
+                  class="scroll-mt-24 text-xl font-semibold text-highlighted outline-none"
+                >
+                  {{ submitting
+                    ? 'Preparing your Halopress'
+                    : setupSessionOwned
+                      ? 'Your setup is still active'
+                      : 'Setup is open in another browser' }}
                 </h2>
-                <p class="text-sm text-muted">
-                  This account will own the initial system setup and gives you access to the desk. Use
-                  a real email address so you can recover access later.
+                <p class="text-sm text-muted" role="status" aria-live="polite">
+                  {{ submitting
+                    ? 'We are creating your account and getting your content space ready. Keep this tab open.'
+                    : setupSessionOwned
+                      ? 'Check again in a moment to continue.'
+                      : `Another browser is setting up this site. Check again${installStatus?.retryAfterSeconds ? ` in about ${installStatus.retryAfterSeconds} seconds` : ' after its place is released'}.` }}
+                </p>
+              </div>
+              <UProgress animation="swing" size="sm" aria-label="Setup in progress" />
+              <div v-if="showExternalInstalling" class="flex justify-center">
+                <UButton
+                  color="neutral"
+                  variant="outline"
+                  icon="i-lucide-refresh-cw"
+                  class="min-h-11"
+                  :loading="refreshing"
+                  @click="refreshReadiness"
+                >
+                  Check again
+                </UButton>
+              </div>
+            </div>
+          </UCard>
+
+          <UCard v-else-if="showSuccess" variant="subtle">
+            <div class="space-y-6 py-4 sm:px-4 sm:py-8">
+              <div class="mx-auto flex size-16 items-center justify-center rounded-full bg-success/10 text-success">
+                <UIcon name="i-lucide-circle-check-big" class="size-9" />
+              </div>
+              <div class="mx-auto max-w-xl space-y-2 text-center">
+                <h2
+                  ref="stateHeading"
+                  tabindex="-1"
+                  class="scroll-mt-24 text-2xl font-semibold text-highlighted outline-none"
+                >
+                  Halopress is ready
+                </h2>
+                <p class="text-sm text-muted sm:text-base">
+                  Your account and content space are ready. Choose where you want to begin.
                 </p>
               </div>
 
-              <UForm ref="adminForm" :state="state" :validate="validate" class="space-y-4" @submit.prevent="advanceFromAdmin">
-                <UFormField
-                  label="Admin email"
-                  name="email"
-                  required
-                  help="Used for sign-in and password resets. We recommend an inbox you control."
+              <UAlert
+                v-if="signInWarning"
+                color="warning"
+                variant="subtle"
+                icon="i-lucide-log-in"
+                title="Sign in to continue"
+                :description="signInWarning"
+              />
+
+              <div class="mx-auto grid max-w-xl gap-3 sm:grid-cols-2">
+                <div class="rounded-lg border border-default bg-default px-4 py-3">
+                  <p class="text-sm font-medium text-highlighted">Your account</p>
+                  <p class="mt-1 text-sm text-muted">{{ state.email || `${installStatus?.userCount || 1} account ready` }}</p>
+                </div>
+                <div class="rounded-lg border border-default bg-default px-4 py-3">
+                  <p class="text-sm font-medium text-highlighted">Content</p>
+                  <p class="mt-1 text-sm text-muted">
+                    {{ completedInThisSession && state.sampleData
+                      ? 'Article schema and Welcome guide created'
+                      : `${installStatus?.schemaCount || 0} schemas ready` }}
+                  </p>
+                </div>
+              </div>
+
+              <div class="flex flex-col justify-center gap-3 sm:flex-row">
+                <UButton
+                  :to="hasDeskSession ? '/_desk' : '/_desk/login'"
+                  icon="i-lucide-layout-dashboard"
+                  class="min-h-11 justify-center"
                 >
-                  <UInput v-model="state.email" class="w-full" placeholder="admin@local" autocomplete="email" />
-                </UFormField>
+                  {{ hasDeskSession ? 'Open Desk' : 'Sign in to Desk' }}
+                </UButton>
+                <UButton
+                  to="/"
+                  color="neutral"
+                  variant="outline"
+                  icon="i-lucide-external-link"
+                  class="min-h-11 justify-center"
+                >
+                  View site
+                </UButton>
+                <UButton
+                  v-if="hasDeskSession && completedInThisSession && state.sampleData"
+                  to="/_desk/content/article/halopress-welcome-guide"
+                  color="neutral"
+                  variant="ghost"
+                  icon="i-lucide-book-open"
+                  class="min-h-11 justify-center"
+                >
+                  Open Welcome guide
+                </UButton>
+              </div>
+            </div>
+          </UCard>
 
-                <div class="flex flex-col gap-4 md:flex-row">
-                  <UFormField
-                    label="Admin password"
-                    name="password"
-                    required
-                    help="Choose a strong password. You will use this for the first login."
-                    class="flex-1"
-                  >
-                    <UInput v-model="state.password" class="w-full" type="password" autocomplete="new-password" />
-                  </UFormField>
+          <UCard v-else variant="subtle">
+            <div class="hidden md:block" aria-hidden="true">
+              <UStepper :model-value="activeStep - 1" :items="steps" disabled aria-hidden="true" class="w-full" />
+            </div>
 
-                  <UFormField
-                    label="Confirm password"
-                    name="passwordConfirm"
-                    required
-                    help="Type the same password again to confirm."
-                    class="flex-1"
+            <p class="sr-only" role="status" aria-live="polite">
+              Step {{ activeStep }} of {{ steps.length }}: {{ currentStep.title }}
+            </p>
+
+            <div class="space-y-3 md:hidden">
+              <div class="flex items-center justify-between gap-4 text-sm">
+                <span class="font-medium text-highlighted">Step {{ activeStep }} of {{ steps.length }}</span>
+                <span class="truncate text-muted">{{ currentStep.title }}</span>
+              </div>
+              <UProgress
+                :model-value="activeStep"
+                :max="steps.length"
+                size="sm"
+                aria-label="Setup progress"
+              />
+            </div>
+
+            <div class="mt-6 border-t border-default pt-6 sm:mt-8 sm:pt-8">
+              <section v-if="activeStep === 1" class="space-y-6" aria-labelledby="readiness-heading">
+                <div class="space-y-2">
+                  <h2
+                    id="readiness-heading"
+                    ref="stepHeading"
+                    tabindex="-1"
+                    class="scroll-mt-24 text-xl font-semibold text-highlighted outline-none"
                   >
-                    <UInput v-model="state.passwordConfirm" class="w-full" type="password" autocomplete="new-password" />
-                  </UFormField>
+                    Make sure Halopress is ready
+                  </h2>
+                  <p class="text-sm text-muted">
+                    We will make sure everything is ready before you create your account.
+                  </p>
                 </div>
 
-                <UFormField
-                  label="Admin name"
-                  name="name"
-                  help="Shown in author bylines and audit trails. You can update it later."
-                >
-                  <UInput v-model="state.name" class="w-full" placeholder="Admin" autocomplete="name" />
-                </UFormField>
+                <UAlert
+                  :color="readinessMessage.color"
+                  variant="subtle"
+                  :icon="readinessMessage.icon"
+                  :title="readinessMessage.title"
+                  :description="readinessMessage.description"
+                />
 
-                <div class="flex items-center justify-end">
-                  <UButton type="submit" trailing-icon="i-lucide-arrow-right" :loading="loading">
-                    Next
+                <details
+                  v-if="phase === 'binding_missing' || phase === 'migration_required' || phase === 'configuration_required'"
+                  class="rounded-lg border border-default px-4 py-3"
+                >
+                  <summary class="cursor-pointer text-sm font-medium text-highlighted">Troubleshooting details</summary>
+                  <div class="mt-3 space-y-3 text-xs text-muted sm:text-sm">
+                    <template v-if="phase === 'binding_missing'">
+                      <p>{{ missingBindingsDescription }}</p>
+                      <p>For one-click deployments, redeploy the latest template. From a cloned repository, run <code>pnpm deploy</code> after checking the Cloudflare bindings.</p>
+                    </template>
+                    <template v-else-if="phase === 'migration_required'">
+                      <p>The D1 database migrations are incomplete. Run this from a cloned repository:</p>
+                      <code class="block overflow-x-auto rounded-lg bg-elevated px-4 py-3 text-xs text-highlighted sm:text-sm">{{ remediationCommand }}</code>
+                      <p v-if="installStatus?.missingTables?.length" class="break-words">
+                        Missing tables: {{ installStatus.missingTables.join(', ') }}
+                      </p>
+                      <p>For a one-click deployment, redeploy the latest template so the deployment process can apply migrations.</p>
+                    </template>
+                    <template v-else>
+                      <p>The deployment secret was not provisioned. From a cloned repository, redeploy with this command to repair it:</p>
+                      <code class="block overflow-x-auto rounded-lg bg-elevated px-4 py-3 text-xs text-highlighted sm:text-sm">pnpm deploy</code>
+                      <p>For a one-click deployment, redeploy the latest template.</p>
+                    </template>
+                  </div>
+                </details>
+
+                <UAlert
+                  v-if="installStatus?.hasLastError && phase === 'resume_required'"
+                  color="warning"
+                  variant="soft"
+                  icon="i-lucide-info"
+                  title="Use the same account details"
+                  description="Halopress can safely finish the previous attempt without creating a duplicate account."
+                />
+
+                <UAlert
+                  v-if="reservationError"
+                  color="warning"
+                  variant="subtle"
+                  icon="i-lucide-lock-keyhole"
+                  :title="reservationError.title"
+                  :description="reservationError.description"
+                />
+
+                <div class="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <UButton
+                    type="button"
+                    color="neutral"
+                    variant="outline"
+                    icon="i-lucide-refresh-cw"
+                    class="min-h-11 justify-center"
+                    :loading="isCheckingReadiness"
+                    @click="refreshReadiness"
+                  >
+                    Check again
+                  </UButton>
+                  <UButton
+                    v-if="canEnterSetup"
+                    type="button"
+                    trailing-icon="i-lucide-arrow-right"
+                    class="min-h-11 justify-center"
+                    :loading="claimingSession"
+                    @click="reserveSetupSession"
+                  >
+                    {{ isReadinessReady ? 'Continue setup' : 'Start setup' }}
                   </UButton>
                 </div>
-              </UForm>
-            </div>
-          </template>
+              </section>
 
-          <template #auth>
-            <div class="space-y-6">
-              <div class="space-y-2">
-                <h2 class="text-lg font-semibold">
-                  Step 2: Choose sign-in methods
-                </h2>
-                <p class="text-sm text-muted">
-                  Select at least one authentication method for the desk. You can adjust this later in settings.
-                </p>
-              </div>
-
-              <UForm ref="authForm" :state="state" :validate="validateAuth" class="space-y-4" @submit.prevent="advanceFromAuth">
-                <UFormField
-                  label="Sign-in methods"
-                  name="authMethods"
-                  help="Enable at least one method so admins can access the desk."
-                >
-                  <div class="space-y-3">
-                    <div class="flex items-center justify-between gap-6 rounded-lg border border-muted px-4 py-3">
-                      <div>
-                        <p class="text-sm font-medium text-foreground">
-                          Email + password
-                        </p>
-                        <p class="text-xs text-muted">
-                          Use the admin credentials you set in step one.
-                        </p>
-                      </div>
-                      <USwitch v-model="state.auth.credentialsEnabled" />
-                    </div>
-
-                    <div class="flex items-center justify-between gap-6 rounded-lg border border-muted px-4 py-3">
-                      <div>
-                        <p class="text-sm font-medium text-foreground">
-                          Google OAuth
-                        </p>
-                        <p class="text-xs text-muted">
-                          Allow admins to sign in with Google accounts.
-                        </p>
-                      </div>
-                      <USwitch v-model="state.auth.googleEnabled" />
-                    </div>
-                  </div>
-                </UFormField>
-
-                <div v-if="state.auth.googleEnabled" class="space-y-4">
-                  <UFormField
-                    label="Google client ID"
-                    name="googleClientId"
-                    help="Leave empty to use NUXT_OAUTH_GOOGLE_CLIENT_ID from the environment."
+              <section v-else-if="activeStep === 2" class="space-y-6" aria-labelledby="administrator-heading">
+                <div class="space-y-2">
+                  <h2
+                    id="administrator-heading"
+                    ref="stepHeading"
+                    tabindex="-1"
+                    class="scroll-mt-24 text-xl font-semibold text-highlighted outline-none"
                   >
-                    <UInput v-model="state.auth.googleClientId" class="w-full" placeholder="Google client ID" />
-                  </UFormField>
-
-                  <UFormField
-                    label="Google client secret"
-                    name="googleClientSecret"
-                    help="Leave empty to use NUXT_OAUTH_GOOGLE_CLIENT_SECRET from the environment."
-                  >
-                    <UInput v-model="state.auth.googleClientSecret" class="w-full" type="password" placeholder="Google client secret" />
-                  </UFormField>
-
-                  <div v-if="!hasSecret" class="rounded-lg border border-warning/40 bg-warning/10 px-4 py-3">
-                    <p class="text-sm font-medium text-warning">
-                      NUXT_SECRET_KEY or NUXT_OAUTH_GOOGLE_ENCRYPTION_KEY is required to encrypt OAuth secrets.
-                    </p>
-                    <p class="text-xs text-warning/80">
-                      Set NUXT_SECRET_KEY or NUXT_OAUTH_GOOGLE_ENCRYPTION_KEY in your environment before enabling Google OAuth.
-                    </p>
-                  </div>
-
-                  <div v-if="googleEnvReady" class="rounded-lg border border-muted bg-default px-4 py-3">
-                    <p class="text-xs text-muted">
-                      Environment variables detected for Google OAuth. Leave the fields empty to use them.
-                    </p>
-                  </div>
+                    Create your account
+                  </h2>
+                  <p class="text-sm text-muted">
+                    Use an inbox you control. As the first account, you can manage content, people, and site settings.
+                  </p>
                 </div>
 
-                <div class="flex items-center justify-between">
-                  <UButton leading-icon="i-lucide-arrow-left" variant="ghost" color="neutral" @click="goBack">
+                <UForm
+                  :state="state"
+                  :schema="administratorSchema"
+                  class="space-y-5"
+                  @submit="goToStep(3)"
+                  @error="onFormError"
+                >
+                  <UFormField
+                    label="Email address"
+                    name="email"
+                    required
+                    help="Used to sign in and identify changes in the Desk."
+                    :error="serverFieldErrors.email"
+                  >
+                    <UInput
+                      v-model="state.email"
+                      type="email"
+                      autocomplete="email"
+                      inputmode="email"
+                      class="w-full"
+                      placeholder="admin@example.com"
+                    />
+                  </UFormField>
+
+                  <UFormField
+                    label="Name"
+                    name="name"
+                    help="Optional. Shown in author bylines and audit trails."
+                    :error="serverFieldErrors.name"
+                  >
+                    <UInput v-model="state.name" autocomplete="name" class="w-full" placeholder="Your name" />
+                  </UFormField>
+
+                  <div class="grid gap-5 sm:grid-cols-2">
+                    <UFormField
+                      label="Password"
+                      name="password"
+                      required
+                      help="Use at least 12 characters."
+                      :error="serverFieldErrors.password"
+                    >
+                      <UInput v-model="state.password" type="password" autocomplete="new-password" class="w-full" />
+                    </UFormField>
+                    <UFormField
+                      label="Confirm password"
+                      name="passwordConfirm"
+                      required
+                      help="Type the same password again."
+                    >
+                      <UInput v-model="state.passwordConfirm" type="password" autocomplete="new-password" class="w-full" />
+                    </UFormField>
+                  </div>
+
+                  <div class="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <UButton type="button" color="neutral" variant="ghost" icon="i-lucide-arrow-left" class="min-h-11 justify-center" @click="goToStep(1)">
+                      Back
+                    </UButton>
+                    <UButton type="submit" trailing-icon="i-lucide-arrow-right" class="min-h-11 justify-center">
+                      Continue
+                    </UButton>
+                  </div>
+                </UForm>
+              </section>
+
+              <section v-else-if="activeStep === 3" class="space-y-6" aria-labelledby="starter-heading">
+                <div class="space-y-2">
+                  <h2
+                    id="starter-heading"
+                    ref="stepHeading"
+                    tabindex="-1"
+                    class="scroll-mt-24 text-xl font-semibold text-highlighted outline-none"
+                  >
+                    Add starter content
+                  </h2>
+                  <p class="text-sm text-muted">
+                    The starter content makes it easier to learn the Desk. You can edit or delete it later.
+                  </p>
+                </div>
+
+                <USwitch
+                  id="sample-data"
+                  v-model="state.sampleData"
+                  name="sampleData"
+                  size="lg"
+                  label="Create an Article type and Welcome guide"
+                  description="Adds an editable content type and one example guide. Recommended if this is your first time using Halopress."
+                  class="min-h-14 w-full cursor-pointer rounded-lg p-4 ring-1 ring-default"
+                  :ui="{
+                    base: 'after:absolute after:inset-0',
+                    container: 'order-last',
+                    wrapper: 'order-first ms-0 me-auto',
+                    label: 'cursor-pointer',
+                    description: 'cursor-pointer'
+                  }"
+                />
+
+                <div class="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <UButton type="button" color="neutral" variant="ghost" icon="i-lucide-arrow-left" class="min-h-11 justify-center" @click="goToStep(2)">
                     Back
                   </UButton>
-                  <UButton type="submit" trailing-icon="i-lucide-arrow-right" :loading="loading" :disabled="state.auth.googleEnabled && !hasSecret">
-                    Next
+                  <UButton type="button" trailing-icon="i-lucide-arrow-right" class="min-h-11 justify-center" @click="goToStep(4)">
+                    Review setup
                   </UButton>
                 </div>
-              </UForm>
-            </div>
-          </template>
+              </section>
 
-          <template #sample>
-            <div class="space-y-6">
-              <div class="space-y-2">
-                <h2 class="text-lg font-semibold">
-                  Step 3: Sample schema and data
-                </h2>
-                <p class="text-sm text-muted">
-                  You can start with a ready-to-edit Article schema and a Welcome guide article, or
-                  skip this step and build your own schema later in the desk.
-                </p>
-              </div>
-
-              <UFormField
-                label="Starter content"
-                name="sampleData"
-                help="Creates an Article schema, publishes a Welcome guide, and sets anonymous read access."
-              >
-                <div class="flex items-center justify-between gap-6 rounded-lg border border-muted px-4 py-3">
-                  <div>
-                    <p class="text-sm font-medium text-foreground">
-                      Create a sample schema
-                    </p>
-                    <p class="text-xs text-muted">
-                      Recommended for first-time setups. You can delete or modify it anytime.
-                    </p>
-                  </div>
-                  <USwitch v-model="state.sampleData" />
+              <section v-else class="space-y-6" aria-labelledby="review-heading">
+                <div class="space-y-2">
+                  <h2
+                    id="review-heading"
+                    ref="stepHeading"
+                    tabindex="-1"
+                    class="scroll-mt-24 text-xl font-semibold text-highlighted outline-none"
+                  >
+                    Review and start
+                  </h2>
+                  <p class="text-sm text-muted">
+                    Halopress will create your account, prepare its permissions, and add the starter content you selected.
+                  </p>
                 </div>
-              </UFormField>
 
-              <div class="flex items-center justify-between">
-                <UButton leading-icon="i-lucide-arrow-left" variant="ghost" color="neutral" @click="goBack">
-                  Back
-                </UButton>
-                <UButton trailing-icon="i-lucide-arrow-right" :loading="loading" @click="goNext">
-                  Next
-                </UButton>
-              </div>
-            </div>
-          </template>
+                <UAlert
+                  v-if="installError"
+                  color="error"
+                  variant="subtle"
+                  icon="i-lucide-triangle-alert"
+                  :title="installError.title"
+                  :description="installError.description"
+                />
 
-          <template #review>
-            <div class="space-y-6">
-              <div class="space-y-2">
-                <h2 class="text-lg font-semibold">
-                  Step 4: Review and complete
-                </h2>
-                <p class="text-sm text-muted">
-                  Confirm the setup choices below. When you complete setup we will run migrations,
-                  create the admin account, insert the default roles, and optionally generate the sample
-                  schema and Welcome guide.
-                </p>
-              </div>
-
-              <div class="rounded-lg border border-muted bg-default px-4 py-3">
-                <div v-for="item in summaryItems" :key="item.label" class="flex items-center justify-between py-1 text-sm">
-                  <span class="text-muted">{{ item.label }}</span>
-                  <span class="font-medium text-foreground">{{ item.value }}</span>
+                <div class="overflow-hidden rounded-lg border border-default bg-default">
+                  <dl class="divide-y divide-default">
+                    <div v-for="item in summaryItems" :key="item.label" class="grid gap-1 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] sm:gap-6">
+                      <dt class="text-sm text-muted">{{ item.label }}</dt>
+                      <dd class="break-words text-sm font-medium text-highlighted sm:text-right">{{ item.value }}</dd>
+                    </div>
+                  </dl>
                 </div>
-              </div>
 
-              <div class="flex items-center justify-between">
-                <UButton leading-icon="i-lucide-arrow-left" variant="ghost" color="neutral" @click="goBack">
-                  Back
-                </UButton>
-                <UButton color="primary" :loading="loading" @click="completeSetup">
-                  Complete setup
-                </UButton>
-              </div>
+                <div class="flex flex-wrap gap-2" aria-label="Edit setup choices">
+                  <UButton type="button" color="neutral" variant="outline" class="min-h-11" @click="goToStep(2)">Edit account</UButton>
+                  <UButton type="button" color="neutral" variant="outline" class="min-h-11" @click="goToStep(3)">Edit starter content</UButton>
+                </div>
+
+                <div class="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <UButton type="button" color="neutral" variant="ghost" icon="i-lucide-arrow-left" class="min-h-11 justify-center" @click="goToStep(3)">
+                    Back
+                  </UButton>
+                  <UButton
+                    type="button"
+                    icon="i-lucide-rocket"
+                    class="min-h-11 justify-center"
+                    :loading="submitting"
+                    :disabled="!isReadinessReady"
+                    @click="completeSetup"
+                  >
+                    Start Halopress
+                  </UButton>
+                </div>
+              </section>
             </div>
-          </template>
-        </UStepper>
-      </UCard>
-    </div>
-  </UContainer>
+          </UCard>
 
+          <p class="text-center text-xs text-muted">
+            This browser holds your place while you work, so you can safely continue after an interruption.
+          </p>
+        </div>
+      </UContainer>
+    </main>
+  </div>
 </template>
