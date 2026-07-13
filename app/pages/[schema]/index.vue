@@ -5,7 +5,10 @@ const route = useRoute()
 const router = useRouter()
 const schemaKey = computed(() => String(route.params.schema))
 
-const { data: schema } = await useFetch<any>(() => `/api/schema/${schemaKey.value}/active`)
+const { data: schema, error: schemaError } = await useFetch<any>(() => `/api/schema/${schemaKey.value}/active`)
+if (schemaError.value || !schema.value) {
+  throw createError({ statusCode: 404, statusMessage: 'Not Found' })
+}
 const pageSize = computed(() => {
   const raw = Number(route.query.pageSize ?? 20)
   if (!Number.isFinite(raw)) return 20
@@ -14,12 +17,15 @@ const pageSize = computed(() => {
 const order = computed(() => (route.query.order === 'asc' ? 'asc' : 'desc'))
 const cursor = computed(() => (typeof route.query.cursor === 'string' && route.query.cursor.length ? route.query.cursor : null))
 
-const { items, nextCursor } = await useHalopressQuery(schemaKey, {
+const { items, nextCursor, error: contentError } = await useHalopressQuery(schemaKey, {
   status: 'published',
   pageSize,
   order,
   cursor
 })
+if (contentError.value) {
+  throw createError({ statusCode: 404, statusMessage: 'Not Found' })
+}
 const itemLinks = computed(() =>
   items.value.map((item: any) => ({
     label: item.title || item.id,
