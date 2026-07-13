@@ -9,17 +9,18 @@ import { authSessionFromToken } from '../server/utils/auth-session'
 const secret = '1bccd7d3097bff829c970eb6a2c4a9232a3d65bfe74932a0c7317b1e9fef471e'
 
 describe('protected API session verification', () => {
-  it('does not fetch the auth session from the same Worker during SSR', async () => {
-    const source = await readFile(
-      resolve(process.cwd(), 'app/middleware/desk-auth.global.ts'),
-      'utf8'
-    )
-    const serverGuard = source.indexOf('if (import.meta.server) return')
-    const authClient = source.indexOf('const { status, data, getSession } = useAuth()')
+  it('keeps session fetches in the browser instead of calling the same Worker during SSR', async () => {
+    const [middlewareSource, configSource] = await Promise.all([
+      readFile(resolve(process.cwd(), 'app/middleware/desk-auth.global.ts'), 'utf8'),
+      readFile(resolve(process.cwd(), 'nuxt.config.ts'), 'utf8')
+    ])
+    const serverGuard = middlewareSource.indexOf('if (import.meta.server) return')
+    const authClient = middlewareSource.indexOf('const { status, data, getSession } = useAuth()')
 
     expect(serverGuard).toBeGreaterThan(-1)
     expect(authClient).toBeGreaterThan(-1)
     expect(serverGuard).toBeLessThan(authClient)
+    expect(configSource).toContain('disableServerSideAuth: true')
   })
 
   it('rebuilds the admin session claims used by requireAdmin', () => {
