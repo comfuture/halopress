@@ -62,6 +62,20 @@ describe('richText and page profiles', () => {
     expect(first.readOnlyExtensions[0]).not.toBe(second.readOnlyExtensions[0])
   })
 
+  it('does not instantiate edit-only image upload node views for read-only editors', () => {
+    const imageUploadFactory = vi.fn(() => Extension.create({ name: 'imageUpload' }))
+
+    const profile = createRichTextProfile({}, {
+      editable: false,
+      imageUploadFactory
+    })
+
+    expect(imageUploadFactory).not.toHaveBeenCalled()
+    const imageUpload = profile.extensions.find(extension => extension.name === 'imageUpload')
+    expect(imageUpload?.config.addNodeView).toBeUndefined()
+    expect(imageUpload?.config.addCommands).toBeUndefined()
+  })
+
   it('composes page capabilities from rich text plus PageBlock', () => {
     const richText = createRichTextProfile()
     const page = createPageProfile()
@@ -126,12 +140,14 @@ describe('richText and page profiles', () => {
             { type: 'text', text: 'Existing ' },
             { type: 'text', marks: [{ type: 'bold' }], text: 'JSON' }
           ]
-        }
+        },
+        { type: 'imageUpload' }
       ]
     }
 
     expect(generateHTML(content, createRichTextProfile().readOnlyExtensions)).toContain('Compatible heading')
     expect(generateHTML(content, createRichTextProfile().readOnlyExtensions)).toContain('<strong>JSON</strong>')
+    expect(generateHTML(content, createRichTextProfile().readOnlyExtensions)).toContain('<div data-type="image-upload"></div>')
     expect(content).toEqual(JSON.parse(JSON.stringify(content)))
   })
 
