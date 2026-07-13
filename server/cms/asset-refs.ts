@@ -17,7 +17,13 @@ export function extractDocumentAssetIds(value: unknown) {
   const visit = (candidate: unknown) => {
     if (typeof candidate === 'string') {
       for (const match of candidate.matchAll(assetPathPattern)) {
-        if (match[1]) ids.add(decodeURIComponent(match[1]))
+        if (match[1]) {
+          try {
+            ids.add(decodeURIComponent(match[1]))
+          } catch {
+            ids.add(match[1])
+          }
+        }
       }
       return
     }

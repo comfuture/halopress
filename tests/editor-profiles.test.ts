@@ -1,6 +1,6 @@
 import { Extension } from '@tiptap/core'
 import { generateHTML } from '@tiptap/html/server'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
   createPageProfile,
@@ -11,6 +11,10 @@ import {
 function factory(key: string) {
   return { key, create: () => ({ key }) }
 }
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 describe('editor profile contribution merging', () => {
   it('adds, removes, replaces, and orders named contributions deterministically', () => {
@@ -129,5 +133,27 @@ describe('richText and page profiles', () => {
     expect(generateHTML(content, createRichTextProfile().readOnlyExtensions)).toContain('Compatible heading')
     expect(generateHTML(content, createRichTextProfile().readOnlyExtensions)).toContain('<strong>JSON</strong>')
     expect(content).toEqual(JSON.parse(JSON.stringify(content)))
+  })
+
+  it('uses clipboard actions only when the browser exposes writeText', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    const editor = {
+      state: {
+        doc: {
+          nodeAt: vi.fn(() => ({ textContent: 'Selected text' }))
+        }
+      }
+    }
+    const profile = createRichTextProfile()
+    const clipboardGroup = profile.quickMenuGroups[1]!
+    const action = clipboardGroup({ editor, node: {}, pos: 3 })[0]!
+      .find(item => item.label === 'Copy to clipboard') as { onSelect: () => Promise<void> }
+
+    vi.stubGlobal('navigator', {})
+    await expect(action.onSelect()).resolves.toBeUndefined()
+
+    vi.stubGlobal('navigator', { clipboard: { writeText } })
+    await expect(action.onSelect()).resolves.toBeUndefined()
+    expect(writeText).toHaveBeenCalledWith('Selected text')
   })
 })

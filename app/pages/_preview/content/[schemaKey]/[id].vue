@@ -22,8 +22,9 @@ if (import.meta.server) {
 const route = useRoute()
 const schemaKey = computed(() => String(route.params.schemaKey))
 const id = computed(() => String(route.params.id))
-const { data: schema } = await useFetch<any>(() => `/api/schema/${schemaKey.value}/active`)
-const { data: doc } = await useFetch<any>(() => `/api/preview/content/${schemaKey.value}/${id.value}`)
+const schemaRequest = useFetch<any>(() => `/api/schema/${schemaKey.value}/active`)
+const documentRequest = useFetch<any>(() => `/api/preview/content/${schemaKey.value}/${id.value}`)
+const [{ data: schema }, { data: doc }] = await Promise.all([schemaRequest, documentRequest])
 const fields = computed(() => (schema.value?.registry?.fields ?? []).filter((field: any) => field?.key !== 'title'))
 
 function asEditorContent(value: unknown): Content | undefined {
