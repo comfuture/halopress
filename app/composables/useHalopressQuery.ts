@@ -18,6 +18,7 @@ export type HalopressQueryOptions = {
   pageSize?: MaybeRef<number>
   order?: MaybeRef<'asc' | 'desc'>
   status?: MaybeRef<string | null>
+  respectStandalonePageClaims?: MaybeRef<boolean>
 }
 
 type HalopressQueryResponse = {
@@ -34,7 +35,8 @@ export async function useHalopressQuery(schemaKey: MaybeRef<string>, options: Ha
     cursor: unref(options.cursor) ?? undefined,
     pageSize: unref(options.pageSize) ?? undefined,
     order: unref(options.order) ?? undefined,
-    status: unref(options.status) ?? undefined
+    status: unref(options.status) ?? undefined,
+    routeScope: unref(options.respectStandalonePageClaims) ? 'public-page' : undefined
   }))
 
   const { data, refresh, pending, error } = await useFetch<HalopressQueryResponse>(

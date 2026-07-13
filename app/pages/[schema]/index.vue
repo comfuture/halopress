@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ButtonProps } from '@nuxt/ui'
+import { PUBLIC_PAGE_ROUTE_PREFIX } from '~~/shared/public-routing'
 
 const route = useRoute()
 const router = useRouter()
@@ -21,7 +22,8 @@ const { items, nextCursor, error: contentError } = await useHalopressQuery(schem
   status: 'published',
   pageSize,
   order,
-  cursor
+  cursor,
+  respectStandalonePageClaims: computed(() => schemaKey.value === PUBLIC_PAGE_ROUTE_PREFIX)
 })
 if (contentError.value) {
   throw createError({ statusCode: 404, statusMessage: 'Not Found' })
