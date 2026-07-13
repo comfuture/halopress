@@ -68,4 +68,15 @@ describe('document asset retention', () => {
       encoded: '/assets/cover%20image/raw'
     })).toEqual(['%E0%A4%A', 'bad%ZZ', 'cover image'])
   })
+
+  it('tracks only trusted-origin absolute asset URLs', () => {
+    expect(extractDocumentAssetIds({
+      html: '<img src="https://site.example/assets/hero%20image/raw?width=1200#preview">',
+      markdown: '[file](https://site.example:443/assets/document-2/raw)',
+      external: 'https://cdn.example/assets/external/raw',
+      sibling: 'https://sub.site.example/assets/sibling/raw',
+      downgrade: 'http://site.example/assets/insecure/raw',
+      protocolRelative: '//site.example/assets/ambiguous/raw'
+    }, { trustedOrigin: 'https://SITE.example' })).toEqual(['document-2', 'hero image'])
+  })
 })

@@ -6,6 +6,7 @@ import { documentAssetRef, page as pageTable, publicationRevision } from '../db/
 import { executeDbStatement, withDbTransaction } from '../db/transaction'
 import { conflict } from '../utils/http'
 import { newId } from '../utils/ids'
+import { getTrustedRequestOrigin } from '../utils/request-origin'
 import { syncDocumentAssetRefs } from './asset-refs'
 import { getPublicationRevision, publicationMetadata, publicationRevisionValues } from './publication'
 
@@ -30,6 +31,7 @@ export async function savePageWorking(args: {
       documentId: args.existing.id,
       projectionScope: 'working',
       content: args.content,
+      trustedOrigin: getTrustedRequestOrigin(args.event),
       statements
     })
   })
@@ -72,6 +74,7 @@ export async function publishPageWorking(args: {
         documentId: args.existing.id,
         projectionScope,
         content: args.content,
+        trustedOrigin: getTrustedRequestOrigin(args.event),
         statements
       })
     }
@@ -103,6 +106,7 @@ export async function discardPageWorking(args: { event: H3Event, db: Db, existin
       documentId: args.existing.id,
       projectionScope: 'working',
       content,
+      trustedOrigin: getTrustedRequestOrigin(args.event),
       statements
     })
   })

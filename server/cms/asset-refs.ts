@@ -9,19 +9,42 @@ export type DocumentKind = 'content' | 'page'
 export type ProjectionScope = 'working' | 'published'
 
 const assetPathPattern = /(?:^|["'(\s])\/assets\/([^/?#"')\s]+)\/raw(?:[?#][^\s"')]*)?/g
+const absoluteUrlPattern = /https?:\/\/[^\s"'()<>]+/gi
 
-export function extractDocumentAssetIds(value: unknown) {
+function addDecodedAssetId(ids: Set<string>, encodedId: string) {
+  try {
+    ids.add(decodeURIComponent(encodedId))
+  } catch {
+    ids.add(encodedId)
+  }
+}
+
+export function extractDocumentAssetIds(value: unknown, options: { trustedOrigin?: string } = {}) {
   const ids = new Set<string>()
   const seen = new WeakSet<object>()
+  let trustedOrigin: string | null = null
+  if (options.trustedOrigin) {
+    try {
+      trustedOrigin = new URL(options.trustedOrigin).origin
+    } catch {
+      trustedOrigin = null
+    }
+  }
 
   const visit = (candidate: unknown) => {
     if (typeof candidate === 'string') {
       for (const match of candidate.matchAll(assetPathPattern)) {
-        if (match[1]) {
+        if (match[1]) addDecodedAssetId(ids, match[1])
+      }
+      if (trustedOrigin) {
+        for (const match of candidate.matchAll(absoluteUrlPattern)) {
           try {
-            ids.add(decodeURIComponent(match[1]))
+            const url = new URL(match[0])
+            if (url.origin !== trustedOrigin) continue
+            const pathMatch = url.pathname.match(/^\/assets\/([^/]+)\/raw$/)
+            if (pathMatch?.[1]) addDecodedAssetId(ids, pathMatch[1])
           } catch {
-            ids.add(match[1])
+            // Ignore malformed absolute URLs and keep scanning the document.
           }
         }
       }
@@ -48,6 +71,7 @@ export async function syncDocumentAssetRefs(args: {
   projectionScope: ProjectionScope
   content: unknown
   additionalAssetIds?: string[]
+  trustedOrigin?: string
   statements?: DbStatement[]
 }) {
   await executeDbStatement(args.db
@@ -59,7 +83,7 @@ export async function syncDocumentAssetRefs(args: {
     )), args.statements)
 
   const assetIds = new Set([
-    ...extractDocumentAssetIds(args.content),
+    ...extractDocumentAssetIds(args.content, { trustedOrigin: args.trustedOrigin }),
     ...(args.additionalAssetIds ?? []).filter(Boolean)
   ])
   for (const assetId of [...assetIds].sort()) {

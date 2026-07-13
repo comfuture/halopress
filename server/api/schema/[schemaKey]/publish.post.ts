@@ -13,6 +13,7 @@ import { badRequest, notFound } from '../../../utils/http'
 import { schemaAstSchema } from '../../../cms/zod'
 import { assertSchemaKeyCanBePersisted } from '../../../cms/schema-key'
 import { ensureAnonymousSchemaRole } from '../../../utils/install'
+import { getTrustedRequestOrigin } from '../../../utils/request-origin'
 import { queueWidgetCacheInvalidation } from '../../../utils/widget-cache'
 
 export default defineEventHandler(async (event) => {
@@ -88,7 +89,8 @@ export default defineEventHandler(async (event) => {
       schemaKey,
       nextVersion,
       registry: compiled.registry,
-      changes: kindChanges
+      changes: kindChanges,
+      trustedOrigin: getTrustedRequestOrigin(event)
     })
     migrated = result.updated
   }
