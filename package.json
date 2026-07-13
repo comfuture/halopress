@@ -67,7 +67,7 @@
     "typescript": "^5.9.3",
     "vitest": "^4.1.10",
     "vue-tsc": "^3.3.7",
-    "wrangler": "4.92.0"
+    "wrangler": "4.110.0"
   },
   "pnpm": {
     "overrides": {
