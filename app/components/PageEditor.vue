@@ -52,23 +52,16 @@ const extensions = markRaw(editorProfile.extensions.map(extension => markRaw(ext
 const editorRef = ref<any>(null)
 
 const selectedBlock = ref<{ pos: number; attrs: PageBlockAttrs } | null>(null)
-const editing = reactive<PageBlockAttrs>({
+const editing = reactive<{
+  component: string
+  props: Record<string, any>
+  advanced: Record<string, unknown>
+  media: PageBlockAttrs['media']
+}>({
   component: 'pageHero',
   props: {},
   advanced: {},
   media: { url: '', alt: '' }
-})
-
-const jsonBuffers = reactive<Record<string, string>>({
-  links: '[]',
-  ui: '{}',
-  advanced: '{}'
-})
-
-const jsonErrors = reactive<Record<string, string | null>>({
-  links: null,
-  ui: null,
-  advanced: null
 })
 
 const syncing = ref(false)
@@ -76,29 +69,12 @@ const syncing = ref(false)
 const activeComponent = computed(() => getPageBlockComponent(selectedBlock.value?.attrs.component))
 const activeFields = computed<PageBlockField[]>(() => activeComponent.value?.fields ?? [])
 
-function normalizeJson(value: unknown, fallback: string) {
-  try {
-    if (value == null) return fallback
-    return JSON.stringify(value, null, 2)
-  } catch {
-    return fallback
-  }
-}
-
 function setEditingFromSelection(next: PageBlockAttrs) {
   syncing.value = true
   editing.component = next.component
   editing.props = { ...next.props }
   editing.advanced = { ...next.advanced }
   editing.media = { ...next.media }
-
-  jsonBuffers.links = normalizeJson(editing.props.links, '[]')
-  jsonBuffers.ui = normalizeJson(editing.props.ui, '{}')
-  jsonBuffers.advanced = normalizeJson(editing.advanced, '{}')
-
-  jsonErrors.links = null
-  jsonErrors.ui = null
-  jsonErrors.advanced = null
 
   nextTick(() => {
     syncing.value = false
@@ -125,7 +101,7 @@ function insertBlock(editor: Editor, key: PageBlockComponentKey) {
   const entry = pageBlockRegistry.byKey[key]
   if (!entry) return
 
-  const attrs: PageBlockAttrs = {
+  const attrs: PageBlockAttrs & { component: PageBlockComponentKey } = {
     component: entry.key,
     props: { ...entry.defaultProps },
     advanced: {},
@@ -148,26 +124,6 @@ function handleInsertBlock(key: PageBlockComponentKey) {
   if (!editor) return
   insertBlock(editor, key)
 }
-
-function applyJsonField(fieldKey: 'links' | 'ui' | 'advanced') {
-  if (syncing.value) return
-  const raw = jsonBuffers[fieldKey]
-  try {
-    const parsed = raw ? JSON.parse(raw) : (fieldKey === 'links' ? [] : {})
-    jsonErrors[fieldKey] = null
-    if (fieldKey === 'advanced') {
-      editing.advanced = parsed
-    } else {
-      editing.props = { ...editing.props, [fieldKey]: parsed }
-    }
-  } catch {
-    jsonErrors[fieldKey] = 'Invalid JSON'
-  }
-}
-
-watch(() => jsonBuffers.links, () => applyJsonField('links'))
-watch(() => jsonBuffers.ui, () => applyJsonField('ui'))
-watch(() => jsonBuffers.advanced, () => applyJsonField('advanced'))
 
 watch(editing, () => {
   if (syncing.value || !selectedBlock.value) return
@@ -293,36 +249,8 @@ watch(getEditor, (editor, _prev, onCleanup) => {
                   v-else-if="field.type === 'boolean'"
                   v-model="editing.props[field.key]"
                 />
-                <div v-else-if="field.type === 'json'" class="space-y-1">
-                  <UTextarea
-                    v-model="jsonBuffers[field.key]"
-                    class="w-full font-mono text-xs"
-                    placeholder="{}"
-                    :rows="6"
-                  />
-                  <p v-if="jsonErrors[field.key]" class="text-xs text-error">
-                    {{ jsonErrors[field.key] }}
-                  </p>
-                </div>
               </UFormField>
             </div>
-          </fieldset>
-
-          <fieldset class="m-0 min-w-0 space-y-3 border-0 p-0">
-            <legend class="mb-3 text-xs font-medium text-muted">
-              Advanced
-            </legend>
-            <UFormField label="Props (JSON)" help="Merged last, overrides other props.">
-              <UTextarea
-                v-model="jsonBuffers.advanced"
-                class="w-full font-mono text-xs"
-                placeholder="{}"
-                :rows="6"
-              />
-              <p v-if="jsonErrors.advanced" class="text-xs text-error">
-                {{ jsonErrors.advanced }}
-              </p>
-            </UFormField>
           </fieldset>
         </template>
       </section>
