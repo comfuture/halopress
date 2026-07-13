@@ -14,6 +14,7 @@ const activeContentBase = computed(() => {
 
 const isSchemasRoute = computed(() => route.path === '/_desk/schemas' || route.path.startsWith('/_desk/schemas/'))
 const isUsersRoute = computed(() => route.path === '/_desk/users' || route.path.startsWith('/_desk/users/'))
+const isSettingsRoute = computed(() => route.path === '/_desk/settings' || route.path.startsWith('/_desk/settings/'))
 
 const isContentRoute = computed(() => activeContentBase.value !== null)
 const isAssetsRoute = computed(() => route.path === '/_desk/assets' || route.path.startsWith('/_desk/assets/'))
@@ -65,6 +66,18 @@ const navItems = computed(() => ([
     to: '/_desk/pages',
     icon: 'i-lucide-panels-top-left',
     active: isPagesRoute.value
+  },
+  {
+    label: 'Settings',
+    icon: 'i-lucide-settings',
+    defaultOpen: isSettingsRoute.value,
+    active: isSettingsRoute.value,
+    children: [{
+      label: 'Authentication',
+      to: '/_desk/settings/authentication',
+      icon: 'i-lucide-key-round',
+      active: route.path === '/_desk/settings/authentication'
+    }]
   },
   {
     label: 'Viewer',
