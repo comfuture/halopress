@@ -109,13 +109,42 @@ function wranglerConfigArgs(options) {
   return args
 }
 
-function parseDatabaseList(output) {
-  const start = output.indexOf('[')
-  const end = output.lastIndexOf(']')
-  if (start < 0 || end < start) throw new Error('Wrangler did not return a JSON D1 database list')
-  const parsed = JSON.parse(output.slice(start, end + 1))
-  if (!Array.isArray(parsed)) throw new Error('Wrangler returned an invalid D1 database list')
-  return parsed
+export function parseDatabaseList(output) {
+  for (let start = output.indexOf('['); start >= 0; start = output.indexOf('[', start + 1)) {
+    let depth = 0
+    let inString = false
+    let escaped = false
+
+    for (let index = start; index < output.length; index += 1) {
+      const character = output[index]
+
+      if (inString) {
+        if (escaped) escaped = false
+        else if (character === '\\') escaped = true
+        else if (character === '"') inString = false
+        continue
+      }
+
+      if (character === '"') {
+        inString = true
+      } else if (character === '[') {
+        depth += 1
+      } else if (character === ']') {
+        depth -= 1
+        if (depth !== 0) continue
+
+        try {
+          const parsed = JSON.parse(output.slice(start, index + 1))
+          if (Array.isArray(parsed)) return parsed
+        } catch {
+          // This bracket pair belongs to a log prefix; continue at the next candidate.
+        }
+        break
+      }
+    }
+  }
+
+  throw new Error('Wrangler did not return a JSON D1 database list')
 }
 
 function commandError(args, result) {
