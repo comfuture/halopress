@@ -17,12 +17,19 @@ async function openLegacyDatabase() {
   sqlite.exec(baseline.replaceAll('--> statement-breakpoint', ''))
 
   sqlite.exec(`
+    INSERT INTO asset (id, kind, status, object_key, mime_type, size_bytes, created_at)
+    VALUES
+      ('live-asset', 'image', 'ready', 'live', 'image/png', 1, 1000),
+      ('query-asset', 'image', 'ready', 'query', 'image/png', 1, 1000),
+      ('01KENCODED', 'image', 'ready', 'encoded', 'image/png', 1, 1000),
+      ('page-asset', 'image', 'ready', 'page', 'image/png', 1, 1000);
+
     INSERT INTO schema (schema_key, version, title, ast_json, json_schema, registry_json, created_at)
     VALUES ('article', 1, 'Article', '{"fields":[]}', '{"type":"object"}', '{"fields":[],"relations":[]}', 1000);
 
     INSERT INTO content (id, schema_key, schema_version, status, content_json, created_at, updated_at)
     VALUES
-      ('published-content', 'article', 1, 'published', '{"title":"Live","cover":"/assets/live-asset/raw"}', 1000, 2000),
+      ('published-content', 'article', 1, 'published', '{"title":"Live","cover":"/assets/live-asset/raw","query":"/assets/query-asset/raw?width=1200","encoded":"/assets/01%4BENCODED/raw","external":"https://example.com/assets/external/raw"}', 1000, 2000),
       ('draft-content', 'article', 1, 'draft', '{"title":"Draft"}', 1000, 3000);
 
     INSERT INTO content_listing (content_id, schema_key, schema_version, title, status, created_at, updated_at)
@@ -38,7 +45,7 @@ async function openLegacyDatabase() {
 
     INSERT INTO page (id, title, status, content_json, created_at, updated_at)
     VALUES
-      ('published-page', 'Public Page', 'published', '{"type":"doc","content":[{"type":"image","attrs":{"src":"/assets/page-asset/raw"}}]}', 1000, 2500),
+      ('published-page', 'Public Page', 'published', '{"type":"doc","content":[{"type":"image","attrs":{"src":"/assets/page-asset/raw#hero"}}]}', 1000, 2500),
       ('draft-page', 'Draft Page', 'draft', '{"type":"doc"}', 1000, 3500);
   `)
   return sqlite
@@ -57,7 +64,7 @@ describe('preserve published revisions migration', () => {
     `).get() as any
     expect(published).toEqual({
       id: 'published-content',
-      content_json: '{"title":"Live","cover":"/assets/live-asset/raw"}',
+      content_json: '{"title":"Live","cover":"/assets/live-asset/raw","query":"/assets/query-asset/raw?width=1200","encoded":"/assets/01%4BENCODED/raw","external":"https://example.com/assets/external/raw"}',
       published_revision_id: 'legacy:content:published-content',
       first_published_at: 2000,
       published_at: 2000
@@ -71,13 +78,13 @@ describe('preserve published revisions migration', () => {
         id: 'legacy:content:published-content',
         document_kind: 'content',
         document_id: 'published-content',
-        content_json: '{"title":"Live","cover":"/assets/live-asset/raw"}'
+        content_json: '{"title":"Live","cover":"/assets/live-asset/raw","query":"/assets/query-asset/raw?width=1200","encoded":"/assets/01%4BENCODED/raw","external":"https://example.com/assets/external/raw"}'
       },
       {
         id: 'legacy:page:published-page',
         document_kind: 'page',
         document_id: 'published-page',
-        content_json: '{"type":"doc","content":[{"type":"image","attrs":{"src":"/assets/page-asset/raw"}}]}'
+        content_json: '{"type":"doc","content":[{"type":"image","attrs":{"src":"/assets/page-asset/raw#hero"}}]}'
       }
     ])
 
@@ -87,10 +94,15 @@ describe('preserve published revisions migration', () => {
       { content_id: 'published-content', projection_scope: 'working', title: 'Live', status: 'published' }
     ])
     expect(sqlite.prepare(`SELECT document_kind, document_id, projection_scope, asset_id FROM document_asset_ref ORDER BY document_kind, document_id, projection_scope, asset_id`).all()).toEqual([
+      { document_kind: 'content', document_id: 'published-content', projection_scope: 'published', asset_id: '01KENCODED' },
       { document_kind: 'content', document_id: 'published-content', projection_scope: 'published', asset_id: 'live-asset' },
+      { document_kind: 'content', document_id: 'published-content', projection_scope: 'published', asset_id: 'query-asset' },
+      { document_kind: 'content', document_id: 'published-content', projection_scope: 'working', asset_id: '01KENCODED' },
       { document_kind: 'content', document_id: 'published-content', projection_scope: 'working', asset_id: 'live-asset' },
+      { document_kind: 'content', document_id: 'published-content', projection_scope: 'working', asset_id: 'query-asset' },
       { document_kind: 'page', document_id: 'published-page', projection_scope: 'published', asset_id: 'page-asset' },
       { document_kind: 'page', document_id: 'published-page', projection_scope: 'working', asset_id: 'page-asset' }
     ])
+    expect(sqlite.prepare(`SELECT count(*) AS count FROM document_asset_ref WHERE asset_id LIKE '%25%' OR asset_id = 'external'`).get()).toEqual({ count: 0 })
   })
 })

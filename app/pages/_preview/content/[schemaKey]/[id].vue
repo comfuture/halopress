@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Content } from '@tiptap/core'
-import { setResponseHeader } from 'h3'
+import { setResponseHeader, setResponseStatus } from 'h3'
 
 definePageMeta({
   layout: false
@@ -24,7 +24,19 @@ const schemaKey = computed(() => String(route.params.schemaKey))
 const id = computed(() => String(route.params.id))
 const schemaRequest = useFetch<any>(() => `/api/schema/${schemaKey.value}/active`)
 const documentRequest = useFetch<any>(() => `/api/preview/content/${schemaKey.value}/${id.value}`)
-const [{ data: schema }, { data: doc }] = await Promise.all([schemaRequest, documentRequest])
+const [
+  { data: schema, error: schemaError },
+  { data: doc, error: documentError }
+] = await Promise.all([schemaRequest, documentRequest])
+const documentState = getPreviewDataState(doc.value, documentError.value)
+const schemaState = documentState === 'ready'
+  ? getPreviewDataState(schema.value, schemaError.value)
+  : 'not-found'
+const previewState = documentState === 'ready' && schemaState === 'ready' ? 'ready' : 'not-found'
+if (previewState === 'not-found' && import.meta.server) {
+  const event = useRequestEvent()
+  if (event) setResponseStatus(event, 404, 'Content not found')
+}
 const fields = computed(() => (schema.value?.registry?.fields ?? []).filter((field: any) => field?.key !== 'title'))
 
 function asEditorContent(value: unknown): Content | undefined {
@@ -33,7 +45,7 @@ function asEditorContent(value: unknown): Content | undefined {
 </script>
 
 <template>
-  <UContainer class="py-8">
+  <UContainer v-if="previewState === 'ready'" class="py-8">
     <UPage>
       <UPageHeader
         :title="doc?.content?.title || doc?.id || id"
@@ -83,5 +95,12 @@ function asEditorContent(value: unknown): Content | undefined {
         />
       </UPageBody>
     </UPage>
+  </UContainer>
+  <UContainer v-else class="py-16">
+    <main>
+      <h1 class="text-2xl font-semibold">
+        Content not found
+      </h1>
+    </main>
   </UContainer>
 </template>

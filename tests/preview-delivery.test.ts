@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { getPreviewDataState } from '../app/utils/preview-delivery'
 import { content, page } from '../server/db/schema'
 import { runMigrations } from '../server/utils/install'
 import { createTestSqliteDb } from './fixtures/sqlite'
@@ -125,5 +126,24 @@ describe('preview delivery', () => {
       .rejects.toMatchObject({ statusCode: 404, statusMessage: 'Content not found' })
     await expect(pagePreview(responseEvent({ id: 'missing' }).event))
       .rejects.toMatchObject({ statusCode: 404, statusMessage: 'Page not found' })
+  })
+})
+
+describe('preview route delivery', () => {
+  it('returns successful preview data', () => {
+    expect(getPreviewDataState({ id: 'page-1' }, null)).toBe('ready')
+  })
+
+  it.each([401, 403, 404])('normalizes access and missing errors (%s) to a non-enumerating 404', (statusCode) => {
+    expect(getPreviewDataState(undefined, { statusCode, statusMessage: 'Sensitive detail' })).toBe('not-found')
+  })
+
+  it('treats an empty successful response as missing', () => {
+    expect(getPreviewDataState(null, null)).toBe('not-found')
+  })
+
+  it('preserves operational failures for diagnostics', () => {
+    expect(() => getPreviewDataState(undefined, { statusCode: 503, statusMessage: 'Database unavailable' }))
+      .toThrow(expect.objectContaining({ statusCode: 503, statusMessage: 'Database unavailable' }))
   })
 })

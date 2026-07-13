@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { setResponseHeader } from 'h3'
+import { setResponseHeader, setResponseStatus } from 'h3'
 
 definePageMeta({
   layout: false
@@ -20,11 +20,16 @@ if (import.meta.server) {
 
 const route = useRoute()
 const id = computed(() => String(route.params.id))
-const { data: page } = await useFetch<any>(() => `/api/preview/page/${id.value}`)
+const { data: page, error: pageError } = await useFetch<any>(() => `/api/preview/page/${id.value}`)
+const pageState = getPreviewDataState(page.value, pageError.value)
+if (pageState === 'not-found' && import.meta.server) {
+  const event = useRequestEvent()
+  if (event) setResponseStatus(event, 404, 'Page not found')
+}
 </script>
 
 <template>
-  <UContainer class="py-8">
+  <UContainer v-if="pageState === 'ready'" class="py-8">
     <UPage>
       <UPageHeader :title="page?.title || 'Untitled page'" description="Draft preview">
         <template #headline>
@@ -37,5 +42,12 @@ const { data: page } = await useFetch<any>(() => `/api/preview/page/${id.value}`
         <PageDocumentRenderer :document="page?.content" />
       </UPageBody>
     </UPage>
+  </UContainer>
+  <UContainer v-else class="py-16">
+    <main>
+      <h1 class="text-2xl font-semibold">
+        Page not found
+      </h1>
+    </main>
   </UContainer>
 </template>
