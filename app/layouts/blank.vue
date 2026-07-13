@@ -1,5 +1,5 @@
 <template>
   <div class="min-h-screen">
-    <NuxtPage />
+    <slot />
   </div>
 </template>
