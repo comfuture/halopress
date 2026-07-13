@@ -1,7 +1,4 @@
 import { Node, mergeAttributes } from '@tiptap/core'
-import type { NodeViewRenderer } from '@tiptap/core'
-import { VueNodeViewRenderer } from '@tiptap/vue-3'
-import RichEditorImageUploadNode from './RichEditorImageUploadNode.vue'
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
@@ -26,9 +23,6 @@ export default Node.create({
   },
   renderHTML({ HTMLAttributes }) {
     return ['div', mergeAttributes(HTMLAttributes, { 'data-type': 'image-upload' })]
-  },
-  addNodeView(): NodeViewRenderer {
-    return VueNodeViewRenderer(RichEditorImageUploadNode)
   },
   addCommands() {
     return {
