@@ -6,6 +6,10 @@ Before this refresh, GitHub reported 120 open Dependabot alerts: 2 critical, 50 
 
 The coordinated upgrade keeps Nuxt, database, Cloudflare, and editor owners on their patched compatible releases. Two narrowly scoped compatibility rules remain necessary.
 
+## 2026-07-13 local result
+
+After the owner upgrades, lockfile regeneration, deduplication, and scoped compatibility rules, both `pnpm audit` and `pnpm audit --prod` report no known vulnerabilities. The lockfile no longer contains Next.js, vulnerable NextAuth, mixed Tiptap 3.18 packages, `markdown-it`, or `linkify-it`. GitHub's Dependabot after-count is rechecked after the branch is pushed and GitHub processes the new dependency graph.
+
 ## Auth.js v4 compatibility bridge
 
 - **Owners:** Sidebase and Auth.js.
@@ -16,6 +20,22 @@ The coordinated upgrade keeps Nuxt, database, Cloudflare, and editor owners on t
 - **Removal condition:** Remove the export patch and peer rules when Sidebase publishes a stable release that supports a patched NextAuth v4 export contract or completes its stable `@auth/core` migration. Re-run the auth, Nitro, and Cloudflare smoke tests before removing the exact version pins.
 
 The private `next-auth/core` API is the residual compatibility risk. Exact versions, a patch checksum in the lockfile, dependency-contract tests, and build/runtime smoke tests prevent it from drifting silently.
+
+## Residual transitive overrides
+
+Direct-owner upgrades and `pnpm dedupe` remove most stale vulnerable packages. The remaining overrides are package-scoped so unrelated consumers keep their declared graphs:
+
+| Owner path | Pinned dependency | Reason and upstream condition |
+| --- | --- | --- |
+| `@mapbox/node-pre-gyp` | `tar@7.5.16` | Its declared `tar ^7.4.0` range permits the patched release, but pnpm retained a vulnerable lock entry covered by [GHSA-vmf3-w455-68vh](https://github.com/advisories/GHSA-vmf3-w455-68vh). Remove after the owner lock path naturally resolves `>=7.5.16`. |
+| `archiver-utils` | `lodash@4.18.0` | Its lodash range permits the patched release for [GHSA-r5fr-rjxr-66jc](https://github.com/advisories/GHSA-r5fr-rjxr-66jc). Remove after Archiver's graph selects `>=4.18.0` without help. |
+| `glob@10`, `readdir-glob`, `minimatch@5`, and `minimatch@9` | `minimatch@9.0.7`, `minimatch@5.1.8`, and `brace-expansion@2.0.3` | These versions stay within the owners' declared major lines and close the related minimatch and [brace-expansion advisory](https://github.com/advisories/GHSA-f886-m6hf-6m8v). Remove when Archiver/Nitro naturally resolves the same or newer patched lines. |
+| `anymatch` and `micromatch` | `picomatch@2.3.2` | The owners' Picomatch 2 ranges include the fix for [GHSA-c2c7-rcm5-vvqj](https://github.com/advisories/GHSA-c2c7-rcm5-vvqj). Remove when Unstorage/IPX and Nitro resolve `>=2.3.2` without the overrides. |
+| `@eslint/config-inspector` and `fontless` | `esbuild@0.28.1` | Both owners still declare esbuild 0.27 ranges, which are entirely affected by [GHSA-g7r4-m6w7-qqqr](https://github.com/advisories/GHSA-g7r4-m6w7-qqqr). Remove when they support `>=0.28.1`; lint, Nuxt inspector setup, font loading, typecheck, and build cover the compatibility boundary. |
+| `@esbuild-kit/core-utils` | `esbuild@0.25.12` | Drizzle Kit 0.31.10 still uses the deprecated loader with `esbuild ~0.18.20`, affected by [GHSA-67mh-4wv8-2f99](https://github.com/advisories/GHSA-67mh-4wv8-2f99). The override reuses Drizzle Kit's own patched esbuild line. Remove when Drizzle Kit drops `@esbuild-kit` or updates its range; validate with Drizzle config loading plus SQLite/D1 tests. |
+| `next-auth@4.24.14` | `uuid@11.1.1` | NextAuth v4's `uuid ^8.3.2` range cannot reach the fix for [GHSA-w5hq-g745-h8pq](https://github.com/advisories/GHSA-w5hq-g745-h8pq). Remove when Sidebase leaves NextAuth v4 or NextAuth publishes a patched dependency range; auth callback, JWT, session, and Worker smoke tests cover this boundary. |
+
+Each override has a focused runtime or tooling check in addition to the final clean `pnpm audit` result. No override changes application feature or schema behavior.
 
 ## Tiptap alignment
 
