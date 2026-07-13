@@ -30,6 +30,8 @@ async function bootstrap() {
     </template>
 
     <template #body>
+      <OnboardingWidget class="mb-6" />
+
       <UPageGrid class="mb-6">
         <UCard class="transition hover:bg-elevated/40">
           <NuxtLink to="/_desk/users" class="block">
