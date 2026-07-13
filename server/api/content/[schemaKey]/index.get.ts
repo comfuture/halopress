@@ -3,7 +3,7 @@ import { getQuery } from 'h3'
 
 import { getDb } from '../../../db/db'
 import { content as contentTable, contentListing as contentListingTable, contentRef as contentRefTable } from '../../../db/schema'
-import { resolveDeliveryPolicy } from '../../../utils/delivery-policy'
+import { applyPrivateDeliveryHeaders, applyPublicDeliveryHeaders, resolveDeliveryPolicy } from '../../../utils/delivery-policy'
 
 export default defineEventHandler(async (event) => {
   const schemaKey = event.context.params?.schemaKey as string
@@ -13,13 +13,19 @@ export default defineEventHandler(async (event) => {
   const cursor = typeof q.cursor === 'string' && q.cursor.length ? q.cursor : null
   const order = q.order === 'asc' ? 'asc' : 'desc'
   const status = policy.effectiveStatus
+  const projectionScope = policy.isPublic || q.status === 'published' ? 'published' : 'working'
+  if (policy.isPublic) applyPublicDeliveryHeaders(event)
+  else applyPrivateDeliveryHeaders(event)
 
   const refField = typeof q.refField === 'string' ? q.refField : null
   const refId = typeof q.refId === 'string' ? q.refId : null
 
   const db = await getDb(event)
 
-  const whereParts = [eq(contentTable.schemaKey, schemaKey)] as any[]
+  const whereParts = [
+    eq(contentTable.schemaKey, schemaKey),
+    eq(contentListingTable.projectionScope, projectionScope)
+  ] as any[]
   if (status) whereParts.push(eq(contentListingTable.status, status))
   if (cursor) {
     whereParts.push(order === 'asc'
@@ -27,23 +33,26 @@ export default defineEventHandler(async (event) => {
       : lt(contentTable.id, cursor))
   }
 
-  const assetIdSubquery = sql<string | null>`(select ${contentRefTable.targetId} from ${contentRefTable} where ${contentRefTable.contentId} = ${contentTable.id} and ${contentRefTable.targetKind} = 'asset' limit 1)`
+  const assetIdSubquery = sql<string | null>`(select ${contentRefTable.targetId} from ${contentRefTable} where ${contentRefTable.contentId} = ${contentTable.id} and ${contentRefTable.projectionScope} = ${projectionScope} and ${contentRefTable.targetKind} = 'asset' limit 1)`
 
   const base = db
     .select({
       id: contentTable.id,
       schemaKey: contentTable.schemaKey,
-      schemaVersion: contentTable.schemaVersion,
+      schemaVersion: contentListingTable.schemaVersion,
       title: contentListingTable.title,
       description: contentListingTable.description,
       image: contentListingTable.image,
       status: contentListingTable.status,
-      createdAt: contentTable.createdAt,
-      updatedAt: contentTable.updatedAt,
+      createdAt: contentListingTable.createdAt,
+      updatedAt: contentListingTable.updatedAt,
       assetId: assetIdSubquery
     })
     .from(contentTable)
-    .leftJoin(contentListingTable, eq(contentListingTable.contentId, contentTable.id))
+    .innerJoin(contentListingTable, and(
+      eq(contentListingTable.contentId, contentTable.id),
+      eq(contentListingTable.projectionScope, projectionScope)
+    ))
 
   const fetchSize = pageSize + 1
 
@@ -56,6 +65,7 @@ export default defineEventHandler(async (event) => {
     query = base
       .innerJoin(contentRefTable, and(
         eq(contentRefTable.contentId, contentTable.id),
+        eq(contentRefTable.projectionScope, projectionScope),
         eq(contentRefTable.fieldPath, refField),
         eq(contentRefTable.targetId, refId)
       ))

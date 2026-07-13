@@ -5,6 +5,7 @@ import { listActiveSchemas } from '../server/cms/repo'
 import {
   content as contentTable,
   contentListing as contentListingTable,
+  publicationRevision,
   schema as schemaTable,
   schemaActive as schemaActiveTable,
   schemaRole as schemaRoleTable
@@ -75,12 +76,16 @@ async function addActiveSchema(db: any, schemaKey: string, title: string) {
 
 async function addContentOwner(db: any, args: { id: string; schemaKey: string; status: string }) {
   const now = new Date()
+  const publishedRevisionId = args.status === 'published' ? `revision-${args.id}` : null
   await db.insert(contentTable).values({
     id: args.id,
     schemaKey: args.schemaKey,
     schemaVersion: 1,
     status: args.status,
     contentJson: '{}',
+    publishedRevisionId,
+    firstPublishedAt: publishedRevisionId ? now : null,
+    publishedAt: publishedRevisionId ? now : null,
     createdAt: now,
     updatedAt: now
   })
@@ -92,6 +97,17 @@ async function addContentOwner(db: any, args: { id: string; schemaKey: string; s
     createdAt: now,
     updatedAt: now
   })
+  if (publishedRevisionId) {
+    await db.insert(publicationRevision).values({
+      id: publishedRevisionId,
+      documentKind: 'content',
+      documentId: args.id,
+      schemaKey: args.schemaKey,
+      schemaVersion: 1,
+      contentJson: '{}',
+      createdAt: now
+    })
+  }
 }
 
 afterEach(() => {

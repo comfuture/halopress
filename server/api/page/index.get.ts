@@ -4,6 +4,7 @@ import { getQuery } from 'h3'
 import { getDb } from '../../db/db'
 import { page as pageTable } from '../../db/schema'
 import { requireAdmin } from '../../utils/auth'
+import { publicationMetadata } from '../../cms/publication'
 
 export default defineEventHandler(async (event) => {
   await requireAdmin(event)
@@ -17,6 +18,9 @@ export default defineEventHandler(async (event) => {
       id: pageTable.id,
       title: pageTable.title,
       status: pageTable.status,
+      publishedRevisionId: pageTable.publishedRevisionId,
+      firstPublishedAt: pageTable.firstPublishedAt,
+      publishedAt: pageTable.publishedAt,
       createdAt: pageTable.createdAt,
       updatedAt: pageTable.updatedAt
     })
@@ -28,6 +32,10 @@ export default defineEventHandler(async (event) => {
     query = query.where(eq(pageTable.status, status))
   }
 
-  const items = await query
+  const rows = await query
+  const items = rows.map((row: any) => {
+    const { publishedRevisionId: _publishedRevisionId, firstPublishedAt: _firstPublishedAt, ...safeRow } = row
+    return { ...safeRow, ...publicationMetadata(row) }
+  })
   return { items }
 })

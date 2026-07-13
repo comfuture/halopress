@@ -54,6 +54,7 @@ export default defineEventHandler(async (event) => {
 
   const limit = Math.min(Number(q.limit ?? 6) || 6, 50)
   const status = policy.effectiveStatus
+  const projectionScope = policy.isPublic || q.status === 'published' ? 'published' : 'working'
   const owner = ownerId ? await requireContentOwnerDelivery(event, ownerId) : null
 
   const loadItems = async () => {
@@ -68,6 +69,7 @@ export default defineEventHandler(async (event) => {
         .from(contentRefList)
         .where(and(
           eq(contentRefList.ownerContentId, ownerId),
+          eq(contentRefList.projectionScope, projectionScope),
           eq(contentRefList.fieldKey, fieldKey),
           eq(contentRefList.itemKind, 'content')
         ))
@@ -81,6 +83,7 @@ export default defineEventHandler(async (event) => {
 
       const whereParts = [
         eq(contentListingTable.schemaKey, schemaKey),
+        eq(contentListingTable.projectionScope, projectionScope),
         inArray(contentListingTable.contentId, orderedIds)
       ] as any[]
       if (status) whereParts.push(eq(contentListingTable.status, status))
@@ -133,6 +136,8 @@ export default defineEventHandler(async (event) => {
 
     const whereParts = [
       eq(contentListingTable.schemaKey, schemaKey),
+      eq(contentListingTable.projectionScope, projectionScope),
+      eq(contentSearchData.projectionScope, projectionScope),
       eq(contentSearchData.fieldId, field.fieldId),
       eq(contentSearchData.dataType, dataType),
       eq(contentSearchData.contentId, contentListingTable.contentId),
@@ -174,6 +179,7 @@ export default defineEventHandler(async (event) => {
       values,
       ownerId,
       ownerUpdatedAt: owner?.updatedAt?.getTime(),
+      projectionScope,
       limit,
       status,
       visibility: policy.cacheVisibility

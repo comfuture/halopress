@@ -1,3 +1,4 @@
+import { and, eq } from 'drizzle-orm'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
@@ -5,6 +6,7 @@ import {
   contentListing as contentListingTable,
   contentRefList,
   contentSearchData,
+  publicationRevision,
   schema as schemaTable,
   schemaActive as schemaActiveTable,
   searchConfig
@@ -108,12 +110,16 @@ async function addContent(args: {
   category?: string
 }) {
   const timestamp = new Date(args.timestamp)
+  const publishedRevisionId = args.status === 'published' ? `revision-${args.id}` : null
   await fixture.db.insert(contentTable).values({
     id: args.id,
     schemaKey: args.schemaKey,
     schemaVersion: 1,
     status: args.status,
     contentJson: JSON.stringify({ title: args.title, category: args.category }),
+    publishedRevisionId,
+    firstPublishedAt: publishedRevisionId ? timestamp : null,
+    publishedAt: publishedRevisionId ? timestamp : null,
     createdAt: timestamp,
     updatedAt: timestamp
   })
@@ -126,6 +132,27 @@ async function addContent(args: {
     createdAt: timestamp,
     updatedAt: timestamp
   })
+  if (publishedRevisionId) {
+    await fixture.db.insert(publicationRevision).values({
+      id: publishedRevisionId,
+      documentKind: 'content',
+      documentId: args.id,
+      schemaKey: args.schemaKey,
+      schemaVersion: 1,
+      contentJson: JSON.stringify({ title: args.title, category: args.category }),
+      createdAt: timestamp
+    })
+    await fixture.db.insert(contentListingTable).values({
+      contentId: args.id,
+      projectionScope: 'published',
+      schemaKey: args.schemaKey,
+      schemaVersion: 1,
+      title: args.title,
+      status: 'published',
+      createdAt: timestamp,
+      updatedAt: timestamp
+    })
+  }
   if (args.category) {
     await fixture.db.insert(contentSearchData).values({
       contentId: args.id,
@@ -133,6 +160,15 @@ async function addContent(args: {
       dataType: 'text',
       text: args.category
     })
+    if (publishedRevisionId) {
+      await fixture.db.insert(contentSearchData).values({
+        contentId: args.id,
+        projectionScope: 'published',
+        fieldId: 'article_category',
+        dataType: 'text',
+        text: args.category
+      })
+    }
   }
 }
 
@@ -233,6 +269,14 @@ beforeAll(async () => {
       { ownerContentId, fieldKey: 'items', position: 2, itemKind: 'content', itemSchemaKey: 'article', itemId: 'deleted-near-old' },
       { ownerContentId, fieldKey: 'items', position: 3, itemKind: 'content', itemSchemaKey: 'article', itemId: 'published-old' }
     ])
+    if (ownerContentId === 'owner-public' || ownerContentId === 'owner-private') {
+      await fixture.db.insert(contentRefList).values([
+        { ownerContentId, projectionScope: 'published', fieldKey: 'items', position: 0, itemKind: 'content', itemSchemaKey: 'article', itemId: 'draft-near-new' },
+        { ownerContentId, projectionScope: 'published', fieldKey: 'items', position: 1, itemKind: 'content', itemSchemaKey: 'article', itemId: 'published-target' },
+        { ownerContentId, projectionScope: 'published', fieldKey: 'items', position: 2, itemKind: 'content', itemSchemaKey: 'article', itemId: 'deleted-near-old' },
+        { ownerContentId, projectionScope: 'published', fieldKey: 'items', position: 3, itemKind: 'content', itemSchemaKey: 'article', itemId: 'published-old' }
+      ])
+    }
   }
 
   handlers.active = (await import('../server/api/schema/[schemaKey]/active.get')).default as EndpointHandler
@@ -314,6 +358,59 @@ describe('public delivery endpoint visibility', () => {
         statusMessage: 'Content not found'
       })
     }
+  })
+
+  it('keeps the last published revision public while its working copy is edited', async () => {
+    await fixture.db.update(contentTable).set({
+      status: 'draft',
+      contentJson: JSON.stringify({ title: 'Unreleased edit', category: 'draft-news' })
+    }).where(eq(contentTable.id, 'published-target'))
+    await fixture.db.update(contentListingTable).set({
+      title: 'Unreleased edit',
+      status: 'draft'
+    }).where(and(
+      eq(contentListingTable.contentId, 'published-target'),
+      eq(contentListingTable.projectionScope, 'working')
+    ))
+
+    const publicRequest = responseEvent('/api/content/article/published-target', {
+      schemaKey: 'article',
+      id: 'published-target'
+    })
+    await expect(handlers.detail(publicRequest.event)).resolves.toMatchObject({
+      title: 'Published target',
+      status: 'published',
+      content: { title: 'Published target', category: 'news' },
+      publicationState: 'published',
+      hasDraftChanges: false
+    })
+    expect(publicRequest.header('cache-control')).toMatch(/^public,/)
+
+    permissionState.roleKey = 'user'
+    const workingRequest = responseEvent('/api/content/article/published-target', {
+      schemaKey: 'article',
+      id: 'published-target'
+    })
+    await expect(handlers.detail(workingRequest.event)).resolves.toMatchObject({
+      title: 'Unreleased edit',
+      status: 'draft',
+      content: { title: 'Unreleased edit', category: 'draft-news' },
+      publicationState: 'published-with-draft',
+      hasDraftChanges: true
+    })
+    expect(workingRequest.header('cache-control')).toBe('private, no-store')
+
+    await fixture.db.update(contentTable).set({
+      status: 'published',
+      contentJson: JSON.stringify({ title: 'Published target', category: 'news' })
+    }).where(eq(contentTable.id, 'published-target'))
+    await fixture.db.update(contentListingTable).set({
+      title: 'Published target',
+      status: 'published'
+    }).where(and(
+      eq(contentListingTable.contentId, 'published-target'),
+      eq(contentListingTable.projectionScope, 'working')
+    ))
   })
 
   it('preserves all and non-published data for an authenticated read-only role', async () => {

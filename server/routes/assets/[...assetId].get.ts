@@ -5,6 +5,7 @@ import { getDb } from '../../db/db'
 import { asset as assetTable } from '../../db/schema'
 import { getObject } from '../../storage/assets'
 import { notFound } from '../../utils/http'
+import { requireAssetDelivery } from '../../utils/asset-delivery'
 
 function normalizeSegments(value: unknown): string[] {
   if (Array.isArray(value)) return value.map(String)
@@ -21,6 +22,7 @@ export default defineEventHandler(async (event) => {
   const parts = normalizeSegments(rawParam)
   const assetId = parts[0]
   if (!assetId) throw notFound('Asset not found')
+  await requireAssetDelivery(event, assetId)
 
   const filename = parts.length > 1 ? parts[parts.length - 1] : null
 

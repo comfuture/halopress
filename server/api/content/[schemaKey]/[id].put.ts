@@ -1,20 +1,16 @@
-import { readBody } from 'h3'
 import { and, eq } from 'drizzle-orm'
+import { readBody } from 'h3'
 
-import { getDb } from '../../../db/db'
-import { getAuthSession } from '../../../utils/auth'
+import { publishContentWorking, saveContentWorking } from '../../../cms/content-publication'
 import { parseContentJson } from '../../../cms/content-json'
-import { badRequest, notFound } from '../../../utils/http'
-import { content as contentTable } from '../../../db/schema'
-import { executeDbStatement, withDbTransaction } from '../../../db/transaction'
-import { getActiveSchema } from '../../../cms/repo'
-import { syncContentRefs } from '../../../cms/ref-sync'
-import { upsertContentListingSnapshot } from '../../../cms/content-listing'
-import { upsertContentSearchData } from '../../../cms/search-index'
 import { validateContentJson } from '../../../cms/content-validation'
-import { replaceBase64ImagesInContent } from '../../../utils/asset-data-url'
-import { queueWidgetCacheInvalidation } from '../../../utils/widget-cache'
+import { getActiveSchema } from '../../../cms/repo'
+import { getDb } from '../../../db/db'
+import { content as contentTable } from '../../../db/schema'
+import { getAuthSession } from '../../../utils/auth'
+import { badRequest, notFound } from '../../../utils/http'
 import { requireSchemaPermission } from '../../../utils/schema-permission'
+import { queueWidgetCacheInvalidation } from '../../../utils/widget-cache'
 
 export default defineEventHandler(async (event) => {
   const schemaKey = event.context.params?.schemaKey as string
@@ -22,62 +18,24 @@ export default defineEventHandler(async (event) => {
   await requireSchemaPermission(event, schemaKey, 'write')
   const session = await getAuthSession(event)
   const actorId = (session?.user as any)?.id ?? null
-  const body = await readBody<{ status?: string; content?: Record<string, unknown> }>(event)
+  const body = await readBody<{ status?: string, content?: Record<string, unknown> }>(event)
 
   const db = await getDb(event)
   const active = await getActiveSchema(db, schemaKey)
   if (!active?.registry) throw notFound('Active schema not found')
-  const registry = active.registry
-
-  const existing = await db
-    .select()
-    .from(contentTable)
-    .where(and(eq(contentTable.schemaKey, schemaKey), eq(contentTable.id, id)))
-    .get()
+  const existing = await db.select().from(contentTable).where(and(
+    eq(contentTable.schemaKey, schemaKey),
+    eq(contentTable.id, id)
+  )).get()
   if (!existing) throw notFound('Content not found')
 
-  const now = new Date()
-  const status = body?.status ?? existing.status
-  const contentInput = body?.content ?? parseContentJson(existing.contentJson)
-  if (typeof contentInput !== 'object' || Array.isArray(contentInput) || !contentInput) throw badRequest('Invalid content')
-  const content = validateContentJson(active.jsonSchema, contentInput)
+  const input = body?.content ?? parseContentJson(existing.contentJson)
+  if (!input || typeof input !== 'object' || Array.isArray(input)) throw badRequest('Invalid content')
+  const content = validateContentJson(active.jsonSchema, input)
+  const publication = body?.status === 'published'
+    ? await publishContentWorking({ event, db, existing, schemaKey, active: active as any, content, actorId })
+    : await saveContentWorking({ event, db, existing, schemaKey, active: active as any, content, actorId })
 
-  await withDbTransaction(event, db, async (tx: any, statements) => {
-    await replaceBase64ImagesInContent({ event, db: tx, createdBy: actorId, content, statements })
-
-    await executeDbStatement(tx
-      .update(contentTable)
-      .set({
-        status,
-        contentJson: JSON.stringify(content),
-        schemaVersion: active.version,
-        updatedAt: now
-      })
-      .where(eq(contentTable.id, id)), statements)
-
-    await syncContentRefs({ db: tx, contentId: id, registry, content, statements })
-    await upsertContentListingSnapshot({
-      db: tx,
-      registry,
-      content,
-      contentId: id,
-      schemaKey,
-      schemaVersion: active.version,
-      status,
-      createdAt: existing.createdAt,
-      updatedAt: now,
-      statements
-    })
-    await upsertContentSearchData({
-      db: tx,
-      contentId: id,
-      registry,
-      content,
-      statements
-    })
-  })
-
-  queueWidgetCacheInvalidation(event, `schema:${schemaKey}`)
-
-  return { ok: true }
+  if (body?.status === 'published') queueWidgetCacheInvalidation(event, 'schema:' + schemaKey)
+  return { ok: true, ...publication }
 })

@@ -1,0 +1,129 @@
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { content, page } from '../server/db/schema'
+import { runMigrations } from '../server/utils/install'
+import { createTestSqliteDb } from './fixtures/sqlite'
+
+type EndpointHandler = (event: any) => Promise<any>
+
+const dbState = vi.hoisted(() => ({ current: null as any }))
+const authState = vi.hoisted(() => ({ authenticated: true, admin: true }))
+
+vi.mock('../server/db/db', () => ({
+  getDb: vi.fn(async () => dbState.current)
+}))
+
+vi.mock('../server/utils/auth', () => ({
+  getAuthSession: vi.fn(async () => authState.authenticated ? { user: { id: 'admin-1', role: 'admin' } } : null),
+  requireAdmin: vi.fn(async () => {
+    if (!authState.admin) throw Object.assign(new Error('Unauthorized'), { statusCode: 401 })
+    return { user: { id: 'admin-1', role: 'admin' } }
+  })
+}))
+
+vi.mock('../server/utils/schema-permission', () => ({
+  requireSchemaPermission: vi.fn(async () => {
+    if (!authState.authenticated) throw Object.assign(new Error('Not found'), { statusCode: 404 })
+    return { roleKey: 'admin', canRead: true, canWrite: true, canAdmin: true }
+  })
+}))
+
+vi.stubGlobal('defineEventHandler', (handler: EndpointHandler) => handler)
+
+let fixture: Awaited<ReturnType<typeof createTestSqliteDb>>
+let contentPreview: EndpointHandler
+let pagePreview: EndpointHandler
+
+function responseEvent(params: Record<string, string>) {
+  const headers = new Map<string, unknown>()
+  return {
+    event: {
+      context: { params },
+      node: {
+        req: { headers: { host: 'preview.example.com' } },
+        res: { setHeader: (name: string, value: unknown) => headers.set(name.toLowerCase(), value) }
+      }
+    },
+    header: (name: string) => headers.get(name.toLowerCase())
+  }
+}
+
+beforeAll(async () => {
+  fixture = await createTestSqliteDb()
+  dbState.current = fixture.db
+  await runMigrations(fixture.db)
+  const now = new Date('2026-07-13T00:00:00.000Z')
+  await fixture.db.insert(content).values({
+    id: 'content-draft',
+    schemaKey: 'article',
+    schemaVersion: 1,
+    status: 'draft',
+    contentJson: JSON.stringify({ title: 'Working content' }),
+    createdAt: now,
+    updatedAt: now
+  })
+  await fixture.db.insert(page).values({
+    id: 'page-draft',
+    title: 'Working page',
+    status: 'draft',
+    contentJson: JSON.stringify({ type: 'doc', content: [{ type: 'paragraph' }] }),
+    createdAt: now,
+    updatedAt: now
+  })
+  contentPreview = (await import('../server/api/preview/content/[schemaKey]/[id].get')).default as EndpointHandler
+  pagePreview = (await import('../server/api/preview/page/[id].get')).default as EndpointHandler
+})
+
+beforeEach(() => {
+  authState.authenticated = true
+  authState.admin = true
+})
+
+afterAll(() => {
+  fixture.close()
+  vi.unstubAllGlobals()
+})
+
+function expectPrivatePreviewHeaders(request: ReturnType<typeof responseEvent>) {
+  expect(request.header('cache-control')).toBe('private, no-store')
+  expect(request.header('vary')).toBe('Cookie')
+  expect(request.header('x-robots-tag')).toBe('noindex, nofollow, noarchive')
+}
+
+describe('preview delivery', () => {
+  it('returns working content with private noindex headers', async () => {
+    const request = responseEvent({ schemaKey: 'article', id: 'content-draft' })
+    await expect(contentPreview(request.event)).resolves.toMatchObject({
+      id: 'content-draft',
+      status: 'draft',
+      content: { title: 'Working content' }
+    })
+    expectPrivatePreviewHeaders(request)
+  })
+
+  it('returns working pages with private noindex headers', async () => {
+    const request = responseEvent({ id: 'page-draft' })
+    await expect(pagePreview(request.event)).resolves.toMatchObject({
+      id: 'page-draft',
+      title: 'Working page',
+      status: 'draft'
+    })
+    expectPrivatePreviewHeaders(request)
+  })
+
+  it('does not enumerate content or pages to anonymous callers', async () => {
+    authState.authenticated = false
+    authState.admin = false
+    await expect(contentPreview(responseEvent({ schemaKey: 'article', id: 'content-draft' }).event))
+      .rejects.toMatchObject({ statusCode: 404 })
+    await expect(pagePreview(responseEvent({ id: 'page-draft' }).event))
+      .rejects.toMatchObject({ statusCode: 404, statusMessage: 'Page not found' })
+  })
+
+  it('uses the same non-enumerating response for missing preview records', async () => {
+    await expect(contentPreview(responseEvent({ schemaKey: 'article', id: 'missing' }).event))
+      .rejects.toMatchObject({ statusCode: 404, statusMessage: 'Content not found' })
+    await expect(pagePreview(responseEvent({ id: 'missing' }).event))
+      .rejects.toMatchObject({ statusCode: 404, statusMessage: 'Page not found' })
+  })
+})

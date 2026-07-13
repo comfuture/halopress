@@ -1,51 +1,71 @@
 import { readBody } from 'h3'
 
+import { normalizePageContent } from '../../cms/page-content'
+import { syncDocumentAssetRefs } from '../../cms/asset-refs'
+import { publicationMetadata, publicationRevisionValues } from '../../cms/publication'
 import { getDb } from '../../db/db'
-import { page as pageTable } from '../../db/schema'
+import { page as pageTable, publicationRevision } from '../../db/schema'
+import { executeDbStatement, withDbTransaction } from '../../db/transaction'
 import { requireAdmin } from '../../utils/auth'
-import { badRequest } from '../../utils/http'
 import { newId } from '../../utils/ids'
-
-const emptyDoc = { type: 'doc', content: [{ type: 'paragraph' }] }
-
-function normalizeContent(value: unknown) {
-  if (value == null) return emptyDoc
-  let parsed = value
-  if (typeof value === 'string') {
-    try {
-      parsed = JSON.parse(value)
-    } catch {
-      throw badRequest('Invalid content JSON')
-    }
-  }
-
-  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-    return parsed
-  }
-
-  throw badRequest('Invalid content JSON')
-}
 
 export default defineEventHandler(async (event) => {
   const session = await requireAdmin(event)
-  const body = await readBody<{ title?: string; status?: string; content?: unknown }>(event)
-
+  const body = await readBody<{ title?: string, status?: string, content?: unknown }>(event)
   const id = newId()
-  const now = new Date()
+  const revisionId = body?.status === 'published' ? newId() : null
   const title = body?.title?.trim() || null
-  const status = body?.status || 'draft'
-  const content = normalizeContent(body?.content)
-
+  const content = normalizePageContent(body?.content)
+  const now = new Date()
+  const status = revisionId ? 'published' : 'draft'
+  const actorId = (session.user as any)?.id ?? null
   const db = await getDb(event)
-  await db.insert(pageTable).values({
-    id,
-    title,
-    status,
-    contentJson: JSON.stringify(content),
-    createdBy: (session.user as any)?.id ?? null,
-    createdAt: now,
-    updatedAt: now
+
+  await withDbTransaction(event, db, async (tx: any, statements) => {
+    await executeDbStatement(tx.insert(pageTable).values({
+      id,
+      title,
+      status,
+      contentJson: JSON.stringify(content),
+      publishedRevisionId: revisionId,
+      firstPublishedAt: revisionId ? now : null,
+      publishedAt: revisionId ? now : null,
+      createdBy: actorId,
+      createdAt: now,
+      updatedAt: now
+    }), statements)
+    if (revisionId) {
+      await executeDbStatement(tx.insert(publicationRevision).values(publicationRevisionValues({
+        id: revisionId,
+        documentKind: 'page',
+        documentId: id,
+        title,
+        content,
+        createdBy: actorId,
+        createdAt: now
+      })), statements)
+    }
+    const scopes = revisionId ? ['working', 'published'] as const : ['working'] as const
+    for (const projectionScope of scopes) {
+      await syncDocumentAssetRefs({
+        db: tx,
+        documentKind: 'page',
+        documentId: id,
+        projectionScope,
+        content,
+        statements
+      })
+    }
   })
 
-  return { ok: true, id }
+  return {
+    ok: true,
+    id,
+    ...publicationMetadata({
+      status,
+      publishedRevisionId: revisionId,
+      firstPublishedAt: revisionId ? now : null,
+      publishedAt: revisionId ? now : null
+    })
+  }
 })

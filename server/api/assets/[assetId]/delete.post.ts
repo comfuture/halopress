@@ -7,6 +7,7 @@ import { deleteObject } from '../../../storage/assets'
 import { requireAdmin } from '../../../utils/auth'
 import { parseContentJson } from '../../../cms/content-json'
 import { badRequest, notFound } from '../../../utils/http'
+import { assertAssetIsNotRetained } from '../../../utils/asset-delivery'
 import { getActiveSchema } from '../../../cms/repo'
 import { upsertContentListingSnapshot } from '../../../cms/content-listing'
 import { queueWidgetCacheInvalidation } from '../../../utils/widget-cache'
@@ -100,6 +101,8 @@ export default defineEventHandler(async (event) => {
     .where(eq(assetTable.id, assetId))
     .limit(1)
   if (!current[0]) throw notFound('Asset not found')
+
+  await assertAssetIsNotRetained(db, assetId)
 
   if (hasReplacement) {
     const replacement = await db

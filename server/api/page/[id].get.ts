@@ -4,6 +4,7 @@ import { getDb } from '../../db/db'
 import { page as pageTable } from '../../db/schema'
 import { requireAdmin } from '../../utils/auth'
 import { notFound } from '../../utils/http'
+import { publicationMetadata } from '../../cms/publication'
 
 const emptyDoc = { type: 'doc', content: [{ type: 'paragraph' }] }
 
@@ -19,6 +20,9 @@ export default defineEventHandler(async (event) => {
       title: pageTable.title,
       status: pageTable.status,
       contentJson: pageTable.contentJson,
+      publishedRevisionId: pageTable.publishedRevisionId,
+      firstPublishedAt: pageTable.firstPublishedAt,
+      publishedAt: pageTable.publishedAt,
       createdAt: pageTable.createdAt,
       updatedAt: pageTable.updatedAt
     })
@@ -36,5 +40,6 @@ export default defineEventHandler(async (event) => {
     content = emptyDoc
   }
 
-  return { ...row, content }
+  const { publishedRevisionId: _publishedRevisionId, firstPublishedAt: _firstPublishedAt, ...safeRow } = row
+  return { ...safeRow, content, ...publicationMetadata(row) }
 })

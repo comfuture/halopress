@@ -47,6 +47,25 @@ describe('withDbTransaction', () => {
     expect(work).toHaveBeenCalledOnce()
   })
 
+  it('does not report a D1 publication group as successful when batch fails', async () => {
+    const failure = new Error('D1 batch failed')
+    const first = { kind: 'revision insert' }
+    const second = { kind: 'published pointer update' }
+    const batch = vi.fn(async () => {
+      throw failure
+    })
+    const db = { batch, transaction: vi.fn() }
+    const event = { context: { cloudflare: { env: { DB: {} } } } }
+
+    await expect(withDbTransaction(event as any, db as any, async (_tx, statements) => {
+      await executeDbStatement(first, statements)
+      await executeDbStatement(second, statements)
+      return 'published'
+    })).rejects.toBe(failure)
+
+    expect(batch).toHaveBeenCalledWith([first, second])
+  })
+
   it('persists pasted image data to R2 and the asset table on Cloudflare D1', async () => {
     const put = vi.fn(async () => undefined)
     const assetInsertStatement = { kind: 'asset insert' }
