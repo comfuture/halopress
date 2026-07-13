@@ -1,6 +1,7 @@
 import { readBody } from 'h3'
 import { getDb } from '../../../db/db'
 import { upsertDraft } from '../../../cms/repo'
+import { assertSchemaKeyCanBePersisted } from '../../../cms/schema-key'
 import { schemaAstSchema } from '../../../cms/zod'
 import { requireAdmin } from '../../../utils/auth'
 import { badRequest } from '../../../utils/http'
@@ -16,8 +17,8 @@ export default defineEventHandler(async (event) => {
 
   const title = body?.title?.trim() || parsed.data.title
   const db = await getDb(event)
+  await assertSchemaKeyCanBePersisted(db, schemaKey)
   await upsertDraft(db, schemaKey, title, parsed.data)
 
   return { ok: true }
 })
-

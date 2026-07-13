@@ -103,7 +103,7 @@ const schemaMetaSchema = z.object({
     .min(1, 'Schema key is required')
     .regex(schemaKeyPattern, 'Use lowercase letters, numbers, and underscores.')
     .refine(
-      key => !isReservedSchemaKey(key),
+      key => !isNew.value || !isReservedSchemaKey(key),
       `The schema key "${PUBLIC_PAGE_ROUTE_PREFIX}" is reserved for standalone pages.`
     ),
   title: z.string().optional(),
