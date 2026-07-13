@@ -49,7 +49,7 @@
 ## 6. Standalone pages
 - [x] Page editor with ordinary Tiptap content and curated page blocks
 - [x] Shared Desk/SSR/client page document renderer
-- [x] Published-only page resolver and `/_pages/:id` public route
+- [x] Published-only page resolver and `/p/:id` public route
 - [x] Authenticated private/noindex draft preview
 - [x] Safe fallback for unknown, retired, or malformed page blocks
 - [ ] Public slugs and custom paths (post-MVP)
