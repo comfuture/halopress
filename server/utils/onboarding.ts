@@ -75,7 +75,7 @@ function isPublicHostname(hostname: string) {
   if (ipv4) return !isPrivateOrReservedIPv4(ipv4)
 
   if (normalized.includes(':')) {
-    return !/^(?:f[cd]|fe[89ab])/i.test(normalized)
+    return !/^f/i.test(normalized)
       && !/^::ffff:(?:0|10|127|169\.254|172\.(?:1[6-9]|2\d|3[01])|192\.168)\./i.test(normalized)
   }
 
