@@ -416,7 +416,10 @@ describe('setup CRUD regression', () => {
       const publishedListings = await db
         .select()
         .from(contentListing)
-        .where(eq(contentListing.status, 'published'))
+        .where(and(
+          eq(contentListing.projectionScope, 'working'),
+          eq(contentListing.status, 'published')
+        ))
         .orderBy(desc(contentListing.updatedAt))
       expect(publishedListings.map(row => row.schemaKey).sort()).toEqual(['article', 'photo'])
     } finally {
