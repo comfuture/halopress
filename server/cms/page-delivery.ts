@@ -6,6 +6,11 @@ import { notFound } from '../utils/http'
 import { normalizePageContent } from './page-content'
 import { getPublicationRevision } from './publication'
 
+export async function hasStandalonePageRouteClaim(db: Db, id: string) {
+  const row = await db.select({ id: page.id }).from(page).where(eq(page.id, id)).get()
+  return Boolean(row)
+}
+
 export async function getPublishedPage(db: Db, id: string) {
   const row = await db.select().from(page).where(eq(page.id, id)).get()
   if (!row || row.status === 'deleted' || !row.publishedRevisionId) throw notFound('Page not found')

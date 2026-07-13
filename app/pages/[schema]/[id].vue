@@ -35,7 +35,10 @@ if (!standalonePage.value) {
     throw createError({ statusCode: 404, statusMessage: 'Not Found' })
   }
 
-  const contentResult = await useHalopressContent(schemaKey, { id })
+  const contentResult = await useHalopressContent(schemaKey, {
+    id,
+    respectStandalonePageClaim: schemaKey.value === PUBLIC_PAGE_ROUTE_PREFIX
+  })
   if (contentResult.error.value || !contentResult.content.value) {
     throw createError({ statusCode: 404, statusMessage: 'Not Found' })
   }

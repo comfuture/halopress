@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 
 import {
   content,
+  page,
   publicationRevision,
   schema
 } from '../server/db/schema'
@@ -37,11 +38,11 @@ vi.stubGlobal('defineEventHandler', (handler: EndpointHandler) => handler)
 let fixture: Awaited<ReturnType<typeof createTestSqliteDb>>
 let detailHandler: EndpointHandler
 
-function responseEvent(path: string) {
+function responseEvent(path: string, schemaKey = 'article', id = 'article-1') {
   const headers = new Map<string, unknown>()
   return {
     path,
-    context: { params: { schemaKey: 'article', id: 'article-1' } },
+    context: { params: { schemaKey, id } },
     node: {
       req: { headers: { host: 'delivery.example.com' } },
       res: {
@@ -175,5 +176,77 @@ describe('versioned content delivery', () => {
     permissionState.canRead = false
     await expect(detailHandler(responseEvent('/api/content/article/article-1?includeSchema=1')))
       .rejects.toMatchObject({ statusCode: 404 })
+  })
+
+  it('blocks legacy p fallback only when a standalone page row claims the route', async () => {
+    const now = new Date('2026-07-13T01:00:00.000Z')
+    await fixture.db.insert(schema).values({
+      schemaKey: 'p',
+      version: 1,
+      title: 'Legacy Pages',
+      astJson: JSON.stringify({ schemaKey: 'p', title: 'Legacy Pages', fields: [] }),
+      jsonSchema: JSON.stringify({
+        type: 'object',
+        properties: { title: { type: 'string' } },
+        required: ['title']
+      }),
+      registryJson: JSON.stringify({
+        schemaKey: 'p',
+        version: 1,
+        title: 'Legacy Pages',
+        listing: { titleFieldKey: 'title' },
+        fields: [{ fieldId: 'title-field', key: 'title', kind: 'string' }],
+        relations: []
+      }),
+      createdAt: now
+    })
+    await fixture.db.insert(content).values({
+      id: 'legacy-route',
+      schemaKey: 'p',
+      schemaVersion: 1,
+      status: 'published',
+      contentJson: JSON.stringify({ title: 'Legacy route' }),
+      publishedRevisionId: 'legacy-route-revision',
+      firstPublishedAt: now,
+      publishedAt: now,
+      createdAt: now,
+      updatedAt: now
+    })
+    await fixture.db.insert(publicationRevision).values({
+      id: 'legacy-route-revision',
+      documentKind: 'content',
+      documentId: 'legacy-route',
+      schemaKey: 'p',
+      schemaVersion: 1,
+      contentJson: JSON.stringify({ title: 'Legacy route' }),
+      createdAt: now
+    })
+
+    await expect(detailHandler(responseEvent(
+      '/api/content/p/legacy-route?status=published&routeScope=public-page&includeSchema=1',
+      'p',
+      'legacy-route'
+    ))).resolves.toMatchObject({ id: 'legacy-route', title: 'Legacy route' })
+
+    await fixture.db.insert(page).values({
+      id: 'legacy-route',
+      title: 'Unpublished standalone page',
+      status: 'draft',
+      contentJson: JSON.stringify({ type: 'doc', content: [] }),
+      createdAt: now,
+      updatedAt: now
+    })
+
+    await expect(detailHandler(responseEvent(
+      '/api/content/p/legacy-route?status=published&routeScope=public-page&includeSchema=1',
+      'p',
+      'legacy-route'
+    ))).rejects.toMatchObject({ statusCode: 404, statusMessage: 'Content not found' })
+
+    await expect(detailHandler(responseEvent(
+      '/api/content/p/legacy-route?status=published&includeSchema=1',
+      'p',
+      'legacy-route'
+    ))).resolves.toMatchObject({ id: 'legacy-route', title: 'Legacy route' })
   })
 })
