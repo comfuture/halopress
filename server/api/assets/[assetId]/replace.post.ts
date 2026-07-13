@@ -5,6 +5,7 @@ import { getDb } from '../../../db/db'
 import { asset as assetTable } from '../../../db/schema'
 import { assetObjectKey, putObject } from '../../../storage/assets'
 import { requireAdmin } from '../../../utils/auth'
+import { assertAssetIsNotPublished } from '../../../utils/asset-delivery'
 import { badRequest, notFound } from '../../../utils/http'
 
 function kindFromMime(mimeType: string) {
@@ -18,10 +19,6 @@ export default defineEventHandler(async (event) => {
   const assetId = event.context.params?.assetId as string
   if (!assetId) throw badRequest('Missing assetId')
 
-  const form = await readMultipartFormData(event)
-  const file = form?.find(p => p.name === 'file')
-  if (!file || !file.data) throw badRequest('Missing file')
-
   const db = await getDb(event)
   const existing = await db
     .select({ id: assetTable.id })
@@ -30,6 +27,11 @@ export default defineEventHandler(async (event) => {
     .limit(1)
 
   if (!existing[0]) throw notFound('Asset not found')
+  await assertAssetIsNotPublished(db, assetId)
+
+  const form = await readMultipartFormData(event)
+  const file = form?.find(p => p.name === 'file')
+  if (!file || !file.data) throw badRequest('Missing file')
 
   const mimeType = file.type || 'application/octet-stream'
   const bytes = new Uint8Array(file.data)
