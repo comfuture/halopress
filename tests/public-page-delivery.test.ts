@@ -171,9 +171,10 @@ describe('published standalone page delivery', () => {
   it('uses the reserved page prefix while retaining general schema content routes', () => {
     const root = resolve(import.meta.dirname, '..')
     expect(existsSync(resolve(root, 'app/pages/p/[id].vue'))).toBe(false)
-    expect(existsSync(resolve(root, 'app/pages/p/index.vue'))).toBe(true)
+    expect(existsSync(resolve(root, 'app/pages/p/index.vue'))).toBe(false)
     expect(existsSync(resolve(root, 'app/pages/_pages/[id].vue'))).toBe(false)
     expect(existsSync(resolve(root, 'app/pages/[schema]/[id].vue'))).toBe(true)
+    expect(existsSync(resolve(root, 'app/pages/[schema]/index.vue'))).toBe(true)
     expect(existsSync(resolve(root, 'app/pages/_desk/index.vue'))).toBe(true)
     expect(existsSync(resolve(root, 'server/api/delivery/page/[id].get.ts'))).toBe(true)
   })
