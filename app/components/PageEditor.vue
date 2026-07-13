@@ -113,6 +113,13 @@ function commitLink(index: number) {
   }
 }
 
+function updateLinkText(index: number, field: 'label' | 'to', value: unknown) {
+  const draft = linkDrafts.value[index]
+  if (!draft || typeof value !== 'string') return
+  draft[field] = value
+  commitLink(index)
+}
+
 function updateLinkTarget(index: number, value: unknown) {
   const draft = linkDrafts.value[index]
   if (!draft || (value !== '_self' && value !== '_blank')) return
@@ -184,7 +191,6 @@ watch(editing, () => {
 
   editor
     .chain()
-    .focus()
     .setNodeSelection(selectedBlock.value.pos)
     .updateAttributes('pageBlock', nextAttrs)
     .run()
@@ -305,17 +311,17 @@ watch(getEditor, (editor, _prev, onCleanup) => {
                     </legend>
                     <UFormField label="Label">
                       <UInput
-                        v-model="link.label"
+                        :model-value="link.label"
                         class="w-full"
-                        @blur="commitLink(index)"
+                        @update:model-value="updateLinkText(index, 'label', $event)"
                       />
                     </UFormField>
                     <UFormField label="Destination" :error="link.error">
                       <UInput
-                        v-model="link.to"
+                        :model-value="link.to"
                         placeholder="/path, #section, or https://"
                         class="w-full"
-                        @blur="commitLink(index)"
+                        @update:model-value="updateLinkText(index, 'to', $event)"
                       />
                     </UFormField>
                     <UFormField label="Target">

@@ -44,6 +44,15 @@ describe('page block registry', () => {
     })).toHaveProperty('error')
   })
 
+  it('updates link document attributes as editors type without stealing inspector focus', async () => {
+    const editor = await readFile(resolve(import.meta.dirname, '../app/components/PageEditor.vue'), 'utf8')
+
+    expect(editor).toContain('@update:model-value="updateLinkText(index, \'label\', $event)"')
+    expect(editor).toContain('@update:model-value="updateLinkText(index, \'to\', $event)"')
+    expect(editor).not.toContain('@blur="commitLink(index)"')
+    expect(editor).toContain('editor\n    .chain()\n    .setNodeSelection(selectedBlock.value.pos)')
+  })
+
   it('resolves only code-owned components and strips unchecked properties', () => {
     const resolved = resolvePageBlock({
       component: 'pageCard',
