@@ -16,7 +16,6 @@ import {
   isSameOriginSetupRequest
 } from '../server/utils/install-session'
 import {
-  BOOTSTRAP_CONTENT_ID,
   INSTALLATION_KEY,
   beginInstallation,
   completeInstallation,
@@ -31,6 +30,7 @@ import {
   runMigrations,
   seedRoles
 } from '../server/utils/install'
+import { BOOTSTRAP_CONTENT_ID } from '../server/utils/bootstrap'
 import { createTestSqliteDb } from './fixtures/sqlite'
 
 const TEST_SIGNING_SECRET = 'test-signing-secret-0123456789abcdef'
