@@ -428,9 +428,8 @@ async function completeSetup() {
   <div class="min-h-screen bg-muted/30">
     <header class="border-b border-default bg-default/90 backdrop-blur">
       <UContainer class="flex min-h-16 items-center justify-between gap-4">
-        <div class="flex items-center gap-3" aria-label="Halopress">
-          <AppLogo class="h-6 w-auto shrink-0" />
-          <span class="font-semibold text-highlighted">Halopress</span>
+        <div aria-label="HaloPress">
+          <AppLogo class="h-7 w-auto shrink-0" />
         </div>
         <UColorModeButton class="min-h-11 min-w-11" />
       </UContainer>
