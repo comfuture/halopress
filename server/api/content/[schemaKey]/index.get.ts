@@ -2,8 +2,9 @@ import { and, asc, desc, eq, gt, lt, sql } from 'drizzle-orm'
 import { getQuery } from 'h3'
 
 import { getDb } from '../../../db/db'
-import { content as contentTable, contentListing as contentListingTable, contentRef as contentRefTable } from '../../../db/schema'
+import { content as contentTable, contentListing as contentListingTable, contentRef as contentRefTable, page as pageTable } from '../../../db/schema'
 import { applyPrivateDeliveryHeaders, applyPublicDeliveryHeaders, resolveDeliveryPolicy } from '../../../utils/delivery-policy'
+import { PUBLIC_PAGE_ROUTE_PREFIX } from '../../../../shared/public-routing'
 
 export default defineEventHandler(async (event) => {
   const schemaKey = event.context.params?.schemaKey as string
@@ -26,6 +27,9 @@ export default defineEventHandler(async (event) => {
     eq(contentTable.schemaKey, schemaKey),
     eq(contentListingTable.projectionScope, projectionScope)
   ] as any[]
+  if (schemaKey === PUBLIC_PAGE_ROUTE_PREFIX && q.routeScope === 'public-page') {
+    whereParts.push(sql`not exists (select 1 from ${pageTable} where ${pageTable.id} = ${contentTable.id})`)
+  }
   if (status) whereParts.push(eq(contentListingTable.status, status))
   if (cursor) {
     whereParts.push(order === 'asc'

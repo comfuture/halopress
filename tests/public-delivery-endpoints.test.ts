@@ -6,6 +6,7 @@ import {
   contentListing as contentListingTable,
   contentRefList,
   contentSearchData,
+  page as pageTable,
   publicationRevision,
   schema as schemaTable,
   schemaActive as schemaActiveTable,
@@ -358,6 +359,77 @@ describe('public delivery endpoint visibility', () => {
         statusMessage: 'Content not found'
       })
     }
+  })
+
+  it('excludes standalone page route claims only from the legacy public p collection', async () => {
+    const now = new Date('2026-07-13T00:02:00.000Z')
+    await addActiveSchema('p', 'Legacy Pages')
+    await addContent({
+      id: 'legacy-z-claimed',
+      schemaKey: 'p',
+      status: 'published',
+      title: 'Claimed legacy page',
+      timestamp: '2026-07-13T00:02:01.000Z'
+    })
+    await addContent({
+      id: 'legacy-y-free',
+      schemaKey: 'p',
+      status: 'published',
+      title: 'First available legacy page',
+      timestamp: '2026-07-13T00:02:02.000Z'
+    })
+    await addContent({
+      id: 'legacy-x-free',
+      schemaKey: 'p',
+      status: 'published',
+      title: 'Second available legacy page',
+      timestamp: '2026-07-13T00:02:03.000Z'
+    })
+    await fixture.db.insert(pageTable).values({
+      id: 'legacy-z-claimed',
+      title: 'Draft standalone page',
+      status: 'draft',
+      contentJson: JSON.stringify({ type: 'doc', content: [] }),
+      createdAt: now,
+      updatedAt: now
+    })
+
+    const publicRoute = responseEvent(
+      '/api/content/p?status=published&routeScope=public-page&pageSize=1',
+      { schemaKey: 'p' }
+    )
+    const publicRouteResult = await handlers.collection(publicRoute.event)
+    expect(publicRouteResult.items.map((item: any) => item.id)).toEqual(['legacy-y-free'])
+    expect(publicRouteResult.nextCursor).toBe('legacy-y-free')
+    expect(publicRoute.header('cache-control')).toMatch(/^public,/)
+
+    const nextPage = responseEvent(
+      '/api/content/p?status=published&routeScope=public-page&pageSize=1&cursor=legacy-y-free',
+      { schemaKey: 'p' }
+    )
+    const nextPageResult = await handlers.collection(nextPage.event)
+    expect(nextPageResult.items.map((item: any) => item.id)).toEqual(['legacy-x-free'])
+    expect(nextPageResult.nextCursor).toBeNull()
+
+    const genericApi = responseEvent('/api/content/p?status=published', { schemaKey: 'p' })
+    const genericResult = await handlers.collection(genericApi.event)
+    expect(genericResult.items.map((item: any) => item.id).sort()).toEqual([
+      'legacy-x-free',
+      'legacy-y-free',
+      'legacy-z-claimed'
+    ])
+
+    permissionState.roleKey = 'user'
+    const authenticated = responseEvent(
+      '/api/content/p?status=published&routeScope=public-page',
+      { schemaKey: 'p' }
+    )
+    const authenticatedResult = await handlers.collection(authenticated.event)
+    expect(authenticatedResult.items.map((item: any) => item.id).sort()).toEqual([
+      'legacy-x-free',
+      'legacy-y-free'
+    ])
+    expect(authenticated.header('cache-control')).toBe('private, no-store')
   })
 
   it('keeps the last published revision public while its working copy is edited', async () => {
