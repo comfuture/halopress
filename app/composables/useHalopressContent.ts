@@ -43,20 +43,15 @@ export async function useHalopressContent(schemaOrPath: MaybeRef<string>, option
   const query = computed(() => ({
     order: unref(options.order) ?? undefined,
     status: unref(options.status) ?? undefined,
-    surroundings: '1'
+    surroundings: '1',
+    includeSchema: '1'
   }))
 
-  const contentRequest = useFetch<HalopressContentResponse>(
+  const { data, refresh, pending, error } = await useFetch<HalopressContentResponse & { schema?: any }>(
     () => `/api/content/${schemaKey.value}/${contentId.value}`,
     { query }
   )
-  const schemaRequest = useFetch<any>(
-    () => `/api/schema/${schemaKey.value}/active`
-  )
-  const [
-    { data, refresh, pending, error },
-    { data: schema }
-  ] = await Promise.all([contentRequest, schemaRequest])
+  const schema = computed(() => data.value?.schema ?? null)
 
   const schemaZod = computed(() => {
     if (!schema.value?.jsonSchema) return null
@@ -72,7 +67,7 @@ export async function useHalopressContent(schemaOrPath: MaybeRef<string>, option
 
   const content = computed(() => {
     if (!data.value) return null
-    const { surroundings: _surroundings, ...base } = data.value
+    const { surroundings: _surroundings, schema: _schema, ...base } = data.value
     if (!base) return null
     const rawContent = (base as any).content ?? (base as any).extra ?? {}
     const zodSchema = schemaZod.value
