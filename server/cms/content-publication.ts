@@ -1,8 +1,8 @@
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import type { H3Event } from 'h3'
 
 import type { Db } from '../db/db'
-import { content as contentTable, publicationRevision } from '../db/schema'
+import { content as contentTable, contentListing as contentListingTable, publicationRevision } from '../db/schema'
 import { executeDbStatement, withDbTransaction } from '../db/transaction'
 import { replaceBase64ImagesInContent } from '../utils/asset-data-url'
 import { conflict, notFound } from '../utils/http'
@@ -183,6 +183,13 @@ export async function unpublishContent(args: {
       publishedAt: null,
       updatedAt: now
     }).where(eq(contentTable.id, args.existing.id)), statements)
+    await executeDbStatement(tx.update(contentListingTable).set({
+      status: 'draft',
+      updatedAt: now
+    }).where(and(
+      eq(contentListingTable.contentId, args.existing.id),
+      eq(contentListingTable.projectionScope, 'working')
+    )), statements)
     await deleteContentProjections({
       db: tx,
       contentId: args.existing.id,

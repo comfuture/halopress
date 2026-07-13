@@ -400,6 +400,23 @@ describe('public delivery endpoint visibility', () => {
     })
     expect(workingRequest.header('cache-control')).toBe('private, no-store')
 
+    for (const path of [
+      '/api/widget/recent?schema=article',
+      '/api/widget/curation?schema=article&field=category&values=news',
+      '/api/widget/curation?schema=article&field=items&ownerId=owner-public'
+    ]) {
+      const request = responseEvent(path)
+      const result = path.includes('/recent')
+        ? await handlers.recent(request.event)
+        : await handlers.curation(request.event)
+      expect(result.items.find((item: any) => item.id === 'published-target')).toMatchObject({
+        title: 'Published target',
+        status: 'published'
+      })
+      expect(request.header('cache-control')).toBe('private, no-store')
+      expect(request.header('x-widget-cache')).toBe('bypass')
+    }
+
     await fixture.db.update(contentTable).set({
       status: 'published',
       contentJson: JSON.stringify({ title: 'Published target', category: 'news' })
