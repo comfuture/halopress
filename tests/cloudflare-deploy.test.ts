@@ -66,7 +66,8 @@ if (args[0] === 'd1' && args[1] === 'list') {
   const count = existsSync(countPath) ? Number(readFileSync(countPath, 'utf8')) : 0
   writeFileSync(countPath, String(count + 1))
   const sequence = JSON.parse(process.env.MOCK_D1_LIST_SEQUENCE || '[[]]')
-  console.log(JSON.stringify(sequence[Math.min(count, sequence.length - 1)]))
+  const result = JSON.stringify(sequence[Math.min(count, sequence.length - 1)])
+  process.stdout.write((process.env.MOCK_D1_LIST_PREFIX || '') + result + (process.env.MOCK_D1_LIST_SUFFIX || ''))
   process.exit(0)
 }
 
@@ -208,6 +209,26 @@ migrations_dir = "migrations"
       env: {
         ...fixture.env,
         MOCK_D1_LIST_SEQUENCE: JSON.stringify([[{ name: 'halopress-test', uuid: 'adopted-id' }]])
+      }
+    })
+
+    expect(result).toMatchObject({ code: 0 })
+    expect(await readCalls(fixture.logPath)).toEqual([
+      ['d1', 'list', '--json', '--config', fixture.configPath],
+      ['d1', 'migrations', 'apply', 'DB', '--remote', '--config', fixture.configPath]
+    ])
+    expect(JSON.parse(await readFile(fixture.configPath, 'utf8')).d1_databases[0].database_id).toBe('adopted-id')
+  })
+
+  it('ignores bracketed log lines around the JSON D1 database list', async () => {
+    const fixture = await createFixture(baseConfig({}))
+    const result = await run(process.execPath, [prepareScript, '--config', fixture.configPath], {
+      cwd: projectRoot,
+      env: {
+        ...fixture.env,
+        MOCK_D1_LIST_SEQUENCE: JSON.stringify([[{ name: 'halopress-test', uuid: 'adopted-id' }]]),
+        MOCK_D1_LIST_PREFIX: '[wrangler:inf] preparing D1 list\n',
+        MOCK_D1_LIST_SUFFIX: '\n[wrangler:inf] request complete\n'
       }
     })
 
