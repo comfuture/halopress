@@ -4,6 +4,7 @@ import type { CommandPaletteGroup, CommandPaletteItem } from '@nuxt/ui'
 const props = defineProps<{
   modelValue: string | null | undefined
   label?: string
+  required?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -88,11 +89,13 @@ function clear() {
 </script>
 
 <template>
-  <div class="space-y-2">
-    <div class="flex items-center justify-between">
-      <span class="text-sm font-medium">{{ label || 'Asset' }}</span>
+  <fieldset class="min-w-0 space-y-2">
+    <legend class="mb-2 text-sm font-medium text-highlighted">
+      {{ label || 'Asset' }}<span v-if="required" class="ms-0.5 text-error" aria-hidden="true">*</span>
+    </legend>
+
+    <div v-if="modelValue" class="flex justify-end">
       <UButton
-        v-if="modelValue"
         size="xs"
         color="neutral"
         variant="outline"
@@ -188,5 +191,5 @@ function clear() {
     <p v-else-if="modelValue" class="text-xs text-muted break-all">
       {{ modelValue }}
     </p>
-  </div>
+  </fieldset>
 </template>

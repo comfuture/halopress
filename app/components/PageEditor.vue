@@ -198,11 +198,11 @@ watch(getEditor, (editor, _prev, onCleanup) => {
       </UEditor>
     </div>
 
-    <div class="flex flex-col gap-4">
-      <UCard :ui="{ body: 'space-y-3' }">
-        <template #header>
-          <div class="text-sm font-semibold">Insert Blocks</div>
-        </template>
+    <div class="flex flex-col gap-6">
+      <section aria-labelledby="page-editor-insert-blocks" class="space-y-3">
+        <h2 id="page-editor-insert-blocks" class="text-sm font-semibold">
+          Insert Blocks
+        </h2>
         <div class="flex flex-col gap-2">
           <UButton
             v-for="item in pageBlockRegistry.components"
@@ -214,83 +214,98 @@ watch(getEditor, (editor, _prev, onCleanup) => {
             {{ item.label }}
           </UButton>
         </div>
-      </UCard>
+      </section>
 
-      <UCard :ui="{ body: 'space-y-4' }">
-        <template #header>
-          <div class="text-sm font-semibold">Properties</div>
-        </template>
+      <section aria-labelledby="page-editor-properties" class="space-y-4">
+        <h2 id="page-editor-properties" class="text-sm font-semibold">
+          Properties
+        </h2>
 
         <div v-if="!selectedBlock" class="text-sm text-muted">
           Select a block to edit its properties.
         </div>
 
         <template v-else>
-          <UFormField label="Image URL">
-            <UInput v-model="editing.media.url" placeholder="https://" class="w-full" />
-          </UFormField>
-          <UFormField label="Image Alt">
-            <UInput v-model="editing.media.alt" placeholder="Alt text" class="w-full" />
-          </UFormField>
-
-          <div v-for="field in activeFields" :key="field.key">
-            <UFormField :label="field.label" :help="field.help">
-              <UInput
-                v-if="field.type === 'text'"
-                v-model="editing.props[field.key]"
-                :placeholder="field.placeholder"
-                class="w-full"
-              />
-              <UInput
-                v-else-if="field.type === 'url'"
-                v-model="editing.props[field.key]"
-                type="url"
-                :placeholder="field.placeholder || 'https://'"
-                class="w-full"
-              />
-              <UTextarea
-                v-else-if="field.type === 'textarea'"
-                v-model="editing.props[field.key]"
-                :placeholder="field.placeholder"
-                class="w-full"
-              />
-              <USelect
-                v-else-if="field.type === 'select'"
-                v-model="editing.props[field.key]"
-                :items="field.options || []"
-                class="w-full"
-              />
-              <USwitch
-                v-else-if="field.type === 'boolean'"
-                v-model="editing.props[field.key]"
-              />
-              <div v-else-if="field.type === 'json'" class="space-y-1">
-                <UTextarea
-                  v-model="jsonBuffers[field.key]"
-                  class="w-full font-mono text-xs"
-                  placeholder="{}"
-                  :rows="6"
-                />
-                <p v-if="jsonErrors[field.key]" class="text-xs text-red-600">
-                  {{ jsonErrors[field.key] }}
-                </p>
-              </div>
+          <fieldset class="m-0 min-w-0 space-y-3 border-0 p-0">
+            <legend class="mb-3 text-xs font-medium text-muted">
+              Media
+            </legend>
+            <UFormField label="Image URL">
+              <UInput v-model="editing.media.url" placeholder="https://" class="w-full" />
             </UFormField>
-          </div>
+            <UFormField label="Image Alt">
+              <UInput v-model="editing.media.alt" placeholder="Alt text" class="w-full" />
+            </UFormField>
+          </fieldset>
 
-          <UFormField label="Advanced Props (JSON)" help="Merged last, overrides other props.">
-            <UTextarea
-              v-model="jsonBuffers.advanced"
-              class="w-full font-mono text-xs"
-              placeholder="{}"
-              :rows="6"
-            />
-            <p v-if="jsonErrors.advanced" class="text-xs text-red-600">
-              {{ jsonErrors.advanced }}
-            </p>
-          </UFormField>
+          <fieldset class="m-0 min-w-0 space-y-3 border-0 p-0">
+            <legend class="mb-3 text-xs font-medium text-muted">
+              {{ activeComponent?.label || 'Component' }}
+            </legend>
+            <div v-for="field in activeFields" :key="field.key">
+              <UFormField :label="field.label" :help="field.help">
+                <UInput
+                  v-if="field.type === 'text'"
+                  v-model="editing.props[field.key]"
+                  :placeholder="field.placeholder"
+                  class="w-full"
+                />
+                <UInput
+                  v-else-if="field.type === 'url'"
+                  v-model="editing.props[field.key]"
+                  type="url"
+                  :placeholder="field.placeholder || 'https://'"
+                  class="w-full"
+                />
+                <UTextarea
+                  v-else-if="field.type === 'textarea'"
+                  v-model="editing.props[field.key]"
+                  :placeholder="field.placeholder"
+                  class="w-full"
+                />
+                <USelect
+                  v-else-if="field.type === 'select'"
+                  v-model="editing.props[field.key]"
+                  :items="field.options || []"
+                  class="w-full"
+                />
+                <USwitch
+                  v-else-if="field.type === 'boolean'"
+                  v-model="editing.props[field.key]"
+                />
+                <div v-else-if="field.type === 'json'" class="space-y-1">
+                  <UTextarea
+                    v-model="jsonBuffers[field.key]"
+                    class="w-full font-mono text-xs"
+                    placeholder="{}"
+                    :rows="6"
+                  />
+                  <p v-if="jsonErrors[field.key]" class="text-xs text-error">
+                    {{ jsonErrors[field.key] }}
+                  </p>
+                </div>
+              </UFormField>
+            </div>
+          </fieldset>
+
+          <fieldset class="m-0 min-w-0 space-y-3 border-0 p-0">
+            <legend class="mb-3 text-xs font-medium text-muted">
+              Advanced
+            </legend>
+            <UFormField label="Props (JSON)" help="Merged last, overrides other props.">
+              <UTextarea
+                v-model="jsonBuffers.advanced"
+                class="w-full font-mono text-xs"
+                placeholder="{}"
+                :rows="6"
+              />
+              <p v-if="jsonErrors.advanced" class="text-xs text-error">
+                {{ jsonErrors.advanced }}
+              </p>
+            </UFormField>
+          </fieldset>
         </template>
-      </UCard>
+      </section>
     </div>
   </div>
 </template>

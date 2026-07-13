@@ -932,14 +932,16 @@ async function confirmPublish() {
     </template>
 
     <template #body>
-      <UCard>
-        <UForm
-          ref="schemaMetaFormRef"
-          :schema="schemaMetaSchema"
-          :state="state"
-          class="flex flex-col gap-4"
-          @submit.prevent="saveDraft"
-        >
+      <UForm
+        ref="schemaMetaFormRef"
+        :schema="schemaMetaSchema"
+        :state="state"
+        @submit.prevent="saveDraft"
+      >
+        <fieldset class="min-w-0 space-y-4">
+          <legend class="mb-4 text-sm font-semibold text-highlighted">
+            Basic information
+          </legend>
           <UFormField v-if="isNew" name="schemaKey" label="Schema Key" help="lowercase, URL-friendly" required>
             <UInput
               v-model="state.schemaKey"
@@ -962,18 +964,16 @@ async function confirmPublish() {
           <UFormField label="Description">
             <UInput v-model="state.description" placeholder="Optional" class="w-full" />
           </UFormField>
-        </UForm>
-      </UCard>
+        </fieldset>
+      </UForm>
 
-      <UCard>
-        <template #header>
-          <div>
-            <p class="font-medium">Listing Cache</p>
-            <p class="text-sm text-muted">
-              Choose which fields should populate the normalized listing projection. Defaults are inferred from common field names.
-            </p>
-          </div>
-        </template>
+      <fieldset class="min-w-0 space-y-4">
+        <legend class="text-sm font-semibold text-highlighted">
+          Listing Cache
+        </legend>
+        <p class="text-sm text-muted">
+          Choose which fields should populate the normalized listing projection. Defaults are inferred from common field names.
+        </p>
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
           <UFormField label="Title field">
@@ -1021,17 +1021,17 @@ async function confirmPublish() {
           title="Resolved defaults"
           :description="`title=${listingPreview.titleFieldKey || 'none'} · description=${listingPreview.descriptionFieldKey || 'none'} · image=${listingPreview.imageFieldKey || 'none'}`"
         />
-      </UCard>
+      </fieldset>
 
-      <UCard>
-        <template #header>
-          <div class="flex items-center justify-between">
-            <span class="font-medium">Fields</span>
-            <UButton icon="i-lucide-plus" size="sm" @click="openNewField">
-              Add field
-            </UButton>
-          </div>
-        </template>
+      <section class="min-w-0 space-y-3" aria-labelledby="schema-fields-heading">
+        <div class="flex items-center justify-between gap-4">
+          <h2 id="schema-fields-heading" class="text-sm font-semibold text-highlighted">
+            Fields
+          </h2>
+          <UButton icon="i-lucide-plus" size="sm" @click="openNewField">
+            Add field
+          </UButton>
+        </div>
         <UPageList divide class="hp-sort-list">
           <div
             v-for="(f, i) in state.fields"
@@ -1096,7 +1096,7 @@ async function confirmPublish() {
             </div>
           </div>
         </UPageList>
-      </UCard>
+      </section>
       <UModal
         v-model:open="addFieldModalOpen"
         title="New Field"
@@ -1111,36 +1111,43 @@ async function confirmPublish() {
             class="space-y-4"
             @submit.prevent="addField"
           >
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <UFormField name="key" label="Key" help="JSON key (a-zA-Z0-9_)" required>
-                <UInput
-                  v-model="fieldDraft.key"
-                  name="key"
-                  required
-                  pattern="[a-zA-Z][a-zA-Z0-9_]*"
-                  title="Use letters, numbers, and underscores. Must start with a letter."
-                  placeholder="body"
-                  autocapitalize="none"
-                  autocomplete="off"
-                  spellcheck="false"
-                />
-              </UFormField>
-              <UFormField name="kind" label="Kind" class="md:col-span-2" required>
-                <USelect v-model="fieldDraft.kind" :items="fieldKindOptions" class="w-full" />
-              </UFormField>
-            </div>
+            <fieldset class="min-w-0 space-y-4">
+              <legend class="mb-4 text-sm font-medium text-highlighted">
+                Basic information
+              </legend>
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <UFormField name="key" label="Key" help="JSON key (a-zA-Z0-9_)" required>
+                  <UInput
+                    v-model="fieldDraft.key"
+                    name="key"
+                    required
+                    pattern="[a-zA-Z][a-zA-Z0-9_]*"
+                    title="Use letters, numbers, and underscores. Must start with a letter."
+                    placeholder="body"
+                    autocapitalize="none"
+                    autocomplete="off"
+                    spellcheck="false"
+                  />
+                </UFormField>
+                <UFormField name="kind" label="Kind" class="md:col-span-2" required>
+                  <USelect v-model="fieldDraft.kind" :items="fieldKindOptions" class="w-full" />
+                </UFormField>
+              </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <UFormField label="Title">
-                <UInput v-model="fieldDraft.title" placeholder="Body" />
-              </UFormField>
-              <UFormField label="Required">
-                <USwitch v-model="fieldDraft.required" />
-              </UFormField>
-            </div>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <UFormField label="Title">
+                  <UInput v-model="fieldDraft.title" placeholder="Body" />
+                </UFormField>
+                <UFormField label="Required">
+                  <USwitch v-model="fieldDraft.required" />
+                </UFormField>
+              </div>
+            </fieldset>
 
-            <div class="space-y-2">
-              <div class="text-sm font-medium">Search / Filter / Sort</div>
+            <fieldset class="min-w-0 space-y-2">
+              <legend class="mb-2 text-sm font-medium text-highlighted">
+                Search / Filter / Sort
+              </legend>
               <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <UFormField label="Search mode">
                   <USelect v-model="fieldDraft.search.mode" :items="getSearchModeOptions(fieldDraft.kind)" class="w-full" />
@@ -1158,11 +1165,13 @@ async function confirmPublish() {
                   />
                 </UFormField>
               </div>
-            </div>
+            </fieldset>
 
-            <div v-if="fieldDraft.kind === 'enum'" class="space-y-2">
-              <div class="flex items-center justify-between">
-                <span class="text-sm font-medium">Enum values</span>
+            <fieldset v-if="fieldDraft.kind === 'enum'" class="min-w-0 space-y-2">
+              <legend class="text-sm font-medium text-highlighted">
+                Enum values
+              </legend>
+              <div class="flex justify-end">
                 <UButton
                   size="xs"
                   color="neutral"
@@ -1177,9 +1186,12 @@ async function confirmPublish() {
                 <UInput v-model="ev.label" placeholder="Label" />
                 <UInput v-model="ev.value" placeholder="value" />
               </div>
-            </div>
+            </fieldset>
 
-            <div v-if="fieldDraft.kind === 'reference'" class="space-y-3">
+            <fieldset v-if="fieldDraft.kind === 'reference'" class="min-w-0 space-y-3">
+              <legend class="mb-3 text-sm font-medium text-highlighted">
+                Reference
+              </legend>
               <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <UFormField label="Target">
                   <USelect
@@ -1207,7 +1219,7 @@ async function confirmPublish() {
                 icon="i-lucide-info"
                 variant="subtle"
               />
-            </div>
+            </fieldset>
           </UForm>
         </template>
 
@@ -1237,37 +1249,44 @@ async function confirmPublish() {
             class="space-y-4"
             @submit.prevent="saveEdit"
           >
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <UFormField name="key" label="Key" help="JSON key (a-zA-Z0-9_)" required>
-                <UInput
-                  v-model="editDraft.key"
-                  name="key"
-                  required
-                  pattern="[a-zA-Z][a-zA-Z0-9_]*"
-                  title="Use letters, numbers, and underscores. Must start with a letter."
-                  placeholder="body"
-                  autocapitalize="none"
-                  autocomplete="off"
-                  spellcheck="false"
-                  :disabled="editDraft.system"
-                />
-              </UFormField>
-              <UFormField name="kind" label="Kind" class="md:col-span-2" required>
-                <USelect v-model="editDraft.kind" :items="fieldKindOptions" class="w-full" :disabled="editDraft.system" />
-              </UFormField>
-            </div>
+            <fieldset class="min-w-0 space-y-4">
+              <legend class="mb-4 text-sm font-medium text-highlighted">
+                Basic information
+              </legend>
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <UFormField name="key" label="Key" help="JSON key (a-zA-Z0-9_)" required>
+                  <UInput
+                    v-model="editDraft.key"
+                    name="key"
+                    required
+                    pattern="[a-zA-Z][a-zA-Z0-9_]*"
+                    title="Use letters, numbers, and underscores. Must start with a letter."
+                    placeholder="body"
+                    autocapitalize="none"
+                    autocomplete="off"
+                    spellcheck="false"
+                    :disabled="editDraft.system"
+                  />
+                </UFormField>
+                <UFormField name="kind" label="Kind" class="md:col-span-2" required>
+                  <USelect v-model="editDraft.kind" :items="fieldKindOptions" class="w-full" :disabled="editDraft.system" />
+                </UFormField>
+              </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <UFormField label="Title">
-                <UInput v-model="editDraft.title" placeholder="Body" :disabled="editDraft.system" />
-              </UFormField>
-              <UFormField label="Required">
-                <USwitch v-model="editDraft.required" />
-              </UFormField>
-            </div>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <UFormField label="Title">
+                  <UInput v-model="editDraft.title" placeholder="Body" :disabled="editDraft.system" />
+                </UFormField>
+                <UFormField label="Required">
+                  <USwitch v-model="editDraft.required" />
+                </UFormField>
+              </div>
+            </fieldset>
 
-            <div class="space-y-2">
-              <div class="text-sm font-medium">Search / Filter / Sort</div>
+            <fieldset class="min-w-0 space-y-2">
+              <legend class="mb-2 text-sm font-medium text-highlighted">
+                Search / Filter / Sort
+              </legend>
               <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <UFormField label="Search mode">
                   <USelect v-model="editDraft.search.mode" :items="getSearchModeOptions(editDraft.kind)" class="w-full" />
@@ -1285,11 +1304,13 @@ async function confirmPublish() {
                   />
                 </UFormField>
               </div>
-            </div>
+            </fieldset>
 
-            <div v-if="editDraft.kind === 'enum' && !editDraft.system" class="space-y-2">
-              <div class="flex items-center justify-between">
-                <span class="text-sm font-medium">Enum values</span>
+            <fieldset v-if="editDraft.kind === 'enum' && !editDraft.system" class="min-w-0 space-y-2">
+              <legend class="text-sm font-medium text-highlighted">
+                Enum values
+              </legend>
+              <div class="flex justify-end">
                 <UButton
                   size="xs"
                   color="neutral"
@@ -1304,9 +1325,12 @@ async function confirmPublish() {
                 <UInput v-model="ev.label" placeholder="Label" />
                 <UInput v-model="ev.value" placeholder="value" />
               </div>
-            </div>
+            </fieldset>
 
-            <div v-if="editDraft.kind === 'reference' && !editDraft.system" class="space-y-3">
+            <fieldset v-if="editDraft.kind === 'reference' && !editDraft.system" class="min-w-0 space-y-3">
+              <legend class="mb-3 text-sm font-medium text-highlighted">
+                Reference
+              </legend>
               <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <UFormField label="Target">
                   <USelect
@@ -1334,7 +1358,7 @@ async function confirmPublish() {
                 icon="i-lucide-info"
                 variant="subtle"
               />
-            </div>
+            </fieldset>
           </UForm>
         </template>
 

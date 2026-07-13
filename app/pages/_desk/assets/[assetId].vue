@@ -59,31 +59,43 @@ function handleDeleted() {
     </template>
 
     <template #body>
-      <UCard v-if="status === 'pending'" class="text-sm text-muted">
-        Loading asset...
-      </UCard>
+      <UEmpty
+        v-if="status === 'pending'"
+        variant="naked"
+        title="Loading asset..."
+        role="status"
+        aria-live="polite"
+      >
+        <template #leading>
+          <UIcon name="i-lucide-loader-circle" class="size-8 animate-spin text-muted" />
+        </template>
+      </UEmpty>
 
-      <UCard v-else-if="!asset" class="text-sm text-muted">
-        Asset not found.
-      </UCard>
+      <UEmpty
+        v-else-if="!asset"
+        variant="naked"
+        icon="i-lucide-file-question-mark"
+        title="Asset not found"
+        description="The asset may have been removed or the URL may be incorrect."
+      />
 
       <div v-else class="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <UCard>
-          <template #header>
-            <div class="flex flex-wrap items-center justify-between gap-3">
-              <div class="min-w-0">
-                <div class="font-medium">Preview</div>
-                <div class="text-xs text-muted truncate">{{ asset.id }}</div>
-              </div>
-              <AssetActions
-                :asset="asset"
-                :assets="listData?.items || []"
-                variant="bar"
-                @updated="handleUpdated"
-                @deleted="handleDeleted"
-              />
+        <section aria-labelledby="asset-preview-heading" class="space-y-4">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div class="min-w-0">
+              <h2 id="asset-preview-heading" class="font-medium">
+                Preview
+              </h2>
+              <div class="text-xs text-muted truncate">{{ asset.id }}</div>
             </div>
-          </template>
+            <AssetActions
+              :asset="asset"
+              :assets="listData?.items || []"
+              variant="bar"
+              @updated="handleUpdated"
+              @deleted="handleDeleted"
+            />
+          </div>
 
           <div class="rounded-md border border-default bg-elevated/30 p-4">
             <AssetImage
@@ -98,12 +110,12 @@ function handleDeleted() {
               <span class="text-sm">No preview available</span>
             </div>
           </div>
-        </UCard>
+        </section>
 
-        <UCard>
-          <template #header>
-            <div class="font-medium">Asset info</div>
-          </template>
+        <section aria-labelledby="asset-info-heading" class="space-y-4">
+          <h2 id="asset-info-heading" class="font-medium">
+            Asset info
+          </h2>
           <dl class="grid gap-3 text-sm">
             <div class="flex items-start justify-between gap-3">
               <dt class="text-muted">ID</dt>
@@ -141,7 +153,7 @@ function handleDeleted() {
               <dd class="text-right break-all">{{ previewUrl }}</dd>
             </div>
           </dl>
-        </UCard>
+        </section>
       </div>
     </template>
   </UDashboardPanel>
