@@ -3,6 +3,7 @@ import { getQuery, setHeader } from 'h3'
 
 import { getDb } from '../../db/db'
 import { contentListing as contentListingTable, contentRefList, contentSearchData, searchConfig } from '../../db/schema'
+import { assertPublishedFieldCompatibility, getPublishedSchemaFields, type PublishedSearchField } from '../../cms/published-search'
 import { coerceSearchValue, searchDataTypeForKind } from '../../cms/search-helpers'
 import { applyPrivateDeliveryHeaders, requireContentOwnerDelivery, resolveDeliveryPolicy } from '../../utils/delivery-policy'
 import { badRequest } from '../../utils/http'
@@ -56,10 +57,31 @@ export default defineEventHandler(async (event) => {
   const status = policy.effectiveStatus
   const projectionScope = status === 'published' ? 'published' : 'working'
   const owner = ownerId ? await requireContentOwnerDelivery(event, ownerId) : null
+  const db = await getDb(event)
+
+  let field: PublishedSearchField | undefined
+  if (!ownerId) {
+    if (!values.length) throw badRequest('values required')
+    field = await db
+      .select({
+        fieldId: searchConfig.fieldId,
+        fieldKey: searchConfig.fieldKey,
+        kind: searchConfig.kind
+      })
+      .from(searchConfig)
+      .where(and(
+        eq(searchConfig.schemaKey, schemaKey),
+        eq(searchConfig.fieldKey, fieldKey)
+      ))
+      .get()
+
+    if (field && projectionScope === 'published') {
+      const publishedSchemas = await getPublishedSchemaFields(db, schemaKey, status)
+      assertPublishedFieldCompatibility({ config: field, publishedSchemas })
+    }
+  }
 
   const loadItems = async () => {
-    const db = await getDb(event)
-
     if (ownerId) {
       const listRows = await db
         .select({
@@ -108,21 +130,6 @@ export default defineEventHandler(async (event) => {
         .map(id => byId.get(id))
         .filter((item): item is ContentItem => Boolean(item))
     }
-
-    if (!values.length) throw badRequest('values required')
-
-    const field = await db
-      .select({
-        fieldId: searchConfig.fieldId,
-        fieldKey: searchConfig.fieldKey,
-        kind: searchConfig.kind
-      })
-      .from(searchConfig)
-      .where(and(
-        eq(searchConfig.schemaKey, schemaKey),
-        eq(searchConfig.fieldKey, fieldKey)
-      ))
-      .get()
 
     if (!field) return []
 
@@ -184,7 +191,7 @@ export default defineEventHandler(async (event) => {
       status,
       visibility: policy.cacheVisibility
     }
-    const cacheKey = await resolveWidgetCacheKey(event, 'curation', 'v1', params, `schema:${schemaKey}`)
+    const cacheKey = await resolveWidgetCacheKey(event, 'curation', 'v2', params, `schema:${schemaKey}`)
 
     applyWidgetCacheHeaders(event, POLICY, ['widget', 'curation', schemaKey, fieldKey])
     const cached = await withWidgetCache(event, cacheKey, POLICY, loadItems)
