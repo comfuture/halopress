@@ -16,12 +16,13 @@
     "db:studio": "drizzle-kit studio",
     "db:backfill:content-listing": "tsx scripts/backfill-content-listing.ts",
     "db:drop": "drizzle-kit drop",
-    "db:d1:list": "wrangler d1 migrations list",
-    "db:d1:apply": "wrangler d1 migrations apply",
-    "db:d1:apply:local": "wrangler d1 migrations apply --local",
-    "db:d1:apply:remote": "wrangler d1 migrations apply --remote",
+    "db:d1:list": "wrangler d1 migrations list DB",
+    "db:d1:apply": "wrangler d1 migrations apply DB",
+    "db:d1:apply:local": "wrangler d1 migrations apply DB --local",
+    "db:d1:apply:remote": "wrangler d1 migrations apply DB --remote",
     "deploy": "bash scripts/deploy-cloudflare.sh",
-    "deploy:cf": "bash scripts/deploy-cloudflare.sh"
+    "deploy:cf": "bash scripts/deploy-cloudflare.sh",
+    "test:deploy": "vitest run tests/cloudflare-deploy.test.ts"
   },
   "dependencies": {
     "@iconify-json/lucide": "^1.2.87",
@@ -61,11 +62,12 @@
     "@types/sortablejs": "^1.15.9",
     "drizzle-kit": "^0.31.8",
     "eslint": "^9.39.2",
+    "jsonc-parser": "3.3.1",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vitest": "^4.1.2",
-    "wrangler": "4.92.0",
-    "vue-tsc": "^3.2.4"
+    "vue-tsc": "^3.2.4",
+    "wrangler": "4.92.0"
   },
   "pnpm": {
     "overrides": {
@@ -78,6 +80,16 @@
       "@tiptap/extension-floating-menu": "3.18.0",
       "@tiptap/extension-list": "3.18.0",
       "@tiptap/y-tiptap": "3.0.2"
+    }
+  },
+  "cloudflare": {
+    "bindings": {
+      "DB": {
+        "description": "Stores all Halopress content and installation state. Create a new isolated D1 database for each site; reuse one only when redeploying that same site."
+      },
+      "CONTENT_ASSETS": {
+        "description": "Stores uploaded media. Create a new isolated R2 bucket for each site; reuse one only when redeploying that same site."
+      }
     }
   },
   "packageManager": "pnpm@10.23.0"

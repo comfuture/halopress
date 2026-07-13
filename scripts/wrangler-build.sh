@@ -9,5 +9,12 @@ fi
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
+if [ "${WORKERS_CI:-}" = "1" ] \
+  && [ -f ".output/server/index.mjs" ] \
+  && [ -d ".output/public" ]; then
+  echo "Reusing Nuxt output produced by the Workers Builds build command."
+  exit 0
+fi
+
 echo "Building Nuxt output for Cloudflare Workers..."
 pnpm build

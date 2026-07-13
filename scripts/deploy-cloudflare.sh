@@ -4,14 +4,103 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
+AUTH_SECRET_NAME="NUXT_AUTH_SECRET"
 D1_DATABASE="${HALOPRESS_D1_DATABASE:-DB}"
+PREPARE_ARGS=()
+SECRET_SCOPE_ARGS=()
 DEPLOY_ARGS=()
-MIGRATION_ARGS=()
-D1_LIST_ARGS=()
-FALLBACK_MIGRATION_ARGS=()
-CONFIG_PATH="wrangler.toml"
-ENV_NAME=""
 DRY_RUN=0
+USER_SECRETS_FILE=""
+GENERATED_SECRETS_DIR=""
+GENERATED_SECRETS_FILE=""
+SECRET_LIST_STDERR_FILE=""
+
+cleanup_generated_secrets() {
+  if [ -n "$GENERATED_SECRETS_DIR" ]; then
+    rm -rf -- "$GENERATED_SECRETS_DIR"
+  fi
+  if [ -n "$SECRET_LIST_STDERR_FILE" ]; then
+    rm -f -- "$SECRET_LIST_STDERR_FILE"
+  fi
+}
+
+trap cleanup_generated_secrets EXIT
+trap 'exit 130' INT
+trap 'exit 143' HUP TERM
+
+run_wrangler() {
+  if [ -n "${HALOPRESS_WRANGLER_BIN:-}" ]; then
+    "${HALOPRESS_WRANGLER_BIN}" "$@"
+  else
+    pnpm wrangler "$@"
+  fi
+}
+
+parse_secret_list_status() {
+  node -e '
+let input = ""
+process.stdin.setEncoding("utf8")
+process.stdin.on("data", chunk => { input += chunk })
+process.stdin.on("end", () => {
+  try {
+    const secrets = JSON.parse(input)
+    if (!Array.isArray(secrets)) throw new Error("expected an array")
+    const present = secrets.some(secret => secret && secret.name === process.argv[1])
+    process.stdout.write(present ? "present" : "missing")
+  } catch {
+    process.exitCode = 1
+  }
+})
+' "$AUTH_SECRET_NAME"
+}
+
+inspect_user_secrets_file() {
+  node -e '
+const { readFileSync } = require("node:fs")
+const { extname } = require("node:path")
+
+try {
+  const file = process.argv[1]
+  const secretName = process.argv[2]
+  const contents = readFileSync(file, "utf8")
+  let value
+
+  if (extname(file).toLowerCase() === ".json" || contents.trimStart().startsWith("{")) {
+    const secrets = JSON.parse(contents)
+    value = secrets && typeof secrets === "object" ? secrets[secretName] : undefined
+  } else {
+    for (const line of contents.split(/\r?\n/)) {
+      const match = line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/)
+      if (!match || match[1] !== secretName) continue
+      let candidate = match[2].trim()
+      if ((candidate.startsWith("\"") && candidate.endsWith("\""))
+        || (candidate.startsWith("\x27") && candidate.endsWith("\x27"))) {
+        candidate = candidate.slice(1, -1)
+      } else {
+        candidate = candidate.replace(/\s+#.*$/, "").trim()
+      }
+      value = candidate
+    }
+  }
+
+  process.stdout.write(typeof value === "string" && value.length > 0 ? "present" : "missing")
+} catch {
+  process.exitCode = 1
+}
+' "$USER_SECRETS_FILE" "$AUTH_SECRET_NAME"
+}
+
+create_generated_secrets_file() {
+  local temp_root="${TMPDIR:-/tmp}"
+  local secret_value
+
+  GENERATED_SECRETS_DIR="$(mktemp -d "${temp_root%/}/halopress-secrets.XXXXXX")"
+  chmod 700 "$GENERATED_SECRETS_DIR"
+  GENERATED_SECRETS_FILE="$GENERATED_SECRETS_DIR/.env"
+  secret_value="$(node -e 'process.stdout.write(require("node:crypto").randomBytes(32).toString("hex"))')"
+  (umask 077 && printf '%s=%s\n' "$AUTH_SECRET_NAME" "$secret_value" > "$GENERATED_SECRETS_FILE")
+  unset secret_value
+}
 
 if [ "$#" -gt 0 ] && [[ "$1" != -* ]]; then
   D1_DATABASE="$1"
@@ -25,55 +114,86 @@ while [ "$#" -gt 0 ]; do
       ;;
     --dry-run|--dry-run=true)
       DRY_RUN=1
+      PREPARE_ARGS+=("$1")
       DEPLOY_ARGS+=("$1")
       shift
       ;;
-    --env|-e|--config|-c|--env-file)
+    --env|-e|--config|-c)
       flag="$1"
-      DEPLOY_ARGS+=("$flag")
-      MIGRATION_ARGS+=("$flag")
-      D1_LIST_ARGS+=("$flag")
       shift
       if [ "$#" -eq 0 ]; then
         echo "Missing value for ${flag}" >&2
         exit 1
       fi
-      if [ "$flag" = "--env" ] || [ "$flag" = "-e" ]; then
-        ENV_NAME="$1"
-        FALLBACK_MIGRATION_ARGS+=("$flag" "$1")
-      elif [ "$flag" = "--config" ] || [ "$flag" = "-c" ]; then
-        CONFIG_PATH="$1"
-      elif [ "$flag" = "--env-file" ]; then
-        FALLBACK_MIGRATION_ARGS+=("$flag" "$1")
-      fi
-      DEPLOY_ARGS+=("$1")
-      MIGRATION_ARGS+=("$1")
-      D1_LIST_ARGS+=("$1")
+      PREPARE_ARGS+=("$flag" "$1")
+      SECRET_SCOPE_ARGS+=("$flag" "$1")
+      DEPLOY_ARGS+=("$flag" "$1")
       shift
       ;;
-    --env=*|-e=*|--config=*|-c=*|--env-file=*)
-      case "$1" in
-        --env=*)
-          ENV_NAME="${1#--env=}"
-          FALLBACK_MIGRATION_ARGS+=("$1")
-          ;;
-        -e=*)
-          ENV_NAME="${1#-e=}"
-          FALLBACK_MIGRATION_ARGS+=("$1")
-          ;;
-        --config=*)
-          CONFIG_PATH="${1#--config=}"
-          ;;
-        -c=*)
-          CONFIG_PATH="${1#-c=}"
-          ;;
-        --env-file=*)
-          FALLBACK_MIGRATION_ARGS+=("$1")
-          ;;
-      esac
+    --env-file)
+      flag="$1"
+      shift
+      if [ "$#" -eq 0 ]; then
+        echo "Missing value for ${flag}" >&2
+        exit 1
+      fi
+      PREPARE_ARGS+=("$flag" "$1")
+      DEPLOY_ARGS+=("$flag" "$1")
+      shift
+      ;;
+    --name)
+      flag="$1"
+      shift
+      if [ "$#" -eq 0 ]; then
+        echo "Missing value for ${flag}" >&2
+        exit 1
+      fi
+      SECRET_SCOPE_ARGS+=("$flag" "$1")
+      DEPLOY_ARGS+=("$flag" "$1")
+      shift
+      ;;
+    --secrets-file)
+      flag="$1"
+      shift
+      if [ "$#" -eq 0 ]; then
+        echo "Missing value for ${flag}" >&2
+        exit 1
+      fi
+      if [ -n "$USER_SECRETS_FILE" ]; then
+        echo 'Only one --secrets-file can be supplied.' >&2
+        exit 1
+      fi
+      USER_SECRETS_FILE="$1"
+      DEPLOY_ARGS+=("$flag" "$1")
+      shift
+      ;;
+    --env=*|-e=*|--config=*|-c=*)
+      PREPARE_ARGS+=("$1")
+      SECRET_SCOPE_ARGS+=("$1")
       DEPLOY_ARGS+=("$1")
-      MIGRATION_ARGS+=("$1")
-      D1_LIST_ARGS+=("$1")
+      shift
+      ;;
+    --env-file=*)
+      PREPARE_ARGS+=("$1")
+      DEPLOY_ARGS+=("$1")
+      shift
+      ;;
+    --name=*)
+      SECRET_SCOPE_ARGS+=("$1")
+      DEPLOY_ARGS+=("$1")
+      shift
+      ;;
+    --secrets-file=*)
+      if [ -n "$USER_SECRETS_FILE" ]; then
+        echo 'Only one --secrets-file can be supplied.' >&2
+        exit 1
+      fi
+      USER_SECRETS_FILE="${1#*=}"
+      if [ -z "$USER_SECRETS_FILE" ]; then
+        echo 'Missing value for --secrets-file' >&2
+        exit 1
+      fi
+      DEPLOY_ARGS+=("$1")
       shift
       ;;
     *)
@@ -83,274 +203,56 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-run_deploy() {
-  if [ "${#DEPLOY_ARGS[@]}" -gt 0 ]; then
-    HALOPRESS_SKIP_WRANGLER_BUILD=1 pnpm wrangler deploy "${DEPLOY_ARGS[@]}"
+SECRET_STATUS="missing"
+if [ "$DRY_RUN" -eq 0 ]; then
+  SECRET_LIST_STDERR_FILE="$(mktemp "${TMPDIR:-/tmp}/halopress-secret-list.XXXXXX")"
+  chmod 600 "$SECRET_LIST_STDERR_FILE"
+  set +e
+  SECRET_LIST_OUTPUT="$(run_wrangler secret list --format json "${SECRET_SCOPE_ARGS[@]}" 2> "$SECRET_LIST_STDERR_FILE")"
+  SECRET_LIST_EXIT=$?
+  set -e
+  SECRET_LIST_ERROR="$(< "$SECRET_LIST_STDERR_FILE")"
+  rm -f -- "$SECRET_LIST_STDERR_FILE"
+  SECRET_LIST_STDERR_FILE=""
+
+  if [ "$SECRET_LIST_EXIT" -eq 0 ]; then
+    if ! SECRET_STATUS="$(printf '%s' "$SECRET_LIST_OUTPUT" | parse_secret_list_status)"; then
+      echo 'Could not parse the Wrangler secret list response; refusing to deploy.' >&2
+      exit 1
+    fi
+  elif [[ "$SECRET_LIST_ERROR" == *' not found.'* \
+    && "$SECRET_LIST_ERROR" == *'If this is a new Worker, run `wrangler deploy` first'* ]]; then
+    SECRET_STATUS="missing"
   else
-    HALOPRESS_SKIP_WRANGLER_BUILD=1 pnpm wrangler deploy
-  fi
-}
-
-run_migrations() {
-  if [ "${#MIGRATION_ARGS[@]}" -gt 0 ]; then
-    pnpm wrangler d1 migrations apply "${D1_DATABASE}" --remote "${MIGRATION_ARGS[@]}"
-  else
-    pnpm wrangler d1 migrations apply "${D1_DATABASE}" --remote
-  fi
-}
-
-d1_config_value() {
-  local field="$1"
-
-  if [ ! -f "$CONFIG_PATH" ]; then
-    echo "Wrangler config not found: ${CONFIG_PATH}" >&2
-    exit 1
+    if [ -n "$SECRET_LIST_OUTPUT" ]; then
+      printf '%s\n' "$SECRET_LIST_OUTPUT" >&2
+    fi
+    if [ -n "$SECRET_LIST_ERROR" ]; then
+      printf '%s\n' "$SECRET_LIST_ERROR" >&2
+    fi
+    exit "$SECRET_LIST_EXIT"
   fi
 
-  awk -v env="$ENV_NAME" -v target="$D1_DATABASE" -v field="$field" '
-    function clean(value) {
-      sub(/^[^=]*=/, "", value)
-      sub(/[[:space:]]+#.*$/, "", value)
-      gsub(/^[[:space:]"\047]+|[[:space:]"\047]+$/, "", value)
-      return value
-    }
-    function reset_block() {
-      in_target = 0
-      scope = ""
-      binding = ""
-      database_name = ""
-      database_id = ""
-      migrations_dir = ""
-    }
-    function field_value() {
-      if (field == "binding") return binding
-      if (field == "database_name") return database_name
-      if (field == "database_id") return database_id
-      if (field == "migrations_dir") return migrations_dir
-      return ""
-    }
-    function emit_if_match() {
-      value = ""
-      if (!in_target) return
-      if (binding != target && database_name != target && target != "") return
-      value = field_value()
-      if (scope == "env" && value != "") {
-        print value
-        found = 1
-        exit
-      }
-      if (scope == "top" && top_value == "") {
-        top_value = value
-      }
-    }
-    BEGIN { reset_block() }
-    /^[[:space:]]*\[\[/ {
-      emit_if_match()
-      if (found) exit
-      header = $0
-      gsub(/[[:space:]]/, "", header)
-      if (env != "" && header == "[[env." env ".d1_databases]]") {
-        in_target = 1
-        scope = "env"
-      } else if (header == "[[d1_databases]]") {
-        in_target = 1
-        scope = "top"
-      } else {
-        in_target = 0
-        scope = ""
-      }
-      binding = ""
-      database_name = ""
-      database_id = ""
-      migrations_dir = ""
-      next
-    }
-    in_target && /^[[:space:]]*binding[[:space:]]*=/ {
-      binding = clean($0)
-      next
-    }
-    in_target && /^[[:space:]]*database_name[[:space:]]*=/ {
-      database_name = clean($0)
-      next
-    }
-    in_target && /^[[:space:]]*database_id[[:space:]]*=/ {
-      database_id = clean($0)
-      next
-    }
-    in_target && /^[[:space:]]*migrations_dir[[:space:]]*=/ {
-      migrations_dir = clean($0)
-      next
-    }
-    END {
-      if (!found) emit_if_match()
-      if (!found && top_value != "") print top_value
-    }
-  ' "$CONFIG_PATH" | head -n 1
-}
-
-config_scalar_value() {
-  local field="$1"
-
-  if [ ! -f "$CONFIG_PATH" ]; then
-    echo "Wrangler config not found: ${CONFIG_PATH}" >&2
-    exit 1
+  if [ "$SECRET_STATUS" = "missing" ] && [ -n "$USER_SECRETS_FILE" ]; then
+    if ! USER_SECRET_STATUS="$(inspect_user_secrets_file)"; then
+      echo 'Could not read the supplied --secrets-file; refusing to deploy.' >&2
+      exit 1
+    fi
+    if [ "$USER_SECRET_STATUS" != "present" ]; then
+      echo "The supplied --secrets-file must contain a non-empty ${AUTH_SECRET_NAME} for a new Worker or a Worker that does not have it yet." >&2
+      echo 'Remove --secrets-file to let Halopress generate it, or add the secret to that file.' >&2
+      exit 1
+    fi
   fi
-
-  awk -v env="$ENV_NAME" -v field="$field" '
-    function clean(value) {
-      sub(/^[^=]*=/, "", value)
-      sub(/[[:space:]]+#.*$/, "", value)
-      gsub(/^[[:space:]"\047]+|[[:space:]"\047]+$/, "", value)
-      return value
-    }
-    BEGIN { scope = "top" }
-    /^[[:space:]]*\[/ {
-      header = $0
-      gsub(/[[:space:]]/, "", header)
-      if (env != "" && header == "[env." env "]") {
-        scope = "env"
-      } else {
-        scope = "other"
-      }
-      next
-    }
-    scope == "top" && $0 ~ "^[[:space:]]*" field "[[:space:]]*=" {
-      top_value = clean($0)
-      next
-    }
-    scope == "env" && $0 ~ "^[[:space:]]*" field "[[:space:]]*=" {
-      print clean($0)
-      found = 1
-      exit
-    }
-    END {
-      if (!found && top_value != "") print top_value
-    }
-  ' "$CONFIG_PATH" | head -n 1
-}
-
-resolve_remote_d1_database_id() {
-  local database_name="$1"
-
-  if [ "${#D1_LIST_ARGS[@]}" -gt 0 ]; then
-    pnpm wrangler d1 list --json "${D1_LIST_ARGS[@]}"
-  else
-    pnpm wrangler d1 list --json
-  fi | node -e '
-    const fs = require("node:fs")
-    const databaseName = process.argv[1]
-    const databases = JSON.parse(fs.readFileSync(0, "utf8"))
-    const database = databases.find(item => item.name === databaseName)
-    if (!database?.uuid) {
-      console.error(`Could not find remote D1 database named ${databaseName}`)
-      process.exit(1)
-    }
-    process.stdout.write(database.uuid)
-  ' "$database_name"
-}
-
-run_migrations_with_resolved_database_id() {
-  local binding
-  local database_name
-  local database_id
-  local migrations_dir
-  local compatibility_date
-  local worker_name
-  local worker_main
-  local config_dir
-  local temp_config
-  local d1_header
-
-  binding="$(d1_config_value binding)"
-  database_name="$(d1_config_value database_name)"
-  migrations_dir="$(d1_config_value migrations_dir)"
-
-  if [ -z "$binding" ]; then
-    binding="$D1_DATABASE"
-  fi
-  if [ -z "$database_name" ]; then
-    database_name="$D1_DATABASE"
-  fi
-  if [ -z "$migrations_dir" ]; then
-    migrations_dir="migrations"
-  fi
-
-  database_id="$(resolve_remote_d1_database_id "$database_name")"
-  worker_name="$(config_scalar_value name)"
-  worker_main="$(config_scalar_value main)"
-  compatibility_date="$(config_scalar_value compatibility_date)"
-  if [ -z "$worker_name" ]; then
-    worker_name="halopress-d1-migrations"
-  fi
-  if [ -z "$worker_main" ]; then
-    worker_main=".output/server/index.mjs"
-  fi
-  if [ -z "$compatibility_date" ]; then
-    compatibility_date="2026-05-18"
-  fi
-
-  if [ -n "$ENV_NAME" ]; then
-    d1_header="[[env.${ENV_NAME}.d1_databases]]"
-  else
-    d1_header="[[d1_databases]]"
-  fi
-
-  config_dir="$(cd "$(dirname "$CONFIG_PATH")" && pwd)"
-  temp_config="$(mktemp "${config_dir}/.halopress-d1-migrations.XXXXXX.toml")"
-  trap 'rm -f "$temp_config"' RETURN
-
-  {
-    printf 'name = "%s"\n' "$worker_name"
-    printf 'main = "%s"\n' "$worker_main"
-    printf 'compatibility_date = "%s"\n' "$compatibility_date"
-    printf '\n%s\n' "$d1_header"
-    printf 'binding = "%s"\n' "$binding"
-    printf 'database_name = "%s"\n' "$database_name"
-    printf 'database_id = "%s"\n' "$database_id"
-    printf 'migrations_dir = "%s"\n' "$migrations_dir"
-  } > "$temp_config"
-
-  if [ "${#FALLBACK_MIGRATION_ARGS[@]}" -gt 0 ]; then
-    pnpm wrangler d1 migrations apply "$binding" --remote --config "$temp_config" "${FALLBACK_MIGRATION_ARGS[@]}"
-  else
-    pnpm wrangler d1 migrations apply "$binding" --remote --config "$temp_config"
-  fi
-}
-
-has_database_id() {
-  local database_id
-
-  database_id="$(d1_config_value database_id)"
-  [ -n "$database_id" ] && [[ "$database_id" != \<*\> ]]
-}
-
-if [ "${HALOPRESS_SKIP_BUILD:-}" = "1" ]; then
-  echo "Skipping Nuxt build because HALOPRESS_SKIP_BUILD=1."
-else
-  echo "Building Nuxt output..."
-  pnpm build
 fi
 
-if [ "$DRY_RUN" = "1" ]; then
-  echo "Running Wrangler deploy dry run..."
-  run_deploy
-  echo "Skipping D1 migrations because --dry-run was provided."
-  exit 0
+node scripts/prepare-cloudflare-d1.mjs "$D1_DATABASE" "${PREPARE_ARGS[@]}"
+
+if [ "$DRY_RUN" -eq 0 ] && [ "$SECRET_STATUS" = "missing" ] && [ -z "$USER_SECRETS_FILE" ]; then
+  create_generated_secrets_file
+  DEPLOY_ARGS+=(--secrets-file "$GENERATED_SECRETS_FILE")
+  echo "Generated ${AUTH_SECRET_NAME} for this Worker; the value was not printed and will be preserved on later deploys."
 fi
 
-if has_database_id; then
-  echo "Applying D1 migrations (remote) for ${D1_DATABASE}..."
-  run_migrations
-
-  echo "Deploying worker..."
-  run_deploy
-else
-  echo "Deploying worker to provision Cloudflare bindings..."
-  run_deploy
-
-  echo "Applying D1 migrations (remote) for ${D1_DATABASE} with resolved database_id..."
-  run_migrations_with_resolved_database_id
-
-  echo "Redeploying worker after migrations..."
-  run_deploy
-fi
+echo 'Deploying Cloudflare Worker...'
+run_wrangler deploy "${DEPLOY_ARGS[@]}"
