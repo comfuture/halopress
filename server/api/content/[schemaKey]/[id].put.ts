@@ -19,6 +19,7 @@ export default defineEventHandler(async (event) => {
   const session = await getAuthSession(event)
   const actorId = (session?.user as any)?.id ?? null
   const body = await readBody<{ status?: string, content?: Record<string, unknown> }>(event)
+  if (body?.status === 'deleted') throw badRequest('Use the delete endpoint to delete content')
 
   const db = await getDb(event)
   const active = await getActiveSchema(db, schemaKey)
@@ -32,9 +33,19 @@ export default defineEventHandler(async (event) => {
   const input = body?.content ?? parseContentJson(existing.contentJson)
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw badRequest('Invalid content')
   const content = validateContentJson(active.jsonSchema, input)
+  const workingStatus = body?.status ?? (existing.status === 'published' ? 'draft' : existing.status)
   const publication = body?.status === 'published'
     ? await publishContentWorking({ event, db, existing, schemaKey, active: active as any, content, actorId })
-    : await saveContentWorking({ event, db, existing, schemaKey, active: active as any, content, actorId })
+    : await saveContentWorking({
+        event,
+        db,
+        existing,
+        schemaKey,
+        active: active as any,
+        content,
+        actorId,
+        status: workingStatus
+      })
 
   if (body?.status === 'published') queueWidgetCacheInvalidation(event, 'schema:' + schemaKey)
   return { ok: true, ...publication }

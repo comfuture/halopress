@@ -20,6 +20,7 @@ export default defineEventHandler(async (event) => {
   const session = await getAuthSession(event)
   const actorId = (session?.user as any)?.id ?? null
   const body = await readBody<{ status?: string, content?: Record<string, unknown> }>(event)
+  if (body?.status === 'deleted') throw badRequest('Cannot create deleted content')
   const db = await getDb(event)
   const active = await getActiveSchema(db, schemaKey)
   if (!active?.registry) throw notFound('Active schema not found')
@@ -30,7 +31,7 @@ export default defineEventHandler(async (event) => {
   const id = newId()
   const revisionId = body?.status === 'published' ? newId() : null
   const now = new Date()
-  const status = revisionId ? 'published' : 'draft'
+  const status = revisionId ? 'published' : (body?.status || 'draft')
 
   await withDbTransaction(event, db, async (tx: any, statements) => {
     await replaceBase64ImagesInContent({ event, db: tx, createdBy: actorId, content, statements })
