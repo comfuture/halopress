@@ -54,7 +54,7 @@ export default defineEventHandler(async (event) => {
 
   const limit = Math.min(Number(q.limit ?? 6) || 6, 50)
   const status = policy.effectiveStatus
-  const projectionScope = policy.isPublic || q.status === 'published' ? 'published' : 'working'
+  const projectionScope = status === 'published' ? 'published' : 'working'
   const owner = ownerId ? await requireContentOwnerDelivery(event, ownerId) : null
 
   const loadItems = async () => {

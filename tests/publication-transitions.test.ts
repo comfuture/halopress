@@ -150,6 +150,18 @@ describe('publication transitions', () => {
         eq(contentListing.contentId, 'article-1'),
         eq(contentListing.projectionScope, 'published')
       ))).toHaveLength(0)
+      expect(await db.select({
+        projectionScope: contentListing.projectionScope,
+        status: contentListing.status,
+        title: contentListing.title
+      }).from(contentListing).where(and(
+        eq(contentListing.contentId, 'article-1'),
+        eq(contentListing.projectionScope, 'working')
+      ))).toEqual([{
+        projectionScope: 'working',
+        status: 'draft',
+        title: 'Live v2'
+      }])
       expect(await db.select().from(publicationRevision).where(and(
         eq(publicationRevision.documentKind, 'content'),
         eq(publicationRevision.documentId, 'article-1')

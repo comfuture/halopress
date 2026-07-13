@@ -27,7 +27,7 @@ export default defineEventHandler(async (event) => {
 
   const limit = Math.min(Number(q.limit ?? 6) || 6, 50)
   const status = policy.effectiveStatus
-  const projectionScope = policy.isPublic || q.status === 'published' ? 'published' : 'working'
+  const projectionScope = status === 'published' ? 'published' : 'working'
   const sortRaw = typeof q.sort === 'string' && q.sort.length ? q.sort : '-created'
   const sortDesc = sortRaw.startsWith('-')
   const sortKey = sortDesc ? sortRaw.slice(1) : sortRaw
