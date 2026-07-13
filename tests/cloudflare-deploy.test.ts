@@ -395,10 +395,11 @@ migrations_dir = "migrations"
     await expect(readFile(secretMeta.path)).rejects.toThrow()
   })
 
-  it('uses a caller-provided auth secret without adding a conflicting secrets file', async () => {
+  it('accepts a 24-byte UTF-8 auth secret without adding a conflicting secrets file', async () => {
     const fixture = await createFixture(baseConfig({ database_id: 'existing-id' }))
     const userSecretsPath = join(fixture.directory, 'user-secrets.env')
-    await writeFile(userSecretsPath, 'OPTIONAL_VALUE=test\nNUXT_AUTH_SECRET=user-selected-secret\n')
+    const providedSecret = '가나다라마바사아'
+    await writeFile(userSecretsPath, `OPTIONAL_VALUE=test\nNUXT_AUTH_SECRET=${providedSecret}\n`)
     const result = await run('bash', [
       deployScript,
       '--config', fixture.configPath,
@@ -409,13 +410,32 @@ migrations_dir = "migrations"
     })
 
     expect(result).toMatchObject({ code: 0 })
-    expect(`${result.stdout}\n${result.stderr}`).not.toContain('user-selected-secret')
+    expect(`${result.stdout}\n${result.stderr}`).not.toContain(providedSecret)
     const deployCall = (await readCalls(fixture.logPath)).at(-1)
     expect(deployCall?.filter(argument => argument === '--secrets-file')).toHaveLength(1)
     expect(deployCall).toContain(userSecretsPath)
     const secretMeta = JSON.parse(await readFile(fixture.secretMetaPath, 'utf8'))
     expect(secretMeta.path).toBe(userSecretsPath)
     expect(await readFile(userSecretsPath, 'utf8')).toContain('NUXT_AUTH_SECRET=')
+  })
+
+  it('rejects a supplied 20-byte auth secret before remote access or migrations', async () => {
+    const fixture = await createFixture(baseConfig({ database_id: 'existing-id' }))
+    const userSecretsPath = join(fixture.directory, 'weak-secrets.env')
+    await writeFile(userSecretsPath, 'NUXT_AUTH_SECRET=user-selected-secret\n')
+    const result = await run('bash', [
+      deployScript,
+      '--config', fixture.configPath,
+      '--secrets-file', userSecretsPath
+    ], {
+      cwd: projectRoot,
+      env: fixture.env
+    })
+
+    expect(result.code).not.toBe(0)
+    expect(result.stderr).toContain('must be at least 24 UTF-8 bytes')
+    expect(result.stderr).toContain('openssl rand -hex 32')
+    expect(await readCalls(fixture.logPath)).toEqual([])
   })
 
   it('rejects a caller secrets file without the required first-deploy auth secret', async () => {
@@ -432,7 +452,7 @@ migrations_dir = "migrations"
     })
 
     expect(result.code).not.toBe(0)
-    expect(result.stderr).toContain('must contain a non-empty NUXT_AUTH_SECRET')
+    expect(result.stderr).toContain('must contain NUXT_AUTH_SECRET with at least 24 UTF-8 bytes')
     expect(await readCalls(fixture.logPath)).toEqual([
       ['secret', 'list', '--format', 'json', '--config', fixture.configPath]
     ])

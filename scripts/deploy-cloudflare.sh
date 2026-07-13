@@ -83,7 +83,12 @@ try {
     }
   }
 
-  process.stdout.write(typeof value === "string" && value.length > 0 ? "present" : "missing")
+  const normalized = typeof value === "string" ? value.trim() : ""
+  if (!normalized) {
+    process.stdout.write("missing")
+  } else {
+    process.stdout.write(Buffer.byteLength(normalized, "utf8") >= 24 ? "valid" : "weak")
+  }
 } catch {
   process.exitCode = 1
 }
@@ -203,6 +208,19 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
+USER_SECRET_STATUS="missing"
+if [ -n "$USER_SECRETS_FILE" ]; then
+  if ! USER_SECRET_STATUS="$(inspect_user_secrets_file)"; then
+    echo 'Could not read the supplied --secrets-file; refusing to deploy.' >&2
+    exit 1
+  fi
+  if [ "$USER_SECRET_STATUS" = "weak" ]; then
+    echo "${AUTH_SECRET_NAME} in --secrets-file must be at least 24 UTF-8 bytes." >&2
+    echo 'Use 32 random bytes; for example, generate a value with `openssl rand -hex 32`.' >&2
+    exit 1
+  fi
+fi
+
 SECRET_STATUS="missing"
 if [ "$DRY_RUN" -eq 0 ]; then
   SECRET_LIST_STDERR_FILE="$(mktemp "${TMPDIR:-/tmp}/halopress-secret-list.XXXXXX")"
@@ -234,13 +252,9 @@ if [ "$DRY_RUN" -eq 0 ]; then
   fi
 
   if [ "$SECRET_STATUS" = "missing" ] && [ -n "$USER_SECRETS_FILE" ]; then
-    if ! USER_SECRET_STATUS="$(inspect_user_secrets_file)"; then
-      echo 'Could not read the supplied --secrets-file; refusing to deploy.' >&2
-      exit 1
-    fi
-    if [ "$USER_SECRET_STATUS" != "present" ]; then
-      echo "The supplied --secrets-file must contain a non-empty ${AUTH_SECRET_NAME} for a new Worker or a Worker that does not have it yet." >&2
-      echo 'Remove --secrets-file to let Halopress generate it, or add the secret to that file.' >&2
+    if [ "$USER_SECRET_STATUS" != "valid" ]; then
+      echo "The supplied --secrets-file must contain ${AUTH_SECRET_NAME} with at least 24 UTF-8 bytes for a new Worker or a Worker that does not have it yet." >&2
+      echo 'Remove --secrets-file to let Halopress generate 32 random bytes, or add a strong secret to that file.' >&2
       exit 1
     fi
   fi
