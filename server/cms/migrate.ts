@@ -178,6 +178,7 @@ export async function migrateSchemaContent(args: {
   nextVersion: number
   registry: SchemaRegistry
   changes: KindChange[]
+  trustedOrigin?: string
 }) {
   const { db, schemaKey, nextVersion, registry, changes } = args
   if (!changes.length) return { updated: 0 }
@@ -258,7 +259,8 @@ export async function migrateSchemaContent(args: {
       status: nextStatus,
       createdAt: row.createdAt,
       updatedAt: now,
-      projectionScope: 'working'
+      projectionScope: 'working',
+      trustedOrigin: args.trustedOrigin
     })
     updated += 1
   }

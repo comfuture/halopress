@@ -11,6 +11,7 @@ import { getAuthSession } from '../../../utils/auth'
 import { replaceBase64ImagesInContent } from '../../../utils/asset-data-url'
 import { badRequest, notFound } from '../../../utils/http'
 import { newId } from '../../../utils/ids'
+import { getTrustedRequestOrigin } from '../../../utils/request-origin'
 import { requireSchemaPermission } from '../../../utils/schema-permission'
 import { queueWidgetCacheInvalidation } from '../../../utils/widget-cache'
 
@@ -73,6 +74,7 @@ export default defineEventHandler(async (event) => {
         createdAt: now,
         updatedAt: now,
         projectionScope,
+        trustedOrigin: getTrustedRequestOrigin(event),
         statements
       })
     }

@@ -7,6 +7,7 @@ import { executeDbStatement, withDbTransaction } from '../db/transaction'
 import { replaceBase64ImagesInContent } from '../utils/asset-data-url'
 import { conflict, notFound } from '../utils/http'
 import { newId } from '../utils/ids'
+import { getTrustedRequestOrigin } from '../utils/request-origin'
 import { parseContentJson } from './content-json'
 import { deleteContentProjections, syncContentProjections } from './content-projections'
 import { getPublicationRevision, publicationMetadata, publicationRevisionValues } from './publication'
@@ -59,6 +60,7 @@ export async function saveContentWorking(args: {
       createdAt: asDate(args.existing.createdAt),
       updatedAt: now,
       projectionScope: 'working',
+      trustedOrigin: getTrustedRequestOrigin(args.event),
       statements
     })
   })
@@ -116,6 +118,7 @@ export async function publishContentWorking(args: {
         createdAt: asDate(args.existing.createdAt),
         updatedAt: now,
         projectionScope,
+        trustedOrigin: getTrustedRequestOrigin(args.event),
         statements
       })
     }
@@ -165,6 +168,7 @@ export async function discardContentWorking(args: {
       createdAt: asDate(args.existing.createdAt),
       updatedAt: now,
       projectionScope: 'working',
+      trustedOrigin: getTrustedRequestOrigin(args.event),
       statements
     })
   })

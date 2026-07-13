@@ -18,6 +18,7 @@ import { requireAdmin } from '../../../utils/auth'
 import { assertAssetIsNotPublished, assertAssetIsNotRetained } from '../../../utils/asset-delivery'
 import { badRequest, conflict, notFound } from '../../../utils/http'
 import { queueWidgetCacheInvalidation } from '../../../utils/widget-cache'
+import { getTrustedRequestOrigin } from '../../../utils/request-origin'
 
 function replaceAssetRefs(value: unknown, fromId: string, toId?: string | null): { value: unknown; changed: boolean } {
   const rawUrl = `/assets/${fromId}/raw`
@@ -214,6 +215,7 @@ export default defineEventHandler(async (event) => {
           createdAt: update.row.createdAt,
           updatedAt: update.updatedAt,
           projectionScope: 'working',
+          trustedOrigin: getTrustedRequestOrigin(event),
           statements
         })
       }
@@ -228,6 +230,7 @@ export default defineEventHandler(async (event) => {
           documentId: update.row.id,
           projectionScope: 'working',
           content: update.content,
+          trustedOrigin: getTrustedRequestOrigin(event),
           statements
         })
       }

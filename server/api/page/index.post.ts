@@ -8,6 +8,7 @@ import { page as pageTable, publicationRevision } from '../../db/schema'
 import { executeDbStatement, withDbTransaction } from '../../db/transaction'
 import { requireAdmin } from '../../utils/auth'
 import { newId } from '../../utils/ids'
+import { getTrustedRequestOrigin } from '../../utils/request-origin'
 
 export default defineEventHandler(async (event) => {
   const session = await requireAdmin(event)
@@ -53,6 +54,7 @@ export default defineEventHandler(async (event) => {
         documentId: id,
         projectionScope,
         content,
+        trustedOrigin: getTrustedRequestOrigin(event),
         statements
       })
     }
