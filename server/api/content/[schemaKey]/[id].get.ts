@@ -3,11 +3,11 @@ import { getQuery } from 'h3'
 
 import { getDb } from '../../../db/db'
 import { parseContentJson } from '../../../cms/content-json'
-import { notFound, unauthorized } from '../../../utils/http'
+import { normalizeDeliveryStatus, resolveDeliveryPolicy } from '../../../utils/delivery-policy'
+import { notFound } from '../../../utils/http'
 import { content as contentTable, contentListing as contentListingTable } from '../../../db/schema'
 import { buildContentListingSnapshot } from '../../../cms/content-listing'
 import { getActiveSchema } from '../../../cms/repo'
-import { requireSchemaPermission } from '../../../utils/schema-permission'
 
 export default defineEventHandler(async (event) => {
   const schemaKey = event.context.params?.schemaKey as string
@@ -16,7 +16,7 @@ export default defineEventHandler(async (event) => {
   const includeSurroundings = ['1', 'true'].includes(String(q.surroundings ?? q.includeSurroundings ?? ''))
   const order = q.order === 'asc' ? 'asc' : 'desc'
 
-  const permission = await requireSchemaPermission(event, schemaKey, 'read')
+  const policy = await resolveDeliveryPolicy(event, schemaKey, { requestedStatus: q.status })
   const db = await getDb(event)
   const row = await db
     .select()
@@ -26,8 +26,8 @@ export default defineEventHandler(async (event) => {
 
   if (!row) throw notFound('Content not found')
 
-  if (row.status !== 'published' && permission.roleKey === 'anonymous') {
-    throw unauthorized()
+  if (row.status !== 'published' && policy.isPublic) {
+    throw notFound('Content not found')
   }
 
   const content = parseContentJson(row.contentJson)
@@ -63,17 +63,17 @@ export default defineEventHandler(async (event) => {
 
   let surroundings: { prev: any; next: any } | undefined
   if (includeSurroundings) {
-    const requestedStatus = typeof q.status === 'string' && q.status.length ? q.status : row.status
-    let status = requestedStatus
-    if (requestedStatus !== 'published') {
-      if (permission.roleKey === 'anonymous') status = 'published'
-    }
+    const status = normalizeDeliveryStatus({
+      roleKey: policy.permission.roleKey,
+      requestedStatus: q.status,
+      defaultStatus: row.status
+    })
     const baseUpdatedAt = item.updatedAt
     const baseId = item.contentId ?? item.id ?? row.id
     const whereParts = [
       eq(contentListingTable.schemaKey, schemaKey)
     ] as any[]
-    if (status !== 'all') {
+    if (status) {
       whereParts.push(eq(contentListingTable.status, status))
     }
 

@@ -3,6 +3,7 @@ import { getQuery, setHeader } from 'h3'
 
 import { getDb } from '../../db/db'
 import { contentListing as contentListingTable } from '../../db/schema'
+import { applyPrivateDeliveryHeaders, resolveDeliveryPolicy } from '../../utils/delivery-policy'
 import { badRequest } from '../../utils/http'
 import { applyWidgetCacheHeaders, resolveWidgetCacheKey, withWidgetCache } from '../../utils/widget-cache'
 
@@ -19,24 +20,23 @@ export default defineEventHandler(async (event) => {
     : (typeof q.schemaKey === 'string' ? q.schemaKey : null)
 
   if (!schemaKey) throw badRequest('schema required')
+  const policy = await resolveDeliveryPolicy(event, schemaKey, {
+    requestedStatus: q.status,
+    defaultStatus: 'published'
+  })
 
   const limit = Math.min(Number(q.limit ?? 6) || 6, 50)
-  const status = typeof q.status === 'string' ? q.status : 'published'
+  const status = policy.effectiveStatus
   const sortRaw = typeof q.sort === 'string' && q.sort.length ? q.sort : '-created'
   const sortDesc = sortRaw.startsWith('-')
   const sortKey = sortDesc ? sortRaw.slice(1) : sortRaw
   const sortField = sortKey === 'updated' || sortKey === 'updatedAt' ? 'updatedAt' : 'createdAt'
   const sortNormalized = `${sortDesc ? '-' : ''}${sortField === 'createdAt' ? 'created' : 'updated'}`
 
-  const params = { schemaKey, limit, status, sort: sortNormalized }
-  const cacheKey = await resolveWidgetCacheKey(event, 'recent', 'v1', params, `schema:${schemaKey}`)
-
-  applyWidgetCacheHeaders(event, POLICY, ['widget', 'recent', schemaKey])
-
-  const { data, status: cacheStatus, backend } = await withWidgetCache(event, cacheKey, POLICY, async () => {
+  const loadItems = async () => {
     const db = await getDb(event)
     const whereParts = [eq(contentListingTable.schemaKey, schemaKey)] as any[]
-    if (status && status !== 'all') whereParts.push(eq(contentListingTable.status, status))
+    if (status) whereParts.push(eq(contentListingTable.status, status))
 
     const orderField = sortField === 'updatedAt' ? contentListingTable.updatedAt : contentListingTable.createdAt
     const orderTie = sortDesc ? desc(contentListingTable.contentId) : asc(contentListingTable.contentId)
@@ -58,7 +58,27 @@ export default defineEventHandler(async (event) => {
       .where(and(...whereParts))
       .orderBy(orderPrimary, orderTie)
       .limit(limit)
-  })
+  }
+
+  let data: Awaited<ReturnType<typeof loadItems>>
+  let cacheStatus: string
+  let backend: string
+
+  if (policy.canUsePublicCache) {
+    const params = { schemaKey, limit, status, sort: sortNormalized, visibility: policy.cacheVisibility }
+    const cacheKey = await resolveWidgetCacheKey(event, 'recent', 'v1', params, `schema:${schemaKey}`)
+
+    applyWidgetCacheHeaders(event, POLICY, ['widget', 'recent', schemaKey])
+    const cached = await withWidgetCache(event, cacheKey, POLICY, loadItems)
+    data = cached.data
+    cacheStatus = cached.status
+    backend = cached.backend
+  } else {
+    applyPrivateDeliveryHeaders(event)
+    data = await loadItems()
+    cacheStatus = 'bypass'
+    backend = 'none'
+  }
 
   setHeader(event, 'X-Widget-Cache', cacheStatus)
   setHeader(event, 'X-Widget-Cache-Backend', backend)

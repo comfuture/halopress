@@ -129,6 +129,7 @@ export function applyWidgetCacheHeaders(event: H3Event, policy: CachePolicy, tag
   const swr = Math.max(0, hard - soft)
 
   setHeader(event, 'Cache-Control', `public, max-age=${soft}, stale-while-revalidate=${swr}, stale-if-error=${staleIfError}`)
+  setHeader(event, 'Vary', 'Cookie')
   if (tags && tags.length) setHeader(event, 'CF-Cache-Tag', tags.join(','))
 }
 

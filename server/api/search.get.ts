@@ -8,6 +8,7 @@ import {
   coerceSearchValue,
   searchDataTypeForKind
 } from '../cms/search-helpers'
+import { resolveDeliveryPolicy } from '../utils/delivery-policy'
 import { badRequest } from '../utils/http'
 
 type FilterInput = {
@@ -88,10 +89,11 @@ export default defineEventHandler(async (event) => {
   const q = getQuery(event)
   const schemaKey = typeof q.schemaKey === 'string' ? q.schemaKey : null
   if (!schemaKey) throw badRequest('schemaKey required')
+  const policy = await resolveDeliveryPolicy(event, schemaKey, { requestedStatus: q.status })
 
   const limit = Math.min(Number(q.limit ?? 20) || 20, 50)
   const cursor = q.cursor ? new Date(Number(q.cursor)) : null
-  const status = typeof q.status === 'string' ? q.status : null
+  const status = policy.effectiveStatus
 
   const sortParam = typeof q.sort === 'string' ? q.sort : null
   const sortField = typeof q.sortField === 'string' ? q.sortField : null
