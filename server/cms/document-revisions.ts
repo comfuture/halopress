@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, lte } from 'drizzle-orm'
+import { and, asc, desc, eq, notInArray } from 'drizzle-orm'
 import type { H3Event } from 'h3'
 
 import type { Db } from '../db/db'
@@ -149,15 +149,21 @@ export async function mutateWithDocumentRevision<T>(args: {
         createdAt: now
       })), statements)
 
-      const pruneThrough = nextRevision - DOCUMENT_REVISION_RETENTION_LIMIT
-      if (pruneThrough > 0) {
-        await executeDbStatement(tx.delete(documentRevision).where(and(
+      const ordinarySavesToKeep = tx.select({ id: documentRevision.id })
+        .from(documentRevision)
+        .where(and(
           eq(documentRevision.documentKind, args.documentKind),
           eq(documentRevision.documentId, args.documentId),
-          lte(documentRevision.revision, pruneThrough),
-          inArray(documentRevision.action, ['save'])
-        )), statements)
-      }
+          eq(documentRevision.action, 'save')
+        ))
+        .orderBy(desc(documentRevision.revision))
+        .limit(DOCUMENT_REVISION_RETENTION_LIMIT)
+      await executeDbStatement(tx.delete(documentRevision).where(and(
+        eq(documentRevision.documentKind, args.documentKind),
+        eq(documentRevision.documentId, args.documentId),
+        eq(documentRevision.action, 'save'),
+        notInArray(documentRevision.id, ordinarySavesToKeep)
+      )), statements)
       return result
     })
   } catch (error) {

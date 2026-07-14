@@ -151,4 +151,105 @@ describe('editorial revision safety', () => {
       fixture.close()
     }
   })
+
+  it('retains the latest 100 ordinary saves by count on the D1 batch path', async () => {
+    const fixture = await createTestSqliteDb()
+    const { db } = fixture
+    try {
+      await runMigrations(db)
+      const createdAt = new Date('2026-07-14T00:00:00.000Z')
+      await db.insert(content).values({
+        id: 'article-retention',
+        schemaKey: 'article',
+        schemaVersion: 1,
+        status: 'draft',
+        contentJson: JSON.stringify({ title: 'Revision 111' }),
+        currentRevision: 111,
+        createdAt,
+        updatedAt: createdAt
+      })
+      await db.insert(documentRevision).values([
+        {
+          id: 'retention-1',
+          documentKind: 'content',
+          documentId: 'article-retention',
+          schemaKey: 'article',
+          revision: 1,
+          action: 'create',
+          status: 'draft',
+          schemaVersion: 1,
+          snapshotJson: JSON.stringify({ title: 'Revision 1' }),
+          createdAt
+        },
+        ...Array.from({ length: 110 }, (_, index) => {
+          const revision = index + 2
+          const action = revision >= 12 && revision <= 20 ? 'publish' : 'save'
+          return {
+            id: `retention-${revision}`,
+            documentKind: 'content' as const,
+            documentId: 'article-retention',
+            schemaKey: 'article',
+            revision,
+            action: action as 'publish' | 'save',
+            status: action === 'publish' ? 'published' : 'draft',
+            schemaVersion: 1,
+            snapshotJson: JSON.stringify({ title: `Revision ${revision}` }),
+            createdAt
+          }
+        })
+      ])
+
+      const batch = vi.fn(async (statements: any[]) => {
+        for (const statement of statements) await statement
+      })
+      const d1Db = new Proxy(db, {
+        get(target, property, receiver) {
+          if (property === 'batch') return batch
+          if (property === 'transaction') return vi.fn(() => {
+            throw new Error('D1 transaction must not be called')
+          })
+          return Reflect.get(target, property, receiver)
+        }
+      })
+      const d1Event = { context: { cloudflare: { env: { DB: {} } } } } as any
+
+      await mutateWithDocumentRevision({
+        event: d1Event,
+        db: d1Db,
+        identity: { currentRevision: 111, updatedAt: createdAt },
+        expectedRevision: 111,
+        documentKind: 'content',
+        documentId: 'article-retention',
+        schemaKey: 'article',
+        action: 'save',
+        state: { snapshot: { title: 'Revision 112' }, status: 'draft', schemaVersion: 1 },
+        actorId: 'writer-1',
+        work: async (tx, statements, nextRevision, now) => {
+          await executeDbStatement(tx.update(content).set({
+            contentJson: JSON.stringify({ title: 'Revision 112' }),
+            currentRevision: nextRevision,
+            updatedBy: 'writer-1',
+            updatedAt: now
+          }).where(and(
+            eq(content.id, 'article-retention'),
+            eq(content.currentRevision, 111)
+          )), statements)
+        }
+      })
+
+      const revisions = await db.select().from(documentRevision)
+        .where(eq(documentRevision.documentId, 'article-retention'))
+      const saves = revisions.filter(row => row.action === 'save')
+      expect(batch).toHaveBeenCalledOnce()
+      expect(saves).toHaveLength(100)
+      expect(saves.map(row => row.revision).sort((a, b) => a - b)).toEqual([
+        ...Array.from({ length: 8 }, (_, index) => index + 4),
+        ...Array.from({ length: 92 }, (_, index) => index + 21)
+      ])
+      expect(revisions.filter(row => row.action === 'publish')).toHaveLength(9)
+      expect(revisions.some(row => row.action === 'create' && row.revision === 1)).toBe(true)
+    } finally {
+      fixture.close()
+    }
+  })
 })
