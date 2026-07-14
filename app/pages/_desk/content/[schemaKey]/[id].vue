@@ -164,7 +164,10 @@ async function publish() {
   try {
     await $fetch(`/api/content/${schemaKey.value}/${id.value}/publish`, {
       method: 'POST',
-      body: { revision: currentRevision.value, content: state.content }
+      body: {
+        revision: currentRevision.value,
+        ...(canWrite.value ? { content: state.content } : {})
+      }
     })
     toast.add({ title: 'Published' })
     await refreshDoc()
