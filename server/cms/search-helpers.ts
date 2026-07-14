@@ -29,7 +29,8 @@ export const SEARCH_MODES_BY_KIND: Record<FieldKind, SearchMode[]> = {
   date: ['off', 'exact', 'range'],
   datetime: ['off', 'exact', 'range'],
   reference: ['off'],
-  asset: ['off']
+  asset: ['off'],
+  asset_list: ['off']
 }
 
 export const FILTERABLE_KINDS = new Set<FieldKind>([

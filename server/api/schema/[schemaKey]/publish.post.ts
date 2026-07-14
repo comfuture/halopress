@@ -44,7 +44,12 @@ export default defineEventHandler(async (event) => {
     .get()
 
   const nextVersion = (latest?.version ?? 0) + 1
-  const compiled = compileSchemaAst(ast, nextVersion)
+  let compiled: ReturnType<typeof compileSchemaAst>
+  try {
+    compiled = compileSchemaAst(ast, nextVersion)
+  } catch (error) {
+    throw badRequest(error instanceof Error ? error.message : 'Invalid presentation bindings')
+  }
   const active = await getActiveSchema(db, schemaKey)
   const kindChanges = getKindChanges(active?.ast ?? null, ast)
   const listingChanged = JSON.stringify(active?.registry?.listing ?? null) !== JSON.stringify(compiled.registry.listing ?? null)

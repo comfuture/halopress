@@ -13,11 +13,14 @@ import type { SchemaRegistry } from './types'
 export function contentAssetFieldIds(registry: SchemaRegistry, content: Record<string, unknown>) {
   const ids: string[] = []
   for (const field of registry.fields) {
-    if (field.kind !== 'asset') continue
+    if (field.kind !== 'asset' && field.kind !== 'asset_list') continue
     const value = content[field.key]
     if (typeof value === 'string' && value) ids.push(value)
     if (Array.isArray(value)) {
-      for (const item of value) if (typeof item === 'string' && item) ids.push(item)
+      for (const item of value) {
+        if (typeof item === 'string' && item) ids.push(item)
+        else if (item && typeof item === 'object' && typeof (item as any).assetId === 'string') ids.push((item as any).assetId)
+      }
     }
   }
   return [...new Set(ids)].sort()

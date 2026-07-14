@@ -21,6 +21,46 @@ export type ListingConfig = {
   imageFieldKey?: string | null
 }
 
+export type PresentationPreset = 'generic' | 'article' | 'catalog'
+export type CollectionTemplate = 'list' | 'cards' | 'catalog-grid'
+export type DetailTemplate = 'document' | 'article' | 'catalog'
+export type PresentationSlot = 'title' | 'description' | 'image' | 'body' | 'gallery' | 'price'
+export type FieldRendererKey =
+  | 'text'
+  | 'long_text'
+  | 'number'
+  | 'boolean'
+  | 'date'
+  | 'datetime'
+  | 'link'
+  | 'badge'
+  | 'rich_text'
+  | 'asset'
+  | 'asset_gallery'
+  | 'reference'
+  | 'reference_list'
+
+export type SchemaPresentationConfig = {
+  contractVersion: 1
+  preset: PresentationPreset
+  collectionTemplate: CollectionTemplate
+  detailTemplate: DetailTemplate
+  slots?: Partial<Record<PresentationSlot, string>>
+  renderers?: Array<{ fieldId: string; renderer: FieldRendererKey }>
+}
+
+export type CompiledSchemaPresentation = Omit<SchemaPresentationConfig, 'slots' | 'renderers'> & {
+  schemaVersion: number
+  slots: Partial<Record<PresentationSlot, { fieldId: string; fieldKey: string }>>
+  fields: Array<{
+    fieldId: string
+    fieldKey: string
+    kind: FieldKind
+    renderer: FieldRendererKey
+    title?: string
+  }>
+}
+
 export type RelConfig = {
   kind: 'ref' | 'ref_list' | 'poly_ref' | 'asset_ref'
   target: string // system:User | system:Asset | content:SchemaKey
@@ -47,6 +87,7 @@ export type FieldKind =
   | 'richtext'
   | 'reference'
   | 'asset'
+  | 'asset_list'
 
 export type FieldNode = {
   id: string
@@ -60,6 +101,7 @@ export type FieldNode = {
   ui?: UiConfig
   search?: SearchConfig
   rel?: RelConfig
+  assetList?: { minItems?: number; maxItems?: number }
   system?: boolean
 }
 
@@ -69,6 +111,7 @@ export type SchemaAst = {
   description?: string
   fields: FieldNode[]
   listing?: ListingConfig
+  presentation?: SchemaPresentationConfig
 }
 
 export type SchemaRegistry = {
@@ -76,6 +119,7 @@ export type SchemaRegistry = {
   version: number
   title: string
   listing?: ListingConfig
+  presentation?: CompiledSchemaPresentation
   fields: Array<{
     fieldId: string
     key: string
@@ -87,6 +131,7 @@ export type SchemaRegistry = {
     ui?: UiConfig
     search?: SearchConfig
     rel?: RelConfig
+    assetList?: { minItems?: number; maxItems?: number }
     system?: boolean
   }>
   relations: Array<{

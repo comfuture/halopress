@@ -61,8 +61,8 @@ export function inferListingSelection(registry: SchemaRegistry | null): ListingS
     ?? findFirstByKind(fields, ['text'])
     ?? findFirstByKind(fields, ['richtext'])
 
-  const imageFieldKey = findByExactKey(fields, ['image', 'thumbnail', 'cover'], ['asset'])
-    ?? findFirstByKind(fields, ['asset'])
+  const imageFieldKey = findByExactKey(fields, ['image', 'thumbnail', 'cover', 'gallery'], ['asset', 'asset_list'])
+    ?? findFirstByKind(fields, ['asset', 'asset_list'])
 
   return {
     titleFieldKey,
@@ -108,9 +108,15 @@ export function buildListingProjection(args: {
     : null
 
   const rawImage = imageFieldKey ? args.content[imageFieldKey] : null
-  const image = typeof rawImage === 'string' && rawImage.length
-    ? `/assets/${rawImage}/raw`
-    : null
+  const firstAssetId = typeof rawImage === 'string'
+    ? rawImage
+    : Array.isArray(rawImage)
+      ? rawImage.map((item) => typeof item === 'string'
+        ? item
+        : (item && typeof item === 'object' && typeof (item as any).assetId === 'string' ? (item as any).assetId : null))
+          .find(Boolean)
+      : null
+  const image = firstAssetId ? `/assets/${firstAssetId}/raw` : null
 
   return {
     title,

@@ -33,16 +33,20 @@ export async function syncContentRefs(args: {
 
     const targetKind = rel.targetKind as TargetKind
     const targetSchemaKey = rel.targetSchemaKey ?? null
+    const insertedSetIds = new Set<string>()
 
-    const pushOne = async (targetId: string, position?: number) => {
-      await executeDbStatement(db.insert(contentRef).values({
-        contentId,
-        projectionScope,
-        fieldPath: rel.fieldKey,
-        targetKind,
-        targetSchemaKey,
-        targetId
-      }), statements)
+    const pushOne = async (targetId: string, position?: number, meta?: Record<string, unknown>) => {
+      if (!insertedSetIds.has(targetId)) {
+        await executeDbStatement(db.insert(contentRef).values({
+          contentId,
+          projectionScope,
+          fieldPath: rel.fieldKey,
+          targetKind,
+          targetSchemaKey,
+          targetId
+        }), statements)
+        insertedSetIds.add(targetId)
+      }
       if (typeof position === 'number') {
         await executeDbStatement(db.insert(contentRefList).values({
           ownerContentId: contentId,
@@ -53,7 +57,7 @@ export async function syncContentRefs(args: {
           itemSchemaKey: targetSchemaKey,
           itemId: targetKind === 'asset' ? null : targetId,
           assetId: targetKind === 'asset' ? targetId : null,
-          metaJson: null
+          metaJson: meta && Object.keys(meta).length ? JSON.stringify(meta) : null
         }), statements)
       }
     }
@@ -62,6 +66,14 @@ export async function syncContentRefs(args: {
       for (let i = 0; i < value.length; i++) {
         const v = value[i]
         if (typeof v === 'string' && v) await pushOne(v, i)
+        else if (v && typeof v === 'object' && typeof (v as any).assetId === 'string') {
+          const { assetId, alt, caption } = v as { assetId: string; alt?: unknown; caption?: unknown }
+          const meta = {
+            ...(typeof alt === 'string' && alt ? { alt } : {}),
+            ...(typeof caption === 'string' && caption ? { caption } : {})
+          }
+          await pushOne(assetId, i, meta)
+        }
       }
     } else if (typeof value === 'string') {
       await pushOne(value)

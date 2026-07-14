@@ -77,8 +77,17 @@ function replaceAssetRefs(value: unknown, fromId: string, toId?: string | null):
   }
 
   if (value && typeof value === 'object') {
+    if (typeof (value as Record<string, unknown>).assetId === 'string'
+      && (value as Record<string, unknown>).assetId === fromId) {
+      if (!toId) return { value: null, changed: true }
+      return {
+        value: { ...(value as Record<string, unknown>), assetId: toId },
+        changed: true
+      }
+    }
     let changed = false
     for (const key of Object.keys(value as Record<string, unknown>)) {
+      if (key === 'alt' || key === 'caption') continue
       const result = replaceAssetRefs((value as Record<string, unknown>)[key], fromId, toId)
       if (result.changed) {
         ;(value as Record<string, unknown>)[key] = result.value
@@ -117,20 +126,16 @@ export default defineEventHandler(async (event) => {
       .where(eq(assetTable.id, replacementId))
       .limit(1)
     if (!replacement[0]) throw badRequest('Replacement asset not found')
-    await assertAssetIsNotPublished(db, assetId)
-  } else {
-    await assertAssetIsNotRetained(db, assetId)
   }
+  await assertAssetIsNotPublished(db, assetId)
 
-  const workingRefs: Array<{ documentKind: string, documentId: string }> = hasReplacement
-    ? await db
-        .select({ documentKind: documentAssetRef.documentKind, documentId: documentAssetRef.documentId })
-        .from(documentAssetRef)
-        .where(and(
-          eq(documentAssetRef.assetId, assetId),
-          eq(documentAssetRef.projectionScope, 'working')
-        ))
-    : []
+  const workingRefs: Array<{ documentKind: string, documentId: string }> = await db
+    .select({ documentKind: documentAssetRef.documentKind, documentId: documentAssetRef.documentId })
+    .from(documentAssetRef)
+    .where(and(
+      eq(documentAssetRef.assetId, assetId),
+      eq(documentAssetRef.projectionScope, 'working')
+    ))
   const contentIds = [...new Set(workingRefs
     .filter(ref => ref.documentKind === 'content')
     .map(ref => ref.documentId))]
@@ -197,7 +202,7 @@ export default defineEventHandler(async (event) => {
     throw conflict('Asset reference could not be replaced')
   }
 
-  if (hasReplacement && workingRefs.length) {
+  if (workingRefs.length) {
     await withDbTransaction(event, db, async (tx, statements) => {
       for (const update of contentUpdates) {
         await executeDbStatement(tx.update(contentTable).set({
@@ -235,8 +240,8 @@ export default defineEventHandler(async (event) => {
         })
       }
     })
-    await assertAssetIsNotRetained(db, assetId)
   }
+  await assertAssetIsNotRetained(db, assetId)
 
   for (const schemaKey of changedSchemas) {
     queueWidgetCacheInvalidation(event, `schema:${schemaKey}`)

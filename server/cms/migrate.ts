@@ -132,7 +132,32 @@ function toReferenceValue(value: unknown, cardinality: 'one' | 'many') {
   return normalizeId(value)
 }
 
-function coerceValue(value: unknown, field: FieldNode): unknown {
+function assetId(value: unknown): string | null {
+  if (typeof value === 'string') return value || null
+  if (value && typeof value === 'object' && typeof (value as any).assetId === 'string') {
+    return (value as any).assetId || null
+  }
+  return null
+}
+
+function toAssetListValue(value: unknown) {
+  const values = Array.isArray(value) ? value : [value]
+  return values.flatMap((item) => {
+    const id = assetId(item)
+    if (!id) return []
+    if (item && typeof item === 'object' && !Array.isArray(item)) {
+      const { alt, caption } = item as { alt?: unknown; caption?: unknown }
+      return [{
+        assetId: id,
+        ...(typeof alt === 'string' && alt ? { alt } : {}),
+        ...(typeof caption === 'string' && caption ? { caption } : {})
+      }]
+    }
+    return [{ assetId: id }]
+  })
+}
+
+export function coerceValue(value: unknown, field: FieldNode): unknown {
   switch (field.kind) {
     case 'string':
     case 'text':
@@ -160,7 +185,9 @@ function coerceValue(value: unknown, field: FieldNode): unknown {
     case 'reference':
       return toReferenceValue(value, field.rel?.cardinality ?? 'one')
     case 'asset':
-      return toReferenceValue(value, 'one')
+      return Array.isArray(value) ? assetId(value[0]) : assetId(value)
+    case 'asset_list':
+      return toAssetListValue(value)
     default:
       return null
   }
