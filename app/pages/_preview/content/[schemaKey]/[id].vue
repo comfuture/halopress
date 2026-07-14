@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import type { Content } from '@tiptap/core'
 import { setResponseHeader, setResponseStatus } from 'h3'
 
 definePageMeta({
@@ -37,11 +36,6 @@ if (previewState === 'not-found' && import.meta.server) {
   const event = useRequestEvent()
   if (event) setResponseStatus(event, 404, 'Content not found')
 }
-const fields = computed(() => (schema.value?.registry?.fields ?? []).filter((field: any) => field?.key !== 'title'))
-
-function asEditorContent(value: unknown): Content | undefined {
-  return value ? value as Content : undefined
-}
 </script>
 
 <template>
@@ -59,32 +53,7 @@ function asEditorContent(value: unknown): Content | undefined {
       </UPageHeader>
 
       <UPageBody>
-        <UPageList v-if="doc?.content && fields.length" divide>
-          <UPageCard
-            v-for="field in fields"
-            :key="field.fieldId || field.key"
-            :title="field.title || field.key"
-            :description="field.kind"
-            variant="subtle"
-          >
-            <template #body>
-              <CmsRichEditor
-                v-if="field.kind === 'richtext'"
-                :model-value="asEditorContent(doc.content[field.key])"
-                :editable="false"
-                class="min-h-24 w-full"
-              />
-              <AssetImage
-                v-else-if="field.kind === 'asset' && doc.content[field.key]"
-                :src="`/assets/${doc.content[field.key]}/raw`"
-                class="max-w-full rounded-md border border-muted"
-                alt=""
-                preset="content"
-              />
-              <pre v-else class="overflow-x-auto rounded-md border border-muted bg-muted/50 p-3 text-sm">{{ doc.content[field.key] }}</pre>
-            </template>
-          </UPageCard>
-        </UPageList>
+        <PublicContentDetailRenderer v-if="doc?.content" :schema="schema" :content="doc.content" :fallback-title="doc?.id || id" />
 
         <UAlert
           v-else

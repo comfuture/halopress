@@ -52,7 +52,10 @@ watchEffect(() => {
   const next: Record<string, any> = {}
   for (const f of schema.value.registry.fields) {
     if (f?.system) continue
-    next[f.key] = state.content[f.key] ?? (f.kind === 'richtext' ? { type: 'doc', content: [{ type: 'paragraph' }] } : null)
+    next[f.key] = state.content[f.key]
+      ?? (f.kind === 'richtext'
+        ? { type: 'doc', content: [{ type: 'paragraph' }] }
+        : f.kind === 'asset_list' ? [] : null)
   }
   state.content = next
 })

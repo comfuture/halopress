@@ -1,5 +1,6 @@
 import type { SchemaAst, SchemaRegistry } from './types'
 import { inferListingSelection } from './listing'
+import { compileSchemaPresentation } from './presentation'
 
 function resolveListingFieldKey(
   listing: SchemaAst['listing'],
@@ -63,6 +64,25 @@ function fieldToJsonSchema(field: SchemaAst['fields'][number]) {
         'x-rel': field.rel ?? { kind: 'asset_ref', target: 'system:Asset', cardinality: 'one' },
         'x-ui': { ...field.ui, widget: widget ?? 'assetPicker' }
       }
+    case 'asset_list':
+      return {
+        ...base,
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            assetId: { type: 'string', minLength: 1 },
+            alt: { type: 'string' },
+            caption: { type: 'string' }
+          },
+          required: ['assetId'],
+          additionalProperties: false
+        },
+        minItems: Math.max(field.required ? 1 : 0, field.assetList?.minItems ?? 0) || undefined,
+        maxItems: field.assetList?.maxItems,
+        'x-rel': field.rel ?? { kind: 'asset_ref', target: 'system:Asset', cardinality: 'many' },
+        'x-ui': { ...field.ui, widget: widget ?? 'assetListPicker' }
+      }
     case 'reference':
       return {
         ...base,
@@ -97,15 +117,15 @@ export function compileSchemaAst(ast: SchemaAst, version: number) {
 
   const relations: SchemaRegistry['relations'] = []
   for (const f of ast.fields) {
-    if (f.kind !== 'reference' && f.kind !== 'asset') continue
+    if (f.kind !== 'reference' && f.kind !== 'asset' && f.kind !== 'asset_list') continue
     const rel = f.rel
     if (!rel) {
       relations.push({
         fieldId: f.id,
         fieldKey: f.key,
-        targetKind: f.kind === 'asset' ? 'asset' : 'content',
-        targetSchemaKey: f.kind === 'asset' ? undefined : undefined,
-        kind: f.kind === 'asset' ? 'asset_ref' : 'ref'
+        targetKind: f.kind === 'asset' || f.kind === 'asset_list' ? 'asset' : 'content',
+        targetSchemaKey: undefined,
+        kind: f.kind === 'asset' || f.kind === 'asset_list' ? 'asset_ref' : 'ref'
       })
       continue
     }
@@ -135,6 +155,7 @@ export function compileSchemaAst(ast: SchemaAst, version: number) {
       ui: f.ui,
       search: f.search,
       rel: f.rel,
+      assetList: f.assetList,
       system: f.system
     })),
     relations
@@ -149,6 +170,7 @@ export function compileSchemaAst(ast: SchemaAst, version: number) {
       descriptionFieldKey: resolveListingFieldKey(ast.listing, 'descriptionFieldKey', listingDefaults.descriptionFieldKey),
       imageFieldKey: resolveListingFieldKey(ast.listing, 'imageFieldKey', listingDefaults.imageFieldKey)
     },
+    presentation: compileSchemaPresentation(ast, version),
     fields: ast.fields.map(f => ({
       fieldId: f.id,
       key: f.key,
@@ -160,6 +182,7 @@ export function compileSchemaAst(ast: SchemaAst, version: number) {
       ui: f.ui,
       search: f.search,
       rel: f.rel,
+      assetList: f.assetList,
       system: f.system
     })),
     relations

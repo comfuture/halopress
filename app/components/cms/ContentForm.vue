@@ -25,6 +25,7 @@ watchEffect(() => {
   if (!Array.isArray(fields)) return
   for (const field of fields) {
     if (field?.kind === 'richtext') ensureRichtextDoc(field.key)
+    if (field?.kind === 'asset_list' && !Array.isArray(props.model[field.key])) props.model[field.key] = []
   }
 })
 
@@ -157,6 +158,19 @@ const formSchema = computed(() => {
       continue
     }
 
+    if (field.kind === 'asset_list') {
+      const minItems = Math.max(field.required ? 1 : 0, field.assetList?.minItems ?? 0)
+      let list = z.array(z.object({
+        assetId: z.string().min(1),
+        alt: z.string().optional(),
+        caption: z.string().optional()
+      }))
+      if (minItems) list = list.min(minItems, `Select at least ${minItems} asset${minItems === 1 ? '' : 's'}`)
+      if (field.assetList?.maxItems) list = list.max(field.assetList.maxItems, `Select at most ${field.assetList.maxItems} assets`)
+      shape[field.key] = field.required ? list : list.optional().nullable()
+      continue
+    }
+
     if (field.kind === 'richtext') {
       const base = z.any().refine(value => value && typeof value === 'object', { message: requiredMessage(label) })
       shape[field.key] = required ? base : z.any().optional().nullable()
@@ -199,7 +213,7 @@ defineExpose({
       <UFormField
         v-for="field in editableFields"
         :key="field.fieldId"
-        :label="field.kind === 'asset' || field.kind === 'reference' ? undefined : field.title || field.key"
+        :label="field.kind === 'asset' || field.kind === 'asset_list' || field.kind === 'reference' ? undefined : field.title || field.key"
         :name="field.key"
         :required="!!field.required"
         class="w-full"
@@ -287,6 +301,15 @@ defineExpose({
           v-model="model[field.key]"
           :label="field.title || field.key"
           :required="!!field.required"
+        />
+
+        <CmsAssetListPicker
+          v-else-if="field.kind === 'asset_list'"
+          v-model="model[field.key]"
+          :label="field.title || field.key"
+          :required="!!field.required"
+          :min-items="field.assetList?.minItems"
+          :max-items="field.assetList?.maxItems"
         />
 
         <CmsReferencePicker

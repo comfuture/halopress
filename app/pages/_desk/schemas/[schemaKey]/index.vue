@@ -23,6 +23,7 @@ type FieldKind =
   | 'richtext'
   | 'reference'
   | 'asset'
+  | 'asset_list'
 
 type FieldNode = {
   id: string
@@ -42,6 +43,7 @@ type FieldNode = {
     target: string
     cardinality: 'one' | 'many'
   }
+  assetList?: { minItems?: number; maxItems?: number }
   system?: boolean
 }
 
@@ -51,6 +53,13 @@ type SchemaAst = {
     titleFieldKey?: string | null
     descriptionFieldKey?: string | null
     imageFieldKey?: string | null
+  }
+  presentation?: {
+    contractVersion: 1
+    preset: 'generic' | 'article' | 'catalog'
+    collectionTemplate: 'list' | 'cards' | 'catalog-grid'
+    detailTemplate: 'document' | 'article' | 'catalog'
+    slots: Partial<Record<'title' | 'description' | 'image' | 'body' | 'gallery' | 'price', string>>
   }
 }
 
@@ -134,6 +143,13 @@ const state = reactive({
     titleFieldKey: undefined as string | null | undefined,
     descriptionFieldKey: undefined as string | null | undefined,
     imageFieldKey: undefined as string | null | undefined
+  },
+  presentation: {
+    contractVersion: 1 as const,
+    preset: 'generic' as 'generic' | 'article' | 'catalog',
+    collectionTemplate: 'list' as 'list' | 'cards' | 'catalog-grid',
+    detailTemplate: 'document' as 'document' | 'article' | 'catalog',
+    slots: {} as Partial<Record<'title' | 'description' | 'image' | 'body' | 'gallery' | 'price', string>>
   }
 })
 
@@ -195,8 +211,8 @@ function inferListingSelection(fields: FieldNode[]) {
     descriptionFieldKey: findByExactKey(['description', 'summary', 'excerpt'], ['text', 'richtext'])
       ?? findFirstByKind(['text'])
       ?? findFirstByKind(['richtext']),
-    imageFieldKey: findByExactKey(['image', 'thumbnail', 'cover'], ['asset'])
-      ?? findFirstByKind(['asset'])
+    imageFieldKey: findByExactKey(['image', 'thumbnail', 'cover', 'gallery'], ['asset', 'asset_list'])
+      ?? findFirstByKind(['asset', 'asset_list'])
   }
 }
 
@@ -267,7 +283,8 @@ function buildAstFromState() {
       titleFieldKey: state.listing.titleFieldKey,
       descriptionFieldKey: state.listing.descriptionFieldKey,
       imageFieldKey: state.listing.imageFieldKey
-    }
+    },
+    presentation: deepClone(state.presentation)
   }
 }
 
@@ -355,6 +372,13 @@ watch(
       descriptionFieldKey: nextListing?.descriptionFieldKey,
       imageFieldKey: nextListing?.imageFieldKey
     })
+    Object.assign(state.presentation, next.ast?.presentation ?? {
+      contractVersion: 1,
+      preset: 'generic',
+      collectionTemplate: 'list',
+      detailTemplate: 'document',
+      slots: {}
+    })
     lastSavedAstJson.value = stableStringify(buildAstFromState())
   },
   { immediate: true }
@@ -390,6 +414,8 @@ const fieldDraft = reactive<any>({
   search: { mode: 'off', filterable: false, sortable: false },
   relTarget: 'system:User',
   relCardinality: 'one',
+  minItems: 0,
+  maxItems: undefined as number | undefined,
   system: false
 })
 
@@ -404,6 +430,8 @@ const editDraft = reactive<any>({
   search: { mode: 'off', filterable: false, sortable: false },
   relTarget: 'system:User',
   relCardinality: 'one',
+  minItems: 0,
+  maxItems: undefined as number | undefined,
   system: false
 })
 
@@ -463,7 +491,8 @@ const fieldKindOptions = [
   { label: 'Datetime', value: 'datetime' },
   { label: 'URL', value: 'url' },
   { label: 'Reference', value: 'reference' },
-  { label: 'Asset', value: 'asset' }
+  { label: 'Asset', value: 'asset' },
+  { label: 'Asset list', value: 'asset_list' }
 ]
 
 const fieldKindIcon: Record<string, string> = {
@@ -478,7 +507,8 @@ const fieldKindIcon: Record<string, string> = {
   datetime: 'i-lucide-calendar-clock',
   url: 'i-lucide-link',
   reference: 'i-lucide-link',
-  asset: 'i-lucide-image'
+  asset: 'i-lucide-image',
+  asset_list: 'i-lucide-images'
 }
 
 function getFieldKindIcon(kind: string) {
@@ -552,7 +582,7 @@ function fieldOptionsByKind(kinds: FieldKind[]) {
 const listingFieldOptions = computed(() => ({
   title: fieldOptionsByKind(['string', 'text']),
   description: fieldOptionsByKind(['text', 'richtext']),
-  image: fieldOptionsByKind(['asset'])
+  image: fieldOptionsByKind(['asset', 'asset_list'])
 }))
 
 const listingPreview = computed(() => {
@@ -658,6 +688,8 @@ function openNewField() {
     search: { mode: 'off', filterable: false, sortable: false },
     relTarget: 'system:User',
     relCardinality: 'one',
+    minItems: 0,
+    maxItems: undefined,
     system: false
   })
   normalizeSearchDraft(fieldDraft)
@@ -678,6 +710,8 @@ function startEditField(index: number) {
     search: cloned.search ?? { mode: 'off', filterable: false, sortable: false },
     relTarget: cloned.rel?.target ?? 'system:User',
     relCardinality: cloned.rel?.cardinality ?? 'one',
+    minItems: cloned.assetList?.minItems ?? 0,
+    maxItems: cloned.assetList?.maxItems,
     system: !!cloned.system
   })
   normalizeSearchDraft(editDraft)
@@ -733,9 +767,14 @@ function normalizeFieldDraft(draft: any) {
   }
 
   if (next.kind !== 'enum') delete next.enumValues
-  if (next.kind !== 'reference' && next.kind !== 'asset') {
+  if (next.kind !== 'reference' && next.kind !== 'asset' && next.kind !== 'asset_list') {
     delete next.relTarget
     delete next.relCardinality
+  }
+  if (next.kind !== 'asset_list') {
+    delete next.assetList
+    delete next.minItems
+    delete next.maxItems
   }
 
   if (next.search) {
@@ -749,6 +788,17 @@ function normalizeFieldDraft(draft: any) {
     next.rel = { kind: 'asset_ref', target: 'system:Asset', cardinality: 'one', editMode: 'pick' }
     delete next.relTarget
     delete next.relCardinality
+  }
+  if (next.kind === 'asset_list') {
+    next.rel = { kind: 'asset_ref', target: 'system:Asset', cardinality: 'many', editMode: 'pick' }
+    next.assetList = {
+      ...(Number.isInteger(next.minItems) && next.minItems > 0 ? { minItems: next.minItems } : {}),
+      ...(Number.isInteger(next.maxItems) && next.maxItems > 0 ? { maxItems: next.maxItems } : {})
+    }
+    delete next.relTarget
+    delete next.relCardinality
+    delete next.minItems
+    delete next.maxItems
   }
   if (next.kind === 'reference') {
     next.rel = {
@@ -1124,6 +1174,8 @@ async function confirmPublish() {
         </UPageList>
       </section>
 
+      <CmsSchemaPresentationEditor v-model="state.presentation" :fields="state.fields" />
+
       <fieldset class="min-w-0 space-y-4">
         <legend class="text-sm font-semibold text-highlighted">
           Listing Fields
@@ -1293,6 +1345,14 @@ async function confirmPublish() {
               </div>
             </fieldset>
 
+            <fieldset v-if="fieldDraft.kind === 'asset_list'" class="min-w-0 space-y-3">
+              <legend class="text-sm font-medium text-highlighted">Asset list constraints</legend>
+              <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <UFormField label="Minimum items"><UInput v-model.number="fieldDraft.minItems" type="number" min="0" step="1" class="w-full" /></UFormField>
+                <UFormField label="Maximum items"><UInput v-model.number="fieldDraft.maxItems" type="number" min="1" step="1" placeholder="Unlimited" class="w-full" /></UFormField>
+              </div>
+            </fieldset>
+
             <fieldset v-if="fieldDraft.kind === 'reference'" class="min-w-0 space-y-3">
               <legend class="mb-3 text-sm font-medium text-highlighted">
                 Reference
@@ -1439,6 +1499,14 @@ async function confirmPublish() {
               <div v-for="(ev, i) in editDraft.enumValues" :key="i" class="grid grid-cols-2 gap-2">
                 <UInput v-model="ev.label" placeholder="Label" />
                 <UInput v-model="ev.value" placeholder="value" />
+              </div>
+            </fieldset>
+
+            <fieldset v-if="editDraft.kind === 'asset_list' && !editDraft.system" class="min-w-0 space-y-3">
+              <legend class="text-sm font-medium text-highlighted">Asset list constraints</legend>
+              <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <UFormField label="Minimum items"><UInput v-model.number="editDraft.minItems" type="number" min="0" step="1" class="w-full" /></UFormField>
+                <UFormField label="Maximum items"><UInput v-model.number="editDraft.maxItems" type="number" min="1" step="1" placeholder="Unlimited" class="w-full" /></UFormField>
               </div>
             </fieldset>
 

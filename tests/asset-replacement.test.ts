@@ -8,6 +8,7 @@ import {
   asset,
   content,
   contentRef,
+  contentRefList,
   documentAssetRef,
   page,
   publicationRevision,
@@ -49,11 +50,17 @@ const registry: SchemaRegistry = {
   fields: [
     { fieldId: 'article-title', key: 'title', kind: 'string', title: 'Title' },
     { fieldId: 'article-cover', key: 'cover', kind: 'asset', title: 'Cover' },
+    { fieldId: 'article-gallery', key: 'gallery', kind: 'asset_list', title: 'Gallery' },
     { fieldId: 'article-body', key: 'body', kind: 'richtext', title: 'Body' }
   ],
   relations: [{
     fieldId: 'article-cover',
     fieldKey: 'cover',
+    targetKind: 'asset',
+    kind: 'asset_ref'
+  }, {
+    fieldId: 'article-gallery',
+    fieldKey: 'gallery',
     targetKind: 'asset',
     kind: 'asset_ref'
   }]
@@ -221,6 +228,89 @@ describe('asset deletion with replacement', () => {
       ))).toMatchObject([{ targetId: 'new-asset' }])
       expect(await fixture.db.select().from(asset).where(eq(asset.id, 'old-asset'))).toHaveLength(0)
       expect(storageState.deleteObject).toHaveBeenCalledWith(event, 'assets/old-asset/original')
+    } finally {
+      fixture.close()
+      dbState.current = null
+    }
+  })
+
+  it('replaces an ordered asset-list item without changing its metadata or position', async () => {
+    const fixture = await createTestSqliteDb()
+    dbState.current = fixture.db
+    try {
+      await runMigrations(fixture.db)
+      await seedSchema(fixture.db)
+      await seedAsset(fixture.db, 'old-asset')
+      await seedAsset(fixture.db, 'new-asset')
+      const workingContent = {
+        title: 'Gallery',
+        gallery: [
+          { assetId: 'old-asset', alt: 'old-asset', caption: 'Hero' },
+          { assetId: 'new-asset', alt: 'Detail' }
+        ]
+      }
+      await fixture.db.insert(content).values({
+        id: 'gallery-1', schemaKey: 'article', schemaVersion: 1, status: 'draft',
+        contentJson: JSON.stringify(workingContent), createdAt: now, updatedAt: now
+      })
+      await syncContentProjections({
+        db: fixture.db as any, registry, content: workingContent, contentId: 'gallery-1', schemaKey: 'article',
+        schemaVersion: 1, status: 'draft', createdAt: now, updatedAt: now, projectionScope: 'working'
+      })
+
+      bodyState.current = { replacementId: 'new-asset' }
+      const handler = (await import('../server/api/assets/[assetId]/delete.post')).default as (event: any) => Promise<any>
+      await expect(handler({ context: { params: { assetId: 'old-asset' } } })).resolves.toEqual({ ok: true, replacedCount: 1 })
+
+      const stored = await fixture.db.select().from(content).where(eq(content.id, 'gallery-1')).get()
+      expect(JSON.parse(stored!.contentJson).gallery).toEqual([
+        { assetId: 'new-asset', alt: 'old-asset', caption: 'Hero' },
+        { assetId: 'new-asset', alt: 'Detail' }
+      ])
+      expect((await fixture.db.select().from(contentRefList).where(eq(contentRefList.ownerContentId, 'gallery-1')))
+        .map(row => ({ position: row.position, assetId: row.assetId, meta: row.metaJson && JSON.parse(row.metaJson) }))).toEqual([
+        { position: 0, assetId: 'new-asset', meta: { alt: 'old-asset', caption: 'Hero' } },
+        { position: 1, assetId: 'new-asset', meta: { alt: 'Detail' } }
+      ])
+    } finally {
+      fixture.close()
+      dbState.current = null
+    }
+  })
+
+  it('removes a working-only asset-list item and compacts ordered refs', async () => {
+    const fixture = await createTestSqliteDb()
+    dbState.current = fixture.db
+    try {
+      await runMigrations(fixture.db)
+      await seedSchema(fixture.db)
+      await seedAsset(fixture.db, 'old-asset')
+      await seedAsset(fixture.db, 'kept-asset')
+      const workingContent = {
+        title: 'Gallery',
+        gallery: [
+          { assetId: 'old-asset', alt: 'Remove me' },
+          { assetId: 'kept-asset', alt: 'Keep me', caption: 'Second' }
+        ]
+      }
+      await fixture.db.insert(content).values({
+        id: 'gallery-delete', schemaKey: 'article', schemaVersion: 1, status: 'draft',
+        contentJson: JSON.stringify(workingContent), createdAt: now, updatedAt: now
+      })
+      await syncContentProjections({
+        db: fixture.db as any, registry, content: workingContent, contentId: 'gallery-delete', schemaKey: 'article',
+        schemaVersion: 1, status: 'draft', createdAt: now, updatedAt: now, projectionScope: 'working'
+      })
+
+      bodyState.current = {}
+      const handler = (await import('../server/api/assets/[assetId]/delete.post')).default as (event: any) => Promise<any>
+      await expect(handler({ context: { params: { assetId: 'old-asset' } } })).resolves.toEqual({ ok: true, replacedCount: 1 })
+
+      const stored = await fixture.db.select().from(content).where(eq(content.id, 'gallery-delete')).get()
+      expect(JSON.parse(stored!.contentJson).gallery).toEqual([{ assetId: 'kept-asset', alt: 'Keep me', caption: 'Second' }])
+      expect(await fixture.db.select().from(contentRefList).where(eq(contentRefList.ownerContentId, 'gallery-delete')))
+        .toMatchObject([{ position: 0, assetId: 'kept-asset' }])
+      expect(await fixture.db.select().from(asset).where(eq(asset.id, 'old-asset'))).toHaveLength(0)
     } finally {
       fixture.close()
       dbState.current = null

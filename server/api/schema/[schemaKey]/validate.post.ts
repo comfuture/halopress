@@ -6,6 +6,7 @@ import {
   RESERVED_SCHEMA_KEY_MESSAGE
 } from '../../../cms/schema-key'
 import { schemaAstSchema } from '../../../cms/zod'
+import { compileSchemaAst } from '../../../cms/compiler'
 
 export default defineEventHandler(async (event) => {
   const schemaKey = event.context.params?.schemaKey as string
@@ -14,6 +15,17 @@ export default defineEventHandler(async (event) => {
   if (!parsed.success) return { ok: false, error: parsed.error.flatten() }
   if (parsed.data.schemaKey !== schemaKey) {
     return { ok: false, error: { formErrors: ['schemaKey mismatch'], fieldErrors: {} } }
+  }
+  try {
+    compileSchemaAst(parsed.data, 1)
+  } catch (error) {
+    return {
+      ok: false,
+      error: {
+        formErrors: [error instanceof Error ? error.message : 'Invalid presentation bindings'],
+        fieldErrors: {}
+      }
+    }
   }
   try {
     await assertSchemaKeyCanBePersisted(await getDb(event), schemaKey)

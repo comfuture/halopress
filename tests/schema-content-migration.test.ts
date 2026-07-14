@@ -230,4 +230,59 @@ describe('schema content migration publication state', () => {
       fixture.close()
     }
   })
+
+  it('converts singular assets to ordered asset lists and back through schema versions', async () => {
+    const fixture = await createTestSqliteDb()
+    try {
+      await runMigrations(fixture.db)
+      const now = new Date('2026-07-14T00:00:00.000Z')
+      const assetAst: SchemaAst = {
+        schemaKey: 'gallery', title: 'Gallery', fields: [{ id: 'media-id', key: 'media', kind: 'asset' }]
+      }
+      const listAst: SchemaAst = {
+        schemaKey: 'gallery', title: 'Gallery', fields: [{ id: 'media-id', key: 'media', kind: 'asset_list' }]
+      }
+      const assetRegistry: SchemaRegistry = {
+        schemaKey: 'gallery', version: 1, title: 'Gallery',
+        fields: [{ fieldId: 'media-id', key: 'media', kind: 'asset' }],
+        relations: [{ fieldId: 'media-id', fieldKey: 'media', targetKind: 'asset', kind: 'asset_ref' }]
+      }
+      const listRegistry: SchemaRegistry = {
+        schemaKey: 'gallery', version: 2, title: 'Gallery',
+        fields: [{ fieldId: 'media-id', key: 'media', kind: 'asset_list' }],
+        relations: [{ fieldId: 'media-id', fieldKey: 'media', targetKind: 'asset', kind: 'asset_ref' }]
+      }
+      for (const [version, ast, registryValue] of [[1, assetAst, assetRegistry], [2, listAst, listRegistry]] as const) {
+        await fixture.db.insert(schema).values({
+          schemaKey: 'gallery', version, title: 'Gallery', astJson: JSON.stringify(ast), jsonSchema: '{}',
+          registryJson: JSON.stringify(registryValue), createdAt: now
+        })
+      }
+      await fixture.db.insert(content).values({
+        id: 'gallery-1', schemaKey: 'gallery', schemaVersion: 1, status: 'draft',
+        contentJson: JSON.stringify({ media: 'asset-1' }), createdAt: now, updatedAt: now
+      })
+
+      await expect(migrateSchemaContent({
+        db: fixture.db as any, schemaKey: 'gallery', nextVersion: 2, registry: listRegistry,
+        changes: getKindChanges(assetAst, listAst)
+      })).resolves.toEqual({ updated: 1 })
+      expect(JSON.parse((await fixture.db.select().from(content).where(eq(content.id, 'gallery-1')).get())!.contentJson))
+        .toEqual({ media: [{ assetId: 'asset-1' }] })
+
+      const assetRegistryV3 = { ...assetRegistry, version: 3 }
+      await fixture.db.insert(schema).values({
+        schemaKey: 'gallery', version: 3, title: 'Gallery', astJson: JSON.stringify(assetAst), jsonSchema: '{}',
+        registryJson: JSON.stringify(assetRegistryV3), createdAt: now
+      })
+      await migrateSchemaContent({
+        db: fixture.db as any, schemaKey: 'gallery', nextVersion: 3, registry: assetRegistryV3,
+        changes: getKindChanges(listAst, assetAst)
+      })
+      expect(JSON.parse((await fixture.db.select().from(content).where(eq(content.id, 'gallery-1')).get())!.contentJson))
+        .toEqual({ media: 'asset-1' })
+    } finally {
+      fixture.close()
+    }
+  })
 })
