@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { BreadcrumbItem } from '@nuxt/ui'
+import type { BreadcrumbItem, DropdownMenuItem } from '@nuxt/ui'
 import type { JSONContent } from '@tiptap/vue-3'
 import { PUBLIC_PAGE_ROUTE_PREFIX } from '~~/shared/public-routing'
 import PageEditor from '~/components/PageEditor.vue'
@@ -143,16 +143,67 @@ async function unpublish() {
   }
 }
 
-function downloadJson() {
-  const json = JSON.stringify(state.content ?? emptyDoc, null, 2)
-  const blob = new Blob([json], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = `${state.title || 'page'}.json`
-  link.click()
-  URL.revokeObjectURL(url)
+const removing = ref(false)
+async function remove() {
+  const ok = await confirm({
+    title: 'Delete page',
+    body: 'This will soft delete the page and it will no longer appear in the list.',
+    confirmLabel: 'Delete',
+    confirmColor: 'error'
+  })
+  if (!ok) return
+  removing.value = true
+  try {
+    await $fetch(`/api/page/${id.value}`, { method: 'DELETE' })
+    toast.add({ title: 'Deleted (soft)' })
+    await navigateTo('/_desk/pages')
+  } catch (e: any) {
+    toast.add({ title: 'Delete failed', description: e?.statusMessage || 'Error', color: 'error' })
+  } finally {
+    removing.value = false
+  }
 }
+
+const actionMenuItems = computed<DropdownMenuItem[][]>(() => {
+  const groups: DropdownMenuItem[][] = []
+
+  if (canUnpublish.value) {
+    groups.push([{
+      label: 'View published',
+      icon: 'i-lucide-external-link',
+      to: `/${PUBLIC_PAGE_ROUTE_PREFIX}/${id.value}`,
+      target: '_blank'
+    }])
+  }
+
+  if (canDiscard.value) {
+    groups.push([{
+      label: 'Discard draft',
+      icon: 'i-lucide-rotate-ccw',
+      disabled: discarding.value,
+      onSelect: discardDraft
+    }])
+  }
+
+  if (canUnpublish.value) {
+    groups.push([{
+      label: 'Unpublish',
+      icon: 'i-lucide-eye-off',
+      disabled: unpublishing.value,
+      onSelect: unpublish
+    }])
+  }
+
+  groups.push([{
+    label: 'Delete',
+    icon: 'i-lucide-trash-2',
+    color: 'error',
+    disabled: removing.value,
+    onSelect: remove
+  }])
+
+  return groups
+})
 </script>
 
 <template>
@@ -167,71 +218,17 @@ function downloadJson() {
         </template>
 
         <template #actions>
-          <UButton
-            v-if="canUnpublish"
-            :to="`/${PUBLIC_PAGE_ROUTE_PREFIX}/${id}`"
-            target="_blank"
-            color="neutral"
-            variant="ghost"
-            icon="i-lucide-external-link"
-          >
-            <span class="hidden sm:inline">View published</span>
-          </UButton>
-          <UButton
-            :to="`/_preview/pages/${id}`"
-            target="_blank"
-            color="neutral"
-            variant="ghost"
-            icon="i-lucide-eye"
-          >
-            <span class="hidden sm:inline">Preview draft</span>
-          </UButton>
-          <UButton
-            v-if="canDiscard"
-            color="neutral"
-            variant="outline"
-            icon="i-lucide-rotate-ccw"
-            :loading="discarding"
-            @click="discardDraft"
-          >
-            <span class="hidden sm:inline">Discard draft</span>
-          </UButton>
-          <UButton
-            icon="i-lucide-download"
-            color="neutral"
-            variant="ghost"
-            aria-label="Download JSON"
-            @click="downloadJson"
+          <CmsEditorActions
+            :preview-to="`/_preview/pages/${id}`"
+            :can-save-draft="canSaveDraft"
+            :saving-draft="savingDraft"
+            :can-publish="canPublish"
+            :publishing="publishing"
+            :menu-items="actionMenuItems"
+            :menu-loading="discarding || unpublishing || removing"
+            @save-draft="saveDraft"
+            @publish="publish"
           />
-          <UButton
-            icon="i-lucide-save"
-            :loading="savingDraft"
-            :disabled="!canSaveDraft"
-            aria-label="Save Draft"
-            @click="saveDraft"
-          >
-            <span class="hidden sm:inline">Save Draft</span>
-          </UButton>
-          <UButton
-            v-if="canUnpublish"
-            color="warning"
-            variant="outline"
-            icon="i-lucide-eye-off"
-            :loading="unpublishing"
-            @click="unpublish"
-          >
-            <span class="hidden sm:inline">Unpublish</span>
-          </UButton>
-          <UButton
-            color="primary"
-            icon="i-lucide-upload"
-            :loading="publishing"
-            :disabled="!canPublish"
-            aria-label="Publish"
-            @click="publish"
-          >
-            <span class="hidden sm:inline">Publish</span>
-          </UButton>
         </template>
       </DeskNavbar>
     </template>
