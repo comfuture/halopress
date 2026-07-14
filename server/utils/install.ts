@@ -1,12 +1,15 @@
 import { and, eq, gt, isNull, lte, ne, or, sql } from 'drizzle-orm'
+import type { H3Event } from 'h3'
 import { compileSchemaAst } from '../cms/compiler'
 import { parseContentJson } from '../cms/content-json'
 import { syncContentProjections } from '../cms/content-projections'
 import { defaultArticleSchemaAst } from '../cms/defaults'
+import { createInitialDocumentRevision } from '../cms/document-revisions'
 import { getPublicationRevision, publicationRevisionValues } from '../cms/publication'
 import { syncSearchConfig } from '../cms/search-config'
 import {
   content,
+  documentRevision,
   installation,
   publicationRevision,
   schema,
@@ -15,6 +18,7 @@ import {
   user,
   userRole
 } from '../db/schema'
+import { executeDbStatement, withDbTransaction } from '../db/transaction'
 import { newId } from './ids'
 import { SETUP_SESSION_TTL_MILLISECONDS } from './install-session'
 import { hashPassword } from './password'
@@ -427,7 +431,7 @@ export async function completeInstallation(db: any, leaseToken: string, owner: s
   }
 }
 
-export async function ensureBootstrapSchema(db: any, createdBy: string) {
+export async function ensureBootstrapSchema(db: any, createdBy: string, event?: H3Event) {
   const now = new Date()
   const ast = defaultArticleSchemaAst()
   if (ast.schemaKey !== BOOTSTRAP_SCHEMA_KEY) throw new Error('Default Article schema key does not match the bootstrap schema key')
@@ -510,19 +514,37 @@ export async function ensureBootstrapSchema(db: any, createdBy: string) {
     }
   }
 
-  await db
-    .insert(content)
-    .values({
-      id: BOOTSTRAP_CONTENT_ID,
-      schemaKey: ast.schemaKey,
-      schemaVersion: 1,
-      status: 'published',
-      contentJson: JSON.stringify(bootstrapContent),
-      createdBy,
-      createdAt: now,
-      updatedAt: now
+  const existingContent = await db
+    .select({ id: content.id })
+    .from(content)
+    .where(eq(content.id, BOOTSTRAP_CONTENT_ID))
+    .get()
+
+  if (!existingContent) {
+    await withDbTransaction(event ?? ({ context: {} } as H3Event), db, async (tx, statements) => {
+      await executeDbStatement(tx.insert(content).values({
+        id: BOOTSTRAP_CONTENT_ID,
+        schemaKey: ast.schemaKey,
+        schemaVersion: 1,
+        status: 'published',
+        contentJson: JSON.stringify(bootstrapContent),
+        currentRevision: 1,
+        createdBy,
+        createdAt: now,
+        updatedAt: now
+      }), statements)
+      await createInitialDocumentRevision({
+        tx,
+        statements,
+        documentKind: 'content',
+        documentId: BOOTSTRAP_CONTENT_ID,
+        schemaKey: ast.schemaKey,
+        state: { snapshot: bootstrapContent, status: 'published', schemaVersion: 1 },
+        actorId: createdBy,
+        createdAt: now
+      })
     })
-    .onConflictDoNothing()
+  }
 
   const storedContent = await db
     .select()
@@ -531,6 +553,33 @@ export async function ensureBootstrapSchema(db: any, createdBy: string) {
     .get()
   if (!storedContent || storedContent.schemaKey !== ast.schemaKey) return null
   const storedContentJson = parseContentJson(storedContent.contentJson)
+
+  if (existingContent) {
+    const initialRevision = await db.select({ id: documentRevision.id })
+      .from(documentRevision)
+      .where(and(
+        eq(documentRevision.documentKind, 'content'),
+        eq(documentRevision.documentId, storedContent.id),
+        eq(documentRevision.revision, 1)
+      ))
+      .get()
+    if (!initialRevision) {
+      await createInitialDocumentRevision({
+        tx: db,
+        documentKind: 'content',
+        documentId: storedContent.id,
+        schemaKey: storedContent.schemaKey,
+        action: 'backfill',
+        state: {
+          snapshot: storedContentJson,
+          status: storedContent.status,
+          schemaVersion: storedContent.schemaVersion
+        },
+        actorId: storedContent.createdBy,
+        createdAt: storedContent.createdAt
+      })
+    }
+  }
 
   let publishedRevision = await getPublicationRevision(
     db,

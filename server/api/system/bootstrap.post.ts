@@ -6,7 +6,7 @@ export default defineEventHandler(async (event) => {
   const session = await requireAdmin(event)
   const actorId = (session.user as any)?.id ?? null
   const db = await getDb(event)
-  const schemaKey = await ensureBootstrapSchema(db, actorId ? `user:${actorId}` : 'system:bootstrap')
+  const schemaKey = await ensureBootstrapSchema(db, actorId ? `user:${actorId}` : 'system:bootstrap', event)
 
   return schemaKey
     ? { ok: true, schemaKey }

@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import {
   content,
   contentListing,
+  documentRevision,
   installation,
   publicationRevision,
   schema,
@@ -230,10 +231,41 @@ describe('installation state', () => {
         schemaKey: 'article',
         schemaVersion: 1
       })
+      const revisions = await db.select().from(documentRevision)
+      expect(revisions).toHaveLength(1)
+      expect(revisions[0]).toMatchObject({
+        documentKind: 'content',
+        documentId: BOOTSTRAP_CONTENT_ID,
+        schemaKey: 'article',
+        revision: 1,
+        action: 'create',
+        status: 'published',
+        schemaVersion: 1,
+        createdBy: 'user:admin'
+      })
+      expect(JSON.parse(revisions[0]!.snapshotJson)).toMatchObject({ title: 'Welcome guide' })
       expect((await db.select().from(contentListing)).map(row => row.projectionScope).sort()).toEqual([
         'published',
         'working'
       ])
+    })
+  })
+
+  it('rolls back bootstrap content when its initial revision cannot be created', async () => {
+    await withDatabase(async (db) => {
+      await runMigrations(db)
+      await seedRoles(db)
+      await db.run(sql.raw(`
+        CREATE TRIGGER reject_bootstrap_revision
+        BEFORE INSERT ON document_revision
+        BEGIN
+          SELECT RAISE(ABORT, 'injected revision failure');
+        END
+      `))
+
+      await expect(ensureBootstrapSchema(db, 'user:admin')).rejects.toThrow()
+      expect(await db.select().from(content).where(eq(content.id, BOOTSTRAP_CONTENT_ID))).toHaveLength(0)
+      expect(await db.select().from(documentRevision)).toHaveLength(0)
     })
   })
 
