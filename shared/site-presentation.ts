@@ -135,6 +135,18 @@ export type PublicNavigationLeaf = z.output<typeof publicNavigationLeafSchema>
 export type PublicNavigationItem = z.output<typeof publicNavigationItemSchema>
 export type SitePresentation = z.output<typeof sitePresentationSchema>
 export type SitePresentationPatch = z.output<typeof sitePresentationPatchSchema>
+export type SiteThemePreset = keyof typeof SITE_THEME_PRESETS
+
+export function siteThemePresetTokens(presetName: SiteThemePreset): Omit<SitePresentation['appearance'], 'colorMode'> {
+  const preset = SITE_THEME_PRESETS[presetName]
+  return {
+    preset: presetName,
+    primaryColor: preset.primaryColor,
+    neutralColor: preset.neutralColor,
+    typographyScale: preset.typographyScale,
+    radius: preset.radius
+  }
+}
 
 export type PublicSitePresentation = Omit<SitePresentation, 'general'> & {
   revision: string

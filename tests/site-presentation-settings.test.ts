@@ -8,6 +8,7 @@ import {
   SITE_PRIMARY_COLORS,
   defaultSitePresentation,
   resolvePublicNavigationTarget,
+  siteThemePresetTokens,
   sitePresentationPatchSchema,
   sitePresentationSchema,
   toPublicSitePresentation
@@ -24,6 +25,23 @@ afterAll(() => {
 })
 
 describe('site presentation settings', () => {
+  it('keeps display labels out of persisted preset tokens', () => {
+    const appearance = {
+      ...defaultSitePresentation().appearance,
+      ...siteThemePresetTokens('editorial')
+    }
+
+    expect(appearance).toEqual({
+      preset: 'editorial',
+      primaryColor: 'indigo',
+      neutralColor: 'slate',
+      typographyScale: 'relaxed',
+      radius: 'lg',
+      colorMode: 'system'
+    })
+    expect(sitePresentationPatchSchema.safeParse({ appearance }).success).toBe(true)
+  })
+
   it('keeps every configurable palette available to the production CSS build', async () => {
     const css = await readFile(resolve(import.meta.dirname, '../app/assets/css/main.css'), 'utf8')
 
