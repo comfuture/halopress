@@ -47,8 +47,18 @@ describe('versioned schema presentation', () => {
     expect(compiled.registry.presentation).toMatchObject({
       preset: 'generic',
       collectionTemplate: 'list',
-      detailTemplate: 'document'
+      detailTemplate: 'document',
+      slots: {
+        title: { fieldId: 'title-id', fieldKey: 'title' },
+        body: { fieldId: 'body-id', fieldKey: 'body' },
+        gallery: { fieldId: 'gallery-id', fieldKey: 'gallery' },
+        price: { fieldId: 'price-id', fieldKey: 'price' }
+      }
     })
+    expect(compiled.registry.presentation?.slots.description).toBeUndefined()
+    expect(compiled.registry.presentation?.slots.image).toBeUndefined()
+    expect(new Set(Object.values(compiled.registry.presentation!.slots).map(binding => binding.fieldId)).size)
+      .toBe(Object.keys(compiled.registry.presentation!.slots).length)
   })
 
   it('rejects stale and incompatible field bindings before publication', () => {

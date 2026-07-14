@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { hasRenderableValue, presentationText, resolveSchemaPresentation } from '~/utils/schema-presentation'
+import { hasRenderableValue, presentationText, reservedPresentationFieldIds, resolveSchemaPresentation } from '~/utils/schema-presentation'
 const props = defineProps<{ schema: any; content: Record<string, unknown>; fallbackTitle?: string }>()
 const presentation = computed(() => resolveSchemaPresentation(props.schema?.registry))
 const slots = computed(() => presentation.value.slots ?? {})
@@ -11,7 +11,7 @@ const valueFor = (slot: string) => {
 const fieldFor = (slot: string) => fields.value.find((field: any) => field.fieldId === slots.value[slot]?.fieldId)
 const title = computed(() => hasRenderableValue(valueFor('title')) ? String(valueFor('title')) : props.fallbackTitle || 'Untitled')
 const description = computed(() => presentationText(valueFor('description')))
-const reservedIds = computed(() => new Set(Object.values(slots.value).map((binding: any) => binding?.fieldId).filter(Boolean)))
+const reservedIds = computed(() => reservedPresentationFieldIds(presentation.value))
 const remainingFields = computed(() => fields.value.filter((field: any) => !reservedIds.value.has(field.fieldId) && hasRenderableValue(props.content[field.fieldKey])))
 </script>
 

@@ -47,21 +47,37 @@ const SLOT_KINDS: Record<PresentationSlot, FieldKind[]> = {
   price: ['number', 'integer', 'string']
 }
 
-function findField(ast: SchemaAst, keys: string[], kinds: FieldKind[]) {
-  return ast.fields.find(field => !field.system && keys.includes(field.key) && kinds.includes(field.kind))
-    ?? ast.fields.find(field => !field.system && kinds.includes(field.kind))
-}
-
 function inferredSlots(ast: SchemaAst) {
-  const title = findField(ast, ['title', 'name'], SLOT_KINDS.title)
-  const description = findField(ast, ['description', 'summary', 'excerpt'], SLOT_KINDS.description)
-  const image = findField(ast, ['image', 'cover', 'thumbnail'], SLOT_KINDS.image)
-  const body = findField(ast, ['body', 'content'], SLOT_KINDS.body)
-  const gallery = findField(ast, ['gallery', 'images', 'media'], SLOT_KINDS.gallery)
-  const price = findField(ast, ['price', 'amount'], SLOT_KINDS.price)
-  return Object.fromEntries(Object.entries({ title, description, image, body, gallery, price })
-    .filter((entry): entry is [PresentationSlot, NonNullable<typeof title>] => Boolean(entry[1]))
-    .map(([slot, field]) => [slot, field.id])) as Partial<Record<PresentationSlot, string>>
+  const definitions: Array<[PresentationSlot, string[]]> = [
+    ['title', ['title', 'name']],
+    ['description', ['description', 'summary', 'excerpt']],
+    ['image', ['image', 'cover', 'thumbnail']],
+    ['body', ['body', 'content']],
+    ['gallery', ['gallery', 'images', 'media']],
+    ['price', ['price', 'amount']]
+  ]
+  const fields = ast.fields.filter(field => !field.system)
+  const used = new Set<string>()
+  const inferred: Partial<Record<PresentationSlot, string>> = {}
+
+  // Preserve strongly named fields before applying kind-based fallback so a
+  // body/gallery field cannot be consumed by an earlier optional slot.
+  for (const [slot, keys] of definitions) {
+    const field = fields.find(field => !used.has(field.id) && keys.includes(field.key) && SLOT_KINDS[slot].includes(field.kind))
+    if (!field) continue
+    inferred[slot] = field.id
+    used.add(field.id)
+  }
+
+  for (const [slot] of definitions) {
+    if (inferred[slot]) continue
+    const field = fields.find(field => !used.has(field.id) && SLOT_KINDS[slot].includes(field.kind))
+    if (!field) continue
+    inferred[slot] = field.id
+    used.add(field.id)
+  }
+
+  return inferred
 }
 
 export function compileSchemaPresentation(ast: SchemaAst, schemaVersion: number): CompiledSchemaPresentation {

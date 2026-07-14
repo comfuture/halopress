@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { formatPresentationDate, safePresentationLink } from '../app/utils/schema-presentation'
+import { formatPresentationDate, reservedPresentationFieldIds, safePresentationLink } from '../app/utils/schema-presentation'
 
 const root = resolve(import.meta.dirname, '..')
 
@@ -46,6 +46,13 @@ describe('public presentation UI contracts', () => {
     expect(safePresentationLink('?page=2')).toBe('?page=2')
     expect(safePresentationLink('https://example.com/path')).toBe('https://example.com/path')
     expect(safePresentationLink('javascript:alert(1)')).toBeNull()
+  })
+
+  it('leaves price fields available to non-catalog detail templates', () => {
+    const slots = { price: { fieldId: 'price-id', fieldKey: 'price' } }
+    expect(reservedPresentationFieldIds({ detailTemplate: 'document', slots })).not.toContain('price-id')
+    expect(reservedPresentationFieldIds({ detailTemplate: 'article', slots })).not.toContain('price-id')
+    expect(reservedPresentationFieldIds({ detailTemplate: 'catalog', slots })).toContain('price-id')
   })
 
   it('clears dynamic gallery refs when Vue unmounts a slide', async () => {

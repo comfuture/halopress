@@ -64,6 +64,15 @@ export function presentationText(value: unknown): string {
   return ''
 }
 
+export function reservedPresentationFieldIds(presentation: any) {
+  const renderedSlots = new Set(['title', 'description', 'image', 'body', 'gallery'])
+  if (presentation?.detailTemplate === 'catalog') renderedSlots.add('price')
+  return new Set<string>(Object.entries(presentation?.slots ?? {})
+    .filter(([slot]) => renderedSlots.has(slot))
+    .map(([, binding]: any) => binding?.fieldId)
+    .filter(Boolean))
+}
+
 export function safePresentationLink(value: unknown) {
   if (typeof value !== 'string') return null
   const candidate = value.trim()
