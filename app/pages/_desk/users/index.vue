@@ -56,6 +56,7 @@ const roleOptions = computed(() => (roleData.value?.items || []).map(role => ({
 })))
 
 const statusOptions = [
+  { label: 'Pending', value: 'pending' },
   { label: 'Active', value: 'active' },
   { label: 'Suspended', value: 'suspended' },
   { label: 'Disabled', value: 'disabled' },
@@ -64,6 +65,7 @@ const statusOptions = [
 
 const filterStatusOptions = [
   { label: 'All statuses', value: 'all' },
+  { label: 'Pending', value: 'pending' },
   { label: 'Active', value: 'active' },
   { label: 'Suspended', value: 'suspended' },
   { label: 'Disabled', value: 'disabled' },
@@ -187,6 +189,7 @@ const columns = computed<TableColumn<UserRow>[]>(() => ([
     cell: ({ row }) => {
       const current = row.original.status
       const color = ({
+        pending: 'info',
         active: 'success',
         suspended: 'warning',
         disabled: 'neutral',

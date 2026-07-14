@@ -30,7 +30,7 @@ export async function assertAssetIsNotPublished(db: Awaited<ReturnType<typeof ge
 
 export async function requireAssetDelivery(event: H3Event, assetId: string) {
   const session = await getAuthSession(event)
-  if (session?.user) {
+  if (session?.user && session.user.accountType !== 'member') {
     applyPrivateDeliveryHeaders(event)
     return { isPublic: false }
   }

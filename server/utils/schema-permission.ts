@@ -24,7 +24,8 @@ function isAdminRole(roleKey: string) {
 
 export async function getSchemaRoleKey(event: H3Event) {
   const session = await getAuthSession(event)
-  const roleKey = (session?.user as { role?: string } | undefined)?.role || 'anonymous'
+  const sessionUser = session?.user as { role?: string; accountType?: string } | undefined
+  const roleKey = sessionUser?.accountType === 'member' ? 'anonymous' : sessionUser?.role || 'anonymous'
 
   if (isAdminRole(roleKey)) {
     await requireAdmin(event)

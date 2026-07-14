@@ -1,4 +1,4 @@
-import { and, eq, ne, sql } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 
 import { getDb } from '../../db/db'
 import { user as userTable } from '../../db/schema'
@@ -16,17 +16,21 @@ export default defineEventHandler(async (event) => {
 
   const db = await getDb(event)
   const existing = await db
-    .select({ id: userTable.id, roleKey: userTable.roleKey, status: userTable.status })
+    .select({ id: userTable.id, roleKey: userTable.roleKey, accountType: userTable.accountType, status: userTable.status })
     .from(userTable)
     .where(eq(userTable.id, userId))
     .get()
   if (!existing) throw notFound('User not found')
 
-  if (existing.roleKey === 'admin' && existing.status !== 'deleted') {
+  if (existing.roleKey === 'admin' && existing.accountType === 'staff' && existing.status === 'active') {
     const adminCountRow = await db
       .select({ count: sql<number>`count(1)` })
       .from(userTable)
-      .where(and(eq(userTable.roleKey, 'admin'), ne(userTable.status, 'deleted')))
+      .where(and(
+        eq(userTable.roleKey, 'admin'),
+        eq(userTable.accountType, 'staff'),
+        eq(userTable.status, 'active')
+      ))
       .get()
     const adminCount = Number(adminCountRow?.count ?? 0)
     if (adminCount <= 1) throw badRequest('Cannot delete the last admin user')

@@ -5,7 +5,8 @@ export type AuthSession = {
     id?: string
     email?: string
     name?: string
-    role?: 'admin' | 'user' | 'anonymous'
+    role?: string
+    accountType?: 'staff' | 'member'
     tenantKey?: string
   }
   expires?: string
@@ -22,8 +23,9 @@ export function authSessionFromToken(token: JWT | null): AuthSession {
       id: typeof token.id === 'string' ? token.id : undefined,
       email: typeof token.email === 'string' ? token.email : undefined,
       name: typeof token.name === 'string' ? token.name : undefined,
-      role: token.role === 'admin' || token.role === 'user' || token.role === 'anonymous'
-        ? token.role
+      role: typeof token.role === 'string' ? token.role : undefined,
+      accountType: token.accountType === 'staff' || token.accountType === 'member'
+        ? token.accountType
         : undefined,
       tenantKey: typeof token.tenantKey === 'string' ? token.tenantKey : undefined
     },

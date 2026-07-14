@@ -1,4 +1,4 @@
-import { and, desc, eq, ne, sql } from 'drizzle-orm'
+import { and, desc, eq, sql } from 'drizzle-orm'
 import { getQuery } from 'h3'
 
 import { getDb } from '../../db/db'
@@ -32,6 +32,7 @@ export default defineEventHandler(async (event) => {
       email: userTable.email,
       name: userTable.name,
       roleKey: userTable.roleKey,
+      accountType: userTable.accountType,
       roleTitle: userRoleTable.title,
       roleLevel: userRoleTable.level,
       status: userTable.status,
@@ -49,6 +50,7 @@ export default defineEventHandler(async (event) => {
     email: string
     name: string | null
     roleKey: string
+    accountType: string
     roleTitle: string | null
     roleLevel: number | null
     status: string
@@ -62,13 +64,17 @@ export default defineEventHandler(async (event) => {
   const adminCountRow = await db
     .select({ count: sql<number>`count(1)` })
     .from(userTable)
-    .where(and(eq(userTable.roleKey, 'admin'), ne(userTable.status, 'deleted')))
+    .where(and(
+      eq(userTable.roleKey, 'admin'),
+      eq(userTable.accountType, 'staff'),
+      eq(userTable.status, 'active')
+    ))
     .get()
   const adminCount = Number(adminCountRow?.count ?? 0)
 
   const enriched = items.map((item: UserListRow) => ({
     ...item,
-    canDelete: !(item.roleKey === 'admin' && item.status !== 'deleted' && adminCount <= 1)
+    canDelete: !(item.roleKey === 'admin' && item.accountType === 'staff' && item.status === 'active' && adminCount <= 1)
   }))
 
   return { items: enriched }

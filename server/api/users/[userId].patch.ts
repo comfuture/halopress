@@ -1,12 +1,12 @@
 import { readBody } from 'h3'
-import { and, eq, ne, sql } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 
 import { getDb } from '../../db/db'
 import { user as userTable, userRole as userRoleTable } from '../../db/schema'
 import { requireAdmin } from '../../utils/auth'
 import { badRequest, notFound } from '../../utils/http'
 
-const allowedStatuses = new Set(['active', 'suspended', 'disabled', 'deleted'])
+const allowedStatuses = new Set(['pending', 'active', 'suspended', 'disabled', 'deleted'])
 
 export default defineEventHandler(async (event) => {
   const session = await requireAdmin(event)
@@ -18,7 +18,7 @@ export default defineEventHandler(async (event) => {
   const db = await getDb(event)
 
   const existing = await db
-    .select({ id: userTable.id, roleKey: userTable.roleKey, status: userTable.status })
+    .select({ id: userTable.id, roleKey: userTable.roleKey, accountType: userTable.accountType, status: userTable.status })
     .from(userTable)
     .where(eq(userTable.id, userId))
     .get()
@@ -41,6 +41,9 @@ export default defineEventHandler(async (event) => {
       .where(eq(userRoleTable.roleKey, roleKey))
       .get()
     if (!role) throw badRequest('Invalid role')
+    if (roleKey === 'admin' && existing.accountType !== 'staff') {
+      throw badRequest('Public member accounts cannot be assigned the administrator role')
+    }
 
     updates.roleKey = roleKey
   }
@@ -58,13 +61,20 @@ export default defineEventHandler(async (event) => {
     throw badRequest('Cannot delete current user')
   }
 
-  const isDeleting = updates.status === 'deleted'
+  const isDeactivating = updates.status && updates.status !== 'active'
   const isDemoting = updates.roleKey && existing.roleKey === 'admin' && updates.roleKey !== 'admin'
-  if ((isDeleting || isDemoting) && existing.roleKey === 'admin' && existing.status !== 'deleted') {
+  if ((isDeactivating || isDemoting)
+    && existing.roleKey === 'admin'
+    && existing.accountType === 'staff'
+    && existing.status === 'active') {
     const adminCountRow = await db
       .select({ count: sql<number>`count(1)` })
       .from(userTable)
-      .where(and(eq(userTable.roleKey, 'admin'), ne(userTable.status, 'deleted')))
+      .where(and(
+        eq(userTable.roleKey, 'admin'),
+        eq(userTable.accountType, 'staff'),
+        eq(userTable.status, 'active')
+      ))
       .get()
     const adminCount = Number(adminCountRow?.count ?? 0)
     if (adminCount <= 1) throw badRequest('Cannot remove the last admin user')

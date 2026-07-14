@@ -11,6 +11,7 @@ import { getTenantKey } from './tenant'
 import { getDb } from '../db/db'
 import { user as userTable } from '../db/schema'
 import { verifyPassword } from './password'
+import { getActiveAuthUser } from './auth-user'
 
 export async function getAuthSession(event: H3Event): Promise<AuthSession> {
   const secureCookie = hasSecureAuthSessionCookie(parseCookies(event))
@@ -20,7 +21,28 @@ export async function getAuthSession(event: H3Event): Promise<AuthSession> {
     decode: decodeAuthToken,
     secret: resolveAuthSigningSecret(event)
   })
-  return authSessionFromToken(token)
+  const session = authSessionFromToken(token)
+  const tokenUser = session?.user
+  if (!tokenUser?.id) return null
+
+  const tenantKey = getTenantKey(event)
+  if (tokenUser.tenantKey && tokenUser.tenantKey !== tenantKey) return null
+
+  const db = await getDb(event)
+  const row = await getActiveAuthUser(db, tokenUser.id)
+  if (!row) return null
+
+  return {
+    ...session,
+    user: {
+      id: row.id,
+      email: row.email,
+      name: row.name || row.email,
+      role: row.role,
+      accountType: row.accountType,
+      tenantKey
+    }
+  }
 }
 
 export async function requireAdmin(event: H3Event): Promise<NonNullable<AuthSession>> {
@@ -29,12 +51,13 @@ export async function requireAdmin(event: H3Event): Promise<NonNullable<AuthSess
     id?: string
     email?: string
     name?: string
-    role?: 'admin' | 'user' | 'anonymous'
+    role?: string
+    accountType?: 'staff' | 'member'
     tenantKey?: string
   } | undefined
 
   if (!user) throw unauthorized()
-  if (user.role !== 'admin') throw unauthorized()
+  if (user.role !== 'admin' || user.accountType !== 'staff') throw unauthorized()
 
   const tenantKey = getTenantKey(event)
   if (user.tenantKey && user.tenantKey !== tenantKey) {
@@ -53,6 +76,12 @@ export async function requireAdmin(event: H3Event): Promise<NonNullable<AuthSess
   if (!row || row.roleKey !== 'admin' || row.status !== 'active') throw unauthorized()
 
   return session as NonNullable<AuthSession>
+}
+
+export async function requireStaff(event: H3Event): Promise<NonNullable<AuthSession>> {
+  const session = await getAuthSession(event)
+  if (!session?.user || session.user.accountType !== 'staff') throw unauthorized()
+  return session
 }
 
 export async function getAdminUserByIdentifier(event: H3Event, identifier: string) {

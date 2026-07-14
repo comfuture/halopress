@@ -3,7 +3,7 @@ import CredentialsProvider from 'next-auth/providers/credentials'
 import GoogleProvider from 'next-auth/providers/google'
 import { NuxtAuthHandler } from '#auth'
 import { createError, defineEventHandler, getRequestURL } from 'h3'
-import { eq, or } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 
 import { getDb } from '../../db/db'
 import { user as userTable } from '../../db/schema'
@@ -13,11 +13,16 @@ import { resolveCredentialsEnabled, resolveOAuthProviderConfig } from '../../uti
 import { getInstallStatus } from '../../utils/install'
 import { fingerprintSecret, isAuthRuntimeReady, resolveAuthSigningSecret } from '../../utils/install-token'
 import { getTenantKey } from '../../utils/tenant'
+import {
+  consumeGoogleLinkIntent,
+  ExternalIdentityError,
+  resolveGoogleIdentity
+} from '../../utils/external-identities'
+import { getActiveAuthUser } from '../../utils/auth-user'
 
 type CredentialInput = {
   identifier?: string
   email?: string
-  username?: string
   password?: string
 }
 
@@ -37,12 +42,6 @@ const authEventStorage = new AsyncLocalStorage<any>()
 
 function getAuthEvent() {
   return authEventStorage.getStore()
-}
-
-function resolveTenantKey() {
-  const event = getAuthEvent()
-  if (!event) return 'local'
-  return getTenantKey(event)
 }
 
 let cachedAuthHandler: AuthHandler | null = null
@@ -80,6 +79,16 @@ function resolveProviderFactory<T extends (...args: any[]) => any>(provider: T |
   return ('default' in provider && provider.default ? provider.default : provider) as T
 }
 
+function clearAuthClaims(token: Record<string, any>) {
+  delete token.id
+  delete token.email
+  delete token.name
+  delete token.role
+  delete token.accountType
+  delete token.tenantKey
+  return token
+}
+
 async function buildAuthHandler(config: AuthProviderConfig) {
   const { authSecret, credentialsEnabled, googleConfig } = config
   const oauthProviders: any[] = []
@@ -106,14 +115,13 @@ async function buildAuthHandler(config: AuthProviderConfig) {
       createCredentialsProvider({
         name: 'Credentials',
         credentials: {
-          identifier: { label: 'Email or username', type: 'text' },
+          identifier: { label: 'Email', type: 'email' },
           password: { label: 'Password', type: 'password' }
         },
         async authorize(credentials: Record<string, string> | undefined, req: { headers?: Record<string, string | string[] | undefined> }) {
           const authEvent = getAuthEvent()
           const input = credentials as CredentialInput | null
-          const rawIdentifier = (input?.identifier || input?.email || input?.username || '').trim()
-          const identifier = rawIdentifier.includes('@') ? rawIdentifier.toLowerCase() : rawIdentifier
+          const identifier = (input?.identifier || input?.email || '').trim().toLowerCase()
           const password = input?.password ?? ''
 
           if (!identifier || !password) return null
@@ -127,6 +135,7 @@ async function buildAuthHandler(config: AuthProviderConfig) {
             email: string
             name: string | null
             roleKey: string
+            accountType: string
             status: string
             passwordHash: string | null
             passwordSalt: string | null
@@ -140,12 +149,13 @@ async function buildAuthHandler(config: AuthProviderConfig) {
                 email: userTable.email,
                 name: userTable.name,
                 roleKey: userTable.roleKey,
+                accountType: userTable.accountType,
                 status: userTable.status,
                 passwordHash: userTable.passwordHash,
                 passwordSalt: userTable.passwordSalt
               })
               .from(userTable)
-              .where(or(eq(userTable.email, identifier), eq(userTable.name, identifier)))
+              .where(eq(userTable.email, identifier))
               .limit(1)
 
             row = user?.[0]
@@ -154,7 +164,7 @@ async function buildAuthHandler(config: AuthProviderConfig) {
             throw error
           }
 
-          if (!row || row.roleKey !== 'admin' || row.status !== 'active') return null
+          if (!row || row.status !== 'active') return null
           if (!row.passwordHash || !row.passwordSalt) return null
           const ok = await verifyPassword(password, row.passwordHash, row.passwordSalt)
           if (!ok) return null
@@ -164,6 +174,7 @@ async function buildAuthHandler(config: AuthProviderConfig) {
             email: row.email,
             name: row.name || row.email,
             role: row.roleKey,
+            accountType: row.accountType === 'member' ? 'member' : 'staff',
             tenantKey
           }
         }
@@ -183,78 +194,74 @@ async function buildAuthHandler(config: AuthProviderConfig) {
       decode: decodeAuthToken
     },
     pages: {
-      signIn: '/_desk/login'
+      signIn: '/login'
     },
     providers,
     callbacks: {
-      async signIn({ user, account }) {
+      async signIn({ user, account, profile }) {
         const authEvent = getAuthEvent()
         if (account?.provider === 'credentials') return true
-
-        const email = (user?.email || '').trim().toLowerCase()
-        if (!email) return false
-
+        if (account?.provider !== 'google' || !authEvent) return false
         try {
-          const db = await getDb(authEvent)
-          const row = await db
-            .select({
-              id: userTable.id,
-              email: userTable.email,
-              roleKey: userTable.roleKey,
-              status: userTable.status
-            })
-            .from(userTable)
-            .where(eq(userTable.email, email))
-            .get()
-          if (!row || row.roleKey !== 'admin' || row.status !== 'active') return false
+          const profileData = (profile || {}) as Record<string, unknown>
+          const linked = await resolveGoogleIdentity(authEvent, {
+            subject: String(account.providerAccountId || profileData.sub || ''),
+            email: String(user?.email || profileData.email || ''),
+            emailVerified: profileData.email_verified === true,
+            linkUserId: await consumeGoogleLinkIntent(authEvent)
+          })
+          if (linked.status !== 'active') return false
+          user.id = linked.id
+          user.email = linked.email
+          user.name = linked.name
+          ;(user as any).role = linked.role
+          ;(user as any).accountType = linked.accountType
+          ;(user as any).tenantKey = getTenantKey(authEvent)
         } catch (error) {
           if (isMissingUserTableError(error)) return false
+          if (error instanceof ExternalIdentityError) {
+            console.warn('[auth] Google sign-in rejected', error.code)
+            return false
+          }
           throw error
         }
-
         return true
       },
-      async jwt({ token, user, account }) {
+      async jwt({ token, user }) {
         if (user) {
           token.id = user.id
           token.role = (user as any).role
+          token.accountType = (user as any).accountType
           token.tenantKey = (user as any).tenantKey
           token.email = user.email
           token.name = user.name
         }
-        if (account?.provider && account.provider !== 'credentials') {
-          const authEvent = getAuthEvent()
-          const tenantKey = authEvent ? getTenantKey(authEvent) : resolveTenantKey()
-          token.tenantKey = tenantKey
-          const email = (token.email || user?.email || '').trim().toLowerCase()
-          if (email) {
-            try {
-              const db = await getDb(authEvent)
-              const row = await db
-                .select({
-                  id: userTable.id,
-                  email: userTable.email,
-                  name: userTable.name,
-                  roleKey: userTable.roleKey,
-                  status: userTable.status
-                })
-                .from(userTable)
-                .where(eq(userTable.email, email))
-                .get()
-              if (row && row.roleKey === 'admin' && row.status === 'active') {
-                token.id = row.id
-                token.role = row.roleKey
-                token.email = row.email
-                token.name = row.name || row.email
-              }
-            } catch (error) {
-              if (!isMissingUserTableError(error)) throw error
-            }
+        const authEvent = getAuthEvent()
+        const userId = typeof token.id === 'string' ? token.id : ''
+        if (!authEvent || !userId) return token
+        try {
+          const db = await getDb(authEvent)
+          const currentTenantKey = getTenantKey(authEvent)
+          if (typeof token.tenantKey === 'string' && token.tenantKey !== currentTenantKey) {
+            return clearAuthClaims(token)
           }
+          const current = await getActiveAuthUser(db, userId)
+          if (!current) {
+            return clearAuthClaims(token)
+          }
+          token.id = current.id
+          token.email = current.email
+          token.name = current.name || current.email
+          token.role = current.role
+          token.accountType = current.accountType
+          token.tenantKey = currentTenantKey
+        } catch (error) {
+          if (!isMissingUserTableError(error)) throw error
         }
         return token
       },
       session({ session, token }) {
+        if (typeof token.id !== 'string') return { ...session, user: undefined } as any
         return {
           ...session,
           user: {
@@ -262,7 +269,8 @@ async function buildAuthHandler(config: AuthProviderConfig) {
             id: token.id as string | undefined,
             email: token.email as string | undefined,
             name: token.name as string | undefined,
-            role: token.role as 'admin' | 'user' | 'anonymous' | undefined,
+            role: token.role as string | undefined,
+            accountType: token.accountType as 'staff' | 'member' | undefined,
             tenantKey: token.tenantKey as string | undefined
           }
         }
