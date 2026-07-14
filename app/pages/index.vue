@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import type { ButtonProps } from '@nuxt/ui'
 
-const { data } = await useFetch<{ items: Array<{ schemaKey: string; title?: string; activeVersion: number }> }>('/api/schema/list')
-const { presentation } = await useSitePresentation()
+const [{ data }, { presentation }] = await Promise.all([
+  useFetch<{ items: Array<{ schemaKey: string; title?: string; activeVersion: number }> }>('/api/schema/list'),
+  useSitePresentation()
+])
 const schemas = computed(() => data.value?.items ?? [])
 
 const schemaLinks = computed(() =>
