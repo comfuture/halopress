@@ -299,9 +299,30 @@ afterAll(() => {
 })
 
 describe('public delivery endpoint visibility', () => {
+  it('returns non-enumerating 404s across public delivery while a schema is inactive', async () => {
+    await fixture.db.update(schemaActiveTable).set({ status: 'inactive' }).where(eq(schemaActiveTable.schemaKey, 'article'))
+    try {
+      await expect(handlers.active(responseEvent('/api/schema/article/active', { schemaKey: 'article' }).event))
+        .rejects.toMatchObject({ statusCode: 404 })
+      await expect(handlers.collection(responseEvent('/api/content/article', { schemaKey: 'article' }).event))
+        .rejects.toMatchObject({ statusCode: 404 })
+      await expect(handlers.detail(responseEvent('/api/content/article/published-target', { schemaKey: 'article', id: 'published-target' }).event))
+        .rejects.toMatchObject({ statusCode: 404 })
+      await expect(handlers.search(responseEvent('/api/search?schemaKey=article').event))
+        .rejects.toMatchObject({ statusCode: 404 })
+      await expect(handlers.recent(responseEvent('/api/widget/recent?schema=article').event))
+        .rejects.toMatchObject({ statusCode: 404 })
+      await expect(handlers.curation(responseEvent('/api/widget/curation?schema=article&field=category&values=news').event))
+        .rejects.toMatchObject({ statusCode: 404 })
+    } finally {
+      await fixture.db.update(schemaActiveTable).set({ status: 'active' }).where(eq(schemaActiveTable.schemaKey, 'article'))
+    }
+  })
+
   it('returns active schema metadata only while the schema is readable', async () => {
     const allowed = responseEvent('/api/schema/article/active', { schemaKey: 'article' })
     await expect(handlers.active(allowed.event)).resolves.toMatchObject({ schemaKey: 'article', title: 'Articles' })
+    expect(allowed.header('cache-control')).toBe('public, max-age=0, must-revalidate')
 
     permissionState.deniedSchemas.add('article')
     const denied = responseEvent('/api/schema/article/active', { schemaKey: 'article' })
@@ -331,7 +352,7 @@ describe('public delivery endpoint visibility', () => {
     const recent = responseEvent(withStatus('/api/widget/recent?schema=article', status))
     const recentResult = await handlers.recent(recent.event)
     expectPublishedOnly(recentResult.items)
-    expect(recent.header('cache-control')).toMatch(/^public,/)
+    expect(recent.header('cache-control')).toBe('public, max-age=0, must-revalidate')
     expect(recent.header('vary')).toBe('Cookie')
 
     const valueCuration = responseEvent(withStatus(
@@ -340,7 +361,7 @@ describe('public delivery endpoint visibility', () => {
     ))
     const valueResult = await handlers.curation(valueCuration.event)
     expectPublishedOnly(valueResult.items)
-    expect(valueCuration.header('cache-control')).toMatch(/^public,/)
+    expect(valueCuration.header('cache-control')).toBe('public, max-age=0, must-revalidate')
     expect(valueCuration.header('vary')).toBe('Cookie')
 
     const ownerCuration = responseEvent(withStatus(

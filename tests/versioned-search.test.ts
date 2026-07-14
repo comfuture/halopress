@@ -8,6 +8,7 @@ import {
   contentListing,
   contentSearchData,
   schema,
+  schemaActive,
   searchConfig
 } from '../server/db/schema'
 import type { SchemaPermission } from '../server/utils/schema-permission'
@@ -299,6 +300,13 @@ beforeAll(async () => {
     value: 'archive',
     fieldId: 'category-field-v1'
   })
+
+  await fixture.db.insert(schemaActive).values([
+    { schemaKey: 'article', activeVersion: 2, updatedAt: new Date('2026-07-13T00:00:00.000Z') },
+    { schemaKey: 'widget-kind-drift', activeVersion: 2, updatedAt: new Date('2026-07-13T00:00:00.000Z') },
+    { schemaKey: 'compatible', activeVersion: 2, updatedAt: new Date('2026-07-13T00:00:00.000Z') },
+    { schemaKey: 'recreated', activeVersion: 2, updatedAt: new Date('2026-07-13T00:00:00.000Z') }
+  ])
 
   searchHandler = (await import('../server/api/search.get')).default as EndpointHandler
   curationHandler = (await import('../server/api/widget/curation.get')).default as EndpointHandler

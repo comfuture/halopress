@@ -1,5 +1,5 @@
 import { and, eq } from 'drizzle-orm'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { listActiveSchemas } from '../server/cms/repo'
 import {
@@ -30,6 +30,16 @@ const permissionState = vi.hoisted(() => ({
   failure: null as Error | null
 }))
 const dbState = vi.hoisted(() => ({ current: null as any }))
+
+const activeLifecycleDb = {
+  select: () => ({
+    from: () => ({
+      where: () => ({
+        get: async () => ({ status: 'active' })
+      })
+    })
+  })
+}
 
 vi.mock('../server/db/db', () => ({
   getDb: vi.fn(async () => dbState.current)
@@ -110,13 +120,17 @@ async function addContentOwner(db: any, args: { id: string; schemaKey: string; s
   }
 }
 
+beforeEach(() => {
+  dbState.current = activeLifecycleDb
+})
+
 afterEach(() => {
   permissionState.current = permission({
     roleKey: 'anonymous',
     canRead: true
   })
   permissionState.failure = null
-  dbState.current = null
+  dbState.current = activeLifecycleDb
 })
 
 describe('public delivery policy', () => {

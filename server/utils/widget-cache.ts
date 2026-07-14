@@ -123,12 +123,10 @@ export function queueWidgetCacheInvalidation(event: H3Event, scope: string) {
 }
 
 export function applyWidgetCacheHeaders(event: H3Event, policy: CachePolicy, tags?: string[]) {
-  const soft = Math.max(0, Math.floor(policy.softTtl))
-  const hard = Math.max(soft, Math.floor(policy.hardTtl))
-  const staleIfError = Math.max(0, Math.floor(policy.staleIfError ?? 86400))
-  const swr = Math.max(0, hard - soft)
-
-  setHeader(event, 'Cache-Control', `public, max-age=${soft}, stale-while-revalidate=${swr}, stale-if-error=${staleIfError}`)
+  void policy
+  // Keep the origin/KV widget cache, but require public clients and edge caches
+  // to revalidate so schema deactivation takes effect on the next request.
+  setHeader(event, 'Cache-Control', 'public, max-age=0, must-revalidate')
   setHeader(event, 'Vary', 'Cookie')
   if (tags && tags.length) setHeader(event, 'CF-Cache-Tag', tags.join(','))
 }

@@ -264,6 +264,7 @@ describe('schema content migration publication state', () => {
       })
 
       await expect(migrateSchemaContent({
+        event: { context: {} } as any,
         db: fixture.db as any, schemaKey: 'gallery', nextVersion: 2, registry: listRegistry,
         changes: getKindChanges(assetAst, listAst)
       })).resolves.toEqual({ updated: 1 })
@@ -276,6 +277,7 @@ describe('schema content migration publication state', () => {
         registryJson: JSON.stringify(assetRegistryV3), createdAt: now
       })
       await migrateSchemaContent({
+        event: { context: {} } as any,
         db: fixture.db as any, schemaKey: 'gallery', nextVersion: 3, registry: assetRegistryV3,
         changes: getKindChanges(listAst, assetAst)
       })

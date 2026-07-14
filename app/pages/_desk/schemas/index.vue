@@ -3,9 +3,14 @@ definePageMeta({
   layout: 'desk'
 })
 
+const { data: session } = useAuth()
+const schemaListUrl = computed(() => session.value?.user?.role === 'admin'
+  ? '/api/schema/list?includeInactive=1'
+  : '/api/schema/list')
+
 const { data, status } = await useFetch<{
-  items: Array<{ schemaKey: string; title?: string; activeVersion: number }>
-}>('/api/schema/list')
+  items: Array<{ schemaKey: string; title?: string; activeVersion: number; status: 'active' | 'inactive' }>
+}>(schemaListUrl)
 
 const items = computed(() => data.value?.items ?? [])
 const showEmpty = computed(() => status.value === 'success' && items.value.length === 0)
@@ -44,10 +49,21 @@ const showEmpty = computed(() => status.value === 'success' && items.value.lengt
           v-for="s in items"
           :key="s.schemaKey"
           :title="s.title || s.schemaKey"
-          :description="`Version ${s.activeVersion} is live`"
+          :description="s.status === 'inactive' ? `Version ${s.activeVersion} is retained but unavailable` : `Version ${s.activeVersion} is live`"
           :to="`/_desk/schemas/${s.schemaKey}`"
           icon="i-lucide-braces"
-        />
+          :highlight="s.status === 'inactive'"
+          highlight-color="warning"
+        >
+          <template #footer>
+            <UBadge
+              :color="s.status === 'inactive' ? 'warning' : 'success'"
+              variant="soft"
+              size="sm"
+              :label="s.status === 'inactive' ? 'Inactive' : 'Active'"
+            />
+          </template>
+        </UPageCard>
       </UPageGrid>
     </template>
   </UDashboardPanel>

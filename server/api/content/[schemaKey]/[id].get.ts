@@ -3,7 +3,7 @@ import { getQuery } from 'h3'
 
 import { getDb } from '../../../db/db'
 import { parseContentJson } from '../../../cms/content-json'
-import { applyPrivateDeliveryHeaders, applyPublicDeliveryHeaders, normalizeDeliveryStatus, resolveDeliveryPolicy } from '../../../utils/delivery-policy'
+import { applyLifecyclePublicDeliveryHeaders, applyPrivateDeliveryHeaders, normalizeDeliveryStatus, resolveDeliveryPolicy } from '../../../utils/delivery-policy'
 import { notFound } from '../../../utils/http'
 import { content as contentTable, contentListing as contentListingTable } from '../../../db/schema'
 import { buildContentListingSnapshot } from '../../../cms/content-listing'
@@ -39,7 +39,7 @@ export default defineEventHandler(async (event) => {
     ? await getPublicationRevision(db, 'content', row.id, row.publishedRevisionId)
     : null
   if (usePublished && !revision) throw notFound('Content not found')
-  if (policy.isPublic) applyPublicDeliveryHeaders(event)
+  if (policy.isPublic) applyLifecyclePublicDeliveryHeaders(event)
   else applyPrivateDeliveryHeaders(event)
 
   const sourceContentJson = revision?.contentJson ?? row.contentJson

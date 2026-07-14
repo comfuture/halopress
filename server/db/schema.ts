@@ -73,9 +73,15 @@ export const schema = sqliteTable('schema', {
 export const schemaActive = sqliteTable('schema_active', {
   schemaKey: text('schema_key').notNull(),
   activeVersion: integer('active_version').notNull(),
+  status: text('status').notNull().default('active'),
+  deactivatedAt: integer('deactivated_at', { mode: 'timestamp' }),
+  deactivatedBy: text('deactivated_by'),
+  reactivatedAt: integer('reactivated_at', { mode: 'timestamp' }),
+  reactivatedBy: text('reactivated_by'),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull()
 }, t => ({
-  pk: primaryKey({ columns: [t.schemaKey] })
+  pk: primaryKey({ columns: [t.schemaKey] }),
+  byStatus: index('idx_schema_active_status').on(t.status, t.schemaKey)
 }))
 
 export const schemaRole = sqliteTable('schema_role', {

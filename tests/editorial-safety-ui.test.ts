@@ -61,4 +61,34 @@ describe('Desk editorial safety UI', () => {
     expect(settings).toContain('overflow-x-auto')
     expect(pageList).toContain(`{ label: 'Deleted', value: 'deleted' }`)
   })
+
+  it('exposes schema lifecycle state, impact preview, guarded deletion, and typed purge confirmation', async () => {
+    const settings = await source('app/pages/_desk/schemas/[schemaKey]/settings.vue')
+    const schemaList = await source('app/pages/_desk/schemas/index.vue')
+    const schemaEditor = await source('app/pages/_desk/schemas/[schemaKey]/index.vue')
+
+    expect(schemaList).toContain('/api/schema/list?includeInactive=1')
+    expect(schemaList).toContain('session.value?.user?.role === \'admin\'')
+    expect(schemaList).toContain(': \'/api/schema/list\'')
+    expect(schemaList).toContain('highlight-color="warning"')
+    expect(schemaEditor).toContain('/definition`')
+    expect(schemaEditor).toContain('This schema is inactive')
+
+    for (const contract of [
+      '<UBadge',
+      '<UAlert',
+      '<UModal',
+      '<UForm',
+      '<UFormField',
+      '<UInput',
+      'Delete empty schema',
+      'Purge schema and content',
+      'confirmation: z.string().refine',
+      'transitionLifecycle(\'deactivate\')',
+      'transitionLifecycle(\'reactivate\')',
+      '/purge`'
+    ]) {
+      expect(settings).toContain(contract)
+    }
+  })
 })

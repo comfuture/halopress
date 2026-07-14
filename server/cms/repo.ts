@@ -8,11 +8,16 @@ import {
 } from '../db/schema'
 import type { SchemaAst, SchemaRegistry } from './types'
 
-export async function listActiveSchemas(db: Db, options: { roleKey?: string } = {}) {
+export async function listActiveSchemas(db: Db, options: { roleKey?: string, includeInactive?: boolean } = {}) {
   const base = db
     .select({
       schemaKey: schemaActiveTable.schemaKey,
       activeVersion: schemaActiveTable.activeVersion,
+      status: schemaActiveTable.status,
+      deactivatedAt: schemaActiveTable.deactivatedAt,
+      deactivatedBy: schemaActiveTable.deactivatedBy,
+      reactivatedAt: schemaActiveTable.reactivatedAt,
+      reactivatedBy: schemaActiveTable.reactivatedBy,
       updatedAt: schemaActiveTable.updatedAt,
       title: schemaTable.title
     })
@@ -25,27 +30,36 @@ export async function listActiveSchemas(db: Db, options: { roleKey?: string } = 
           eq(schemaRoleTable.schemaKey, schemaActiveTable.schemaKey),
           eq(schemaRoleTable.roleKey, options.roleKey)
         ))
-        .where(or(
-          eq(schemaRoleTable.canRead, true),
-          eq(schemaRoleTable.canWrite, true),
-          eq(schemaRoleTable.canPublish, true),
-          eq(schemaRoleTable.canArchive, true),
-          eq(schemaRoleTable.canDelete, true),
-          eq(schemaRoleTable.canAdmin, true)
+        .where(and(
+          options.includeInactive ? undefined : eq(schemaActiveTable.status, 'active'),
+          or(
+            eq(schemaRoleTable.canRead, true),
+            eq(schemaRoleTable.canWrite, true),
+            eq(schemaRoleTable.canPublish, true),
+            eq(schemaRoleTable.canArchive, true),
+            eq(schemaRoleTable.canDelete, true),
+            eq(schemaRoleTable.canAdmin, true)
+          )
         ))
         .orderBy(schemaActiveTable.schemaKey)
     : await base
-    .orderBy(schemaActiveTable.schemaKey)
+        .where(options.includeInactive ? undefined : eq(schemaActiveTable.status, 'active'))
+        .orderBy(schemaActiveTable.schemaKey)
 
   return rows.map((r: any) => ({
     schemaKey: r.schemaKey,
     activeVersion: r.activeVersion,
+    status: r.status,
+    deactivatedAt: r.deactivatedAt ?? null,
+    deactivatedBy: r.deactivatedBy ?? null,
+    reactivatedAt: r.reactivatedAt ?? null,
+    reactivatedBy: r.reactivatedBy ?? null,
     updatedAt: r.updatedAt,
     title: r.title ?? r.schemaKey
   }))
 }
 
-export async function getActiveSchema(db: Db, schemaKey: string) {
+export async function getPublishedSchema(db: Db, schemaKey: string, options: { includeInactive?: boolean } = {}) {
   const active = await db
     .select()
     .from(schemaActiveTable)
@@ -53,6 +67,7 @@ export async function getActiveSchema(db: Db, schemaKey: string) {
     .get()
 
   if (!active) return null
+  if (!options.includeInactive && active.status !== 'active') return null
 
   const row = await db
     .select()
@@ -70,9 +85,26 @@ export async function getActiveSchema(db: Db, schemaKey: string) {
     jsonSchema: JSON.parse(row.jsonSchema),
     uiSchema: row.uiSchema ? JSON.parse(row.uiSchema) : null,
     registry: row.registryJson ? (JSON.parse(row.registryJson) as SchemaRegistry) : null,
+    status: active.status,
+    deactivatedAt: active.deactivatedAt ?? null,
+    deactivatedBy: active.deactivatedBy ?? null,
+    reactivatedAt: active.reactivatedAt ?? null,
+    reactivatedBy: active.reactivatedBy ?? null,
     createdAt: row.createdAt,
     updatedAt: active.updatedAt
   }
+}
+
+export async function getActiveSchema(db: Db, schemaKey: string) {
+  return await getPublishedSchema(db, schemaKey)
+}
+
+export async function getSchemaLifecycle(db: Db, schemaKey: string) {
+  return await db
+    .select()
+    .from(schemaActiveTable)
+    .where(eq(schemaActiveTable.schemaKey, schemaKey))
+    .get() ?? null
 }
 
 export async function listSchemaVersions(db: Db, schemaKey: string) {

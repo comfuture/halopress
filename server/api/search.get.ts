@@ -13,7 +13,7 @@ import {
   coerceSearchValue,
   searchDataTypeForKind
 } from '../cms/search-helpers'
-import { applyPrivateDeliveryHeaders, applyPublicDeliveryHeaders, resolveDeliveryPolicy } from '../utils/delivery-policy'
+import { applyLifecyclePublicDeliveryHeaders, applyPrivateDeliveryHeaders, resolveDeliveryPolicy } from '../utils/delivery-policy'
 import { badRequest } from '../utils/http'
 
 type FilterInput = {
@@ -99,7 +99,7 @@ export default defineEventHandler(async (event) => {
   if (!schemaKey) throw badRequest('schemaKey required')
   const policy = await resolveDeliveryPolicy(event, schemaKey, { requestedStatus: q.status })
   const projectionScope = policy.effectiveStatus === 'published' ? 'published' : 'working'
-  if (policy.isPublic) applyPublicDeliveryHeaders(event)
+  if (policy.isPublic) applyLifecyclePublicDeliveryHeaders(event)
   else applyPrivateDeliveryHeaders(event)
 
   const limit = Math.min(Number(q.limit ?? 20) || 20, 50)

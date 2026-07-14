@@ -341,7 +341,7 @@ const currentRevision = computed(() => Number(draft.value?.revision ?? 0))
 
 const activeFetch = isNew.value
   ? { data: ref<any>(null), refresh: async () => {} }
-  : await useFetch<any>(() => `/api/schema/${routeKey.value}/active`)
+  : await useFetch<any>(() => `/api/schema/${routeKey.value}/definition`)
 
 const active = activeFetch.data
 const refreshActive = activeFetch.refresh
@@ -1050,6 +1050,22 @@ async function confirmPublish() {
     </template>
 
     <template #body>
+      <UAlert
+        v-if="active?.status === 'inactive'"
+        class="mb-6"
+        title="This schema is inactive"
+        description="Its versions and content are preserved, but content creation and delivery stay blocked until an administrator reactivates it in Settings."
+        icon="i-lucide-circle-pause"
+        color="warning"
+        variant="subtle"
+      >
+        <template #actions>
+          <UButton :to="`/_desk/schemas/${routeKey}/settings`" color="warning" variant="soft">
+            Open lifecycle settings
+          </UButton>
+        </template>
+      </UAlert>
+
       <UAlert
         v-if="conflictDetails"
         title="A newer schema draft is available"

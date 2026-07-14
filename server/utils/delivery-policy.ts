@@ -3,7 +3,7 @@ import { setHeader } from 'h3'
 import { eq } from 'drizzle-orm'
 
 import { getDb } from '../db/db'
-import { content as contentTable } from '../db/schema'
+import { content as contentTable, schemaActive as schemaActiveTable } from '../db/schema'
 import { notFound } from './http'
 import { getSchemaPermission, hasSchemaPermission, type SchemaPermission } from './schema-permission'
 
@@ -53,6 +53,16 @@ export async function resolveDeliveryPolicy(
   schemaKey: string,
   options: DeliveryPolicyOptions = {}
 ): Promise<DeliveryPolicy> {
+  const db = await getDb(event)
+  const lifecycle = await db
+    .select({ status: schemaActiveTable.status })
+    .from(schemaActiveTable)
+    .where(eq(schemaActiveTable.schemaKey, schemaKey))
+    .get()
+  if (lifecycle?.status !== 'active') {
+    throw notFound(options.notFoundMessage ?? 'Schema not found')
+  }
+
   const permission = await getSchemaPermission(event, schemaKey)
   if (!hasSchemaPermission(permission, 'read')) {
     throw notFound(options.notFoundMessage ?? 'Schema not found')
@@ -114,5 +124,10 @@ export function applyPreviewDeliveryHeaders(event: H3Event) {
 
 export function applyPublicDeliveryHeaders(event: H3Event) {
   setHeader(event, 'Cache-Control', 'public, max-age=60, stale-while-revalidate=300')
+  setHeader(event, 'Vary', 'Cookie')
+}
+
+export function applyLifecyclePublicDeliveryHeaders(event: H3Event) {
+  setHeader(event, 'Cache-Control', 'public, max-age=0, must-revalidate')
   setHeader(event, 'Vary', 'Cookie')
 }

@@ -1,10 +1,10 @@
-import { and, eq } from 'drizzle-orm'
+import { and, eq, or } from 'drizzle-orm'
 import type { H3Event } from 'h3'
 
 import { getDb } from '../db/db'
-import { documentAssetRef } from '../db/schema'
+import { content as contentTable, documentAssetRef, schemaActive } from '../db/schema'
 import { getAuthSession } from './auth'
-import { applyPrivateDeliveryHeaders, applyPublicDeliveryHeaders } from './delivery-policy'
+import { applyLifecyclePublicDeliveryHeaders, applyPrivateDeliveryHeaders } from './delivery-policy'
 import { conflict, notFound } from './http'
 
 export async function assertAssetIsNotRetained(db: Awaited<ReturnType<typeof getDb>>, assetId: string) {
@@ -38,12 +38,25 @@ export async function requireAssetDelivery(event: H3Event, assetId: string) {
   const db = await getDb(event)
   const publishedRef = await db.select({ assetId: documentAssetRef.assetId })
     .from(documentAssetRef)
+    .leftJoin(contentTable, and(
+      eq(documentAssetRef.documentKind, 'content'),
+      eq(documentAssetRef.documentId, contentTable.id)
+    ))
+    .leftJoin(schemaActive, and(
+      eq(schemaActive.schemaKey, contentTable.schemaKey),
+      eq(schemaActive.status, 'active')
+    ))
     .where(and(
       eq(documentAssetRef.assetId, assetId),
-      eq(documentAssetRef.projectionScope, 'published')
+      eq(documentAssetRef.projectionScope, 'published'),
+      or(
+        eq(documentAssetRef.documentKind, 'page'),
+        eq(documentAssetRef.documentKind, 'settings'),
+        and(eq(documentAssetRef.documentKind, 'content'), eq(schemaActive.status, 'active'))
+      )
     ))
     .limit(1)
   if (!publishedRef[0]) throw notFound('Asset not found')
-  applyPublicDeliveryHeaders(event)
+  applyLifecyclePublicDeliveryHeaders(event)
   return { isPublic: true }
 }
