@@ -74,6 +74,22 @@ describe('dependency security contracts', () => {
     expect(lockfile).not.toMatch(/^ {2}(markdown-it|linkify-it)@/m)
   })
 
+  it('pre-bundles the Nuxt UI ProseMirror graph as a single instance', async () => {
+    const { nuxtConfig } = await readProjectFiles()
+    const optimizedDependencies = [
+      'prosemirror-state',
+      'prosemirror-transform',
+      'prosemirror-model',
+      'prosemirror-view',
+      'prosemirror-gapcursor'
+    ]
+
+    for (const dependency of optimizedDependencies) {
+      expect(nuxtConfig).toContain(`'@nuxt/ui > ${dependency}'`)
+    }
+    expect(nuxtConfig).not.toMatch(/^\s*'prosemirror-(?:state|transform|model|view|gapcursor)'/m)
+  })
+
   it('preserves Nuxt runtimeConfig environment handling', async () => {
     const { nuxtConfig } = await readProjectFiles()
 

@@ -70,8 +70,11 @@ export default defineNuxtConfig({
   vite: {
     optimizeDeps: {
       include: [
-        'prosemirror-state',
-        'prosemirror-view'
+        '@nuxt/ui > prosemirror-state',
+        '@nuxt/ui > prosemirror-transform',
+        '@nuxt/ui > prosemirror-model',
+        '@nuxt/ui > prosemirror-view',
+        '@nuxt/ui > prosemirror-gapcursor'
       ]
     }
   },
