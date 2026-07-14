@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, notInArray } from 'drizzle-orm'
+import { and, asc, desc, eq, max, ne, notInArray } from 'drizzle-orm'
 import type { H3Event } from 'h3'
 
 import type { Db } from '../db/db'
@@ -137,6 +137,27 @@ export async function mutateWithDocumentRevision<T>(args: {
 
   try {
     return await withDbTransaction(args.event, args.db, async (tx: Db, statements) => {
+      // D1 batches cannot inspect an update's affected-row count before the
+      // remaining statements run. Re-inserting the latest immutable history
+      // row only when it is newer than expected turns staleness into a unique
+      // constraint failure, which atomically rolls back the whole batch.
+      const latestRevision = tx.select({ revision: max(documentRevision.revision) })
+        .from(documentRevision)
+        .where(and(
+          eq(documentRevision.documentKind, args.documentKind),
+          eq(documentRevision.documentId, args.documentId)
+        ))
+      const staleRevisionGuard = tx.select()
+        .from(documentRevision)
+        .where(and(
+          eq(documentRevision.documentKind, args.documentKind),
+          eq(documentRevision.documentId, args.documentId),
+          eq(documentRevision.revision, latestRevision),
+          ne(documentRevision.revision, args.expectedRevision)
+        ))
+        .limit(1)
+      await executeDbStatement(tx.insert(documentRevision).select(staleRevisionGuard), statements)
+
       const result = await args.work(tx, statements, nextRevision, now)
       await executeDbStatement(tx.insert(documentRevision).values(revisionValues({
         documentKind: args.documentKind,
