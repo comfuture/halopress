@@ -1,4 +1,5 @@
 import { and, eq, sql } from 'drizzle-orm'
+import type { QueryBuilder } from 'drizzle-orm/sqlite-core'
 import type { Db } from '../db/db'
 import { contentRef, contentRefList, schema as schemaTable } from '../db/schema'
 import { executeDbStatement } from '../db/transaction'
@@ -39,13 +40,18 @@ export async function syncContentRefs(args: {
       if (!insertedSetIds.has(targetId)) {
         const guardedContentTarget = targetKind === 'content' && targetSchemaKey
         const refStatement = guardedContentTarget
-          ? db.insert(contentRef).select(sql`
-              select ${contentId}, ${projectionScope}, ${rel.fieldKey}, ${targetKind}, ${targetSchemaKey}, ${targetId}
-              where exists (
-                select 1 from ${schemaTable}
-                where ${schemaTable.schemaKey} = ${targetSchemaKey}
-              )
-            `)
+          ? db.insert(contentRef).select((qb: QueryBuilder) => qb
+              .select({
+                contentId: sql<string>`${contentId}`.as('content_id'),
+                projectionScope: sql<string>`${projectionScope}`.as('projection_scope'),
+                fieldPath: sql<string>`${rel.fieldKey}`.as('field_path'),
+                targetKind: sql<string>`${targetKind}`.as('target_kind'),
+                targetSchemaKey: sql<string>`${targetSchemaKey}`.as('target_schema_key'),
+                targetId: sql<string>`${targetId}`.as('target_id')
+              })
+              .from(schemaTable)
+              .where(eq(schemaTable.schemaKey, targetSchemaKey))
+              .limit(1))
           : db.insert(contentRef).values({
               contentId,
               projectionScope,
@@ -63,13 +69,21 @@ export async function syncContentRefs(args: {
         const assetId = targetKind === 'asset' ? targetId : null
         const metaJson = meta && Object.keys(meta).length ? JSON.stringify(meta) : null
         const listStatement = guardedContentTarget
-          ? db.insert(contentRefList).select(sql`
-              select ${contentId}, ${projectionScope}, ${rel.fieldKey}, ${position}, ${targetKind}, ${targetSchemaKey}, ${itemId}, ${assetId}, ${metaJson}
-              where exists (
-                select 1 from ${schemaTable}
-                where ${schemaTable.schemaKey} = ${targetSchemaKey}
-              )
-            `)
+          ? db.insert(contentRefList).select((qb: QueryBuilder) => qb
+              .select({
+                ownerContentId: sql<string>`${contentId}`.as('owner_content_id'),
+                projectionScope: sql<string>`${projectionScope}`.as('projection_scope'),
+                fieldKey: sql<string>`${rel.fieldKey}`.as('field_key'),
+                position: sql<number>`${position}`.as('position'),
+                itemKind: sql<string>`${targetKind}`.as('item_kind'),
+                itemSchemaKey: sql<string>`${targetSchemaKey}`.as('item_schema_key'),
+                itemId: sql<string | null>`${itemId}`.as('item_id'),
+                assetId: sql<string | null>`${assetId}`.as('asset_id'),
+                metaJson: sql<string | null>`${metaJson}`.as('meta_json')
+              })
+              .from(schemaTable)
+              .where(eq(schemaTable.schemaKey, targetSchemaKey))
+              .limit(1))
           : db.insert(contentRefList).values({
               ownerContentId: contentId,
               projectionScope,

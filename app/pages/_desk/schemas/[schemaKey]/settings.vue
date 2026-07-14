@@ -187,7 +187,6 @@ async function deleteSchema() {
     await $fetch(`/api/schema/${schemaKey.value}`, { method: 'DELETE' })
     toast.add({ title: 'Schema deleted' })
     await navigateTo('/_desk/schemas')
-    await refreshNuxtData()
   } catch (err: any) {
     toast.add({ title: 'Failed to delete schema', description: err?.data?.impact?.blockers?.join(' ') || err?.statusMessage || 'Error', color: 'error' })
     await refreshLifecycle()
@@ -212,7 +211,6 @@ async function runPurge() {
     purgeOpen.value = false
     toast.add({ title: 'Schema purged' })
     await navigateTo('/_desk/schemas')
-    await refreshNuxtData()
   } catch (err: any) {
     toast.add({ title: 'Failed to purge schema', description: err?.statusMessage || 'Error', color: 'error' })
   } finally {
