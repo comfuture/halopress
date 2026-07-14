@@ -67,6 +67,71 @@ const cardFields: PageBlockComponent['fields'] = [
   { key: 'target', label: 'Link Target', type: 'select', options: targetOptions }
 ]
 
+const sectionFields: PageBlockComponent['fields'] = [
+  { key: 'headline', label: 'Headline', type: 'text' },
+  { key: 'title', label: 'Title', type: 'text' },
+  { key: 'description', label: 'Description', type: 'textarea' },
+  { key: 'icon', label: 'Icon', type: 'icon', help: 'Choose a supported icon for the section.' },
+  { key: 'orientation', label: 'Orientation', type: 'select', options: orientationOptions },
+  { key: 'reverse', label: 'Reverse', type: 'boolean' },
+  { key: 'links', label: 'Links', type: 'link-list', help: 'Add up to 12 safe action links.' },
+  {
+    key: 'features',
+    label: 'Features',
+    type: 'object-list',
+    itemLabel: 'Feature',
+    maxItems: 6,
+    itemFields: [
+      { key: 'title', label: 'Title', type: 'text' },
+      { key: 'description', label: 'Description', type: 'textarea' },
+      { key: 'icon', label: 'Icon', type: 'icon' },
+      { key: 'orientation', label: 'Orientation', type: 'select', options: orientationOptions },
+      { key: 'to', label: 'Destination', type: 'url', placeholder: '/path, #section, or https://' },
+      { key: 'target', label: 'Target', type: 'select', options: targetOptions }
+    ]
+  }
+]
+
+const testimonialFields: PageBlockComponent['fields'] = [
+  { key: 'quote', label: 'Quote', type: 'textarea', placeholder: 'Add the customer outcome in their own words.' },
+  { key: 'author', label: 'Author', type: 'text' },
+  { key: 'role', label: 'Role', type: 'text' },
+  { key: 'company', label: 'Company', type: 'text' }
+]
+
+const logoFields: PageBlockComponent['fields'] = [
+  { key: 'title', label: 'Title', type: 'text' },
+  {
+    key: 'items',
+    label: 'Logos',
+    type: 'object-list',
+    itemLabel: 'Logo',
+    maxItems: 12,
+    itemFields: [
+      { key: 'name', label: 'Name', type: 'text' },
+      { key: 'src', label: 'Image URL', type: 'url', placeholder: '/assets/id/raw or https://' },
+      { key: 'alt', label: 'Alternative text', type: 'text' }
+    ]
+  }
+]
+
+const faqFields: PageBlockComponent['fields'] = [
+  { key: 'headline', label: 'Headline', type: 'text' },
+  { key: 'title', label: 'Title', type: 'text' },
+  { key: 'description', label: 'Description', type: 'textarea' },
+  {
+    key: 'items',
+    label: 'Questions',
+    type: 'object-list',
+    itemLabel: 'Question',
+    maxItems: 12,
+    itemFields: [
+      { key: 'question', label: 'Question', type: 'text' },
+      { key: 'answer', label: 'Answer', type: 'textarea' }
+    ]
+  }
+]
+
 const components: PageBlockComponent[] = [
   {
     key: 'pageHero',
@@ -102,6 +167,66 @@ const components: PageBlockComponent[] = [
     keywords: ['content', 'feature', 'link', 'tile'],
     compatibility: 'page',
     preview: { title: 'Card', description: 'Compact linked content with media and icon' },
+    insertion: 'block'
+  },
+  {
+    key: 'pageSection',
+    label: 'Page Section',
+    componentName: pageBlockDefinitions.pageSection.componentName,
+    defaultProps: pageBlockDefinitions.pageSection.defaultProps,
+    defaultMedia: { url: '', alt: '' },
+    fields: sectionFields,
+    category: 'Content',
+    icon: 'i-lucide-panels-top-left',
+    summary: 'A responsive section with optional media, features, and actions.',
+    keywords: ['features', 'grid', 'media', 'section'],
+    compatibility: 'page',
+    preview: { title: 'Section', description: 'Responsive content, features, actions, and media' },
+    insertion: 'block'
+  },
+  {
+    key: 'pageTestimonial',
+    label: 'Testimonial',
+    componentName: pageBlockDefinitions.pageTestimonial.componentName,
+    defaultProps: pageBlockDefinitions.pageTestimonial.defaultProps,
+    defaultMedia: { url: '', alt: '' },
+    fields: testimonialFields,
+    category: 'Trust',
+    icon: 'i-lucide-message-square-quote',
+    summary: 'A customer quote with typed attribution and optional portrait.',
+    keywords: ['author', 'customer', 'quote', 'review'],
+    compatibility: 'page',
+    preview: { title: 'Testimonial', description: 'Customer quote and attribution' },
+    insertion: 'block'
+  },
+  {
+    key: 'pageLogos',
+    label: 'Logo Cloud',
+    componentName: pageBlockDefinitions.pageLogos.componentName,
+    defaultProps: pageBlockDefinitions.pageLogos.defaultProps,
+    defaultMedia: { url: '', alt: '' },
+    fields: logoFields,
+    category: 'Trust',
+    icon: 'i-lucide-gallery-horizontal',
+    summary: 'A responsive row of customer or partner logos.',
+    keywords: ['brands', 'customers', 'logos', 'social proof'],
+    compatibility: 'page',
+    preview: { title: 'Logo cloud', description: 'Customer or partner proof' },
+    insertion: 'block'
+  },
+  {
+    key: 'pageFAQ',
+    label: 'FAQ',
+    componentName: pageBlockDefinitions.pageFAQ.componentName,
+    defaultProps: pageBlockDefinitions.pageFAQ.defaultProps,
+    defaultMedia: { url: '', alt: '' },
+    fields: faqFields,
+    category: 'FAQ',
+    icon: 'i-lucide-circle-help',
+    summary: 'A keyboard-accessible list of questions and answers.',
+    keywords: ['accordion', 'answers', 'questions', 'support'],
+    compatibility: 'page',
+    preview: { title: 'Frequently asked questions', description: 'Accessible accordion answers' },
     insertion: 'block'
   },
   {

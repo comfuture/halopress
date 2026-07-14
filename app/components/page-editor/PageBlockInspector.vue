@@ -144,6 +144,39 @@ function moveLink(index: number, direction: -1 | 1) {
   editing.props.links = result.links
 }
 
+function objectItems(field: PageBlockField) {
+  const value = editing.props[field.key]
+  return Array.isArray(value) ? value as Array<Record<string, any>> : []
+}
+
+function addObjectItem(field: PageBlockField) {
+  const items = objectItems(field)
+  if (items.length >= (field.maxItems ?? 12)) return
+  const item = Object.fromEntries((field.itemFields ?? []).map((itemField) => {
+    const initial = itemField.type === 'boolean'
+      ? false
+      : itemField.type === 'select'
+        ? itemField.options?.[0]?.value ?? ''
+        : ''
+    return [itemField.key, initial]
+  }))
+  editing.props[field.key] = [...items, item]
+}
+
+function removeObjectItem(field: PageBlockField, index: number) {
+  editing.props[field.key] = objectItems(field).filter((_item, itemIndex) => itemIndex !== index)
+}
+
+function moveObjectItem(field: PageBlockField, index: number, direction: -1 | 1) {
+  const items = [...objectItems(field)]
+  const target = index + direction
+  if (target < 0 || target >= items.length) return
+  const [item] = items.splice(index, 1)
+  if (!item) return
+  items.splice(target, 0, item)
+  editing.props[field.key] = items
+}
+
 const selectedAssetId = computed<string | null>({
   get() {
     const url = editing.media.url || ''
@@ -218,6 +251,14 @@ function resetAdvanced() {
           variant="subtle"
           icon="i-lucide-link"
         />
+        <UAlert
+          v-if="!editing.media.url && editing.media.requiredAction"
+          title="Author action required"
+          :description="editing.media.requiredAction"
+          color="warning"
+          variant="subtle"
+          icon="i-lucide-image-plus"
+        />
         <UFormField label="Alternative text">
           <UInput v-model="editing.media.alt" placeholder="Describe the image" class="w-full" />
         </UFormField>
@@ -258,6 +299,38 @@ function resetAdvanced() {
               </div>
             </fieldset>
             <UButton type="button" label="Add link" icon="i-lucide-plus" color="neutral" variant="soft" size="sm" :disabled="linkDrafts.length >= 12" @click="addLink" />
+          </div>
+          <div v-else-if="field.type === 'object-list'" class="space-y-3">
+            <fieldset
+              v-for="(item, index) in objectItems(field)"
+              :key="index"
+              class="m-0 space-y-3 rounded-md border border-muted p-3"
+            >
+              <legend class="px-1 text-xs font-medium text-muted">{{ field.itemLabel || 'Item' }} {{ index + 1 }}</legend>
+              <div class="flex justify-end gap-1">
+                <UButton type="button" :aria-label="`Move ${field.itemLabel || 'item'} up`" icon="i-lucide-arrow-up" color="neutral" variant="ghost" size="xs" :disabled="index === 0" @click="moveObjectItem(field, index, -1)" />
+                <UButton type="button" :aria-label="`Move ${field.itemLabel || 'item'} down`" icon="i-lucide-arrow-down" color="neutral" variant="ghost" size="xs" :disabled="index === objectItems(field).length - 1" @click="moveObjectItem(field, index, 1)" />
+                <UButton type="button" :aria-label="`Remove ${field.itemLabel || 'item'}`" icon="i-lucide-trash" color="error" variant="ghost" size="xs" @click="removeObjectItem(field, index)" />
+              </div>
+              <UFormField v-for="itemField in field.itemFields || []" :key="itemField.key" :label="itemField.label" :help="itemField.help">
+                <UInput v-if="itemField.type === 'text'" v-model="item[itemField.key]" :placeholder="itemField.placeholder" class="w-full" />
+                <UInput v-else-if="itemField.type === 'url'" v-model="item[itemField.key]" type="url" :placeholder="itemField.placeholder || 'https://'" class="w-full" />
+                <UTextarea v-else-if="itemField.type === 'textarea'" v-model="item[itemField.key]" :placeholder="itemField.placeholder" class="w-full" />
+                <USelect v-else-if="['select', 'color-token', 'spacing'].includes(itemField.type)" v-model="item[itemField.key]" :items="itemField.options || []" class="w-full" />
+                <USwitch v-else-if="itemField.type === 'boolean'" v-model="item[itemField.key]" />
+                <UInputMenu v-else-if="itemField.type === 'icon'" v-model="item[itemField.key]" :items="iconOptions" value-key="value" label-key="label" placeholder="Choose an icon" class="w-full" />
+              </UFormField>
+            </fieldset>
+            <UButton
+              type="button"
+              :label="`Add ${field.itemLabel || 'item'}`"
+              icon="i-lucide-plus"
+              color="neutral"
+              variant="soft"
+              size="sm"
+              :disabled="objectItems(field).length >= (field.maxItems || 12)"
+              @click="addObjectItem(field)"
+            />
           </div>
         </UFormField>
       </fieldset>

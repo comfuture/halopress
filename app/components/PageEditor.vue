@@ -3,11 +3,13 @@ import type { EditorToolbarItem } from '@nuxt/ui'
 import type { Editor, JSONContent } from '@tiptap/vue-3'
 import { VueNodeViewRenderer } from '@tiptap/vue-3'
 import { markRaw } from 'vue'
+import { clonePagePatternContent, pagePatternRegistry, type PagePatternKey } from '~~/shared/page-patterns'
 
 import PageBlockPalette from '~/components/page-editor/PageBlockPalette.vue'
 import PageBlockInspector from '~/components/page-editor/PageBlockInspector.vue'
 import PageBlock from '~/editor/page/PageBlock'
 import PageBlockNodeView from '~/editor/page/PageBlockNodeView.vue'
+import type { PagePaletteItem } from '~/editor/page/palette'
 import { getPageBlockComponent, pageBlockRegistry } from '~/editor/page/registry'
 import type { PageBlockAttrs, PageBlockComponentKey } from '~/editor/page/types'
 import { createPageProfile } from '~/editor/profiles'
@@ -136,6 +138,21 @@ function insertBlock(key: PageBlockComponentKey, position?: number) {
   return inserted
 }
 
+function insertPattern(key: PagePatternKey, position?: number) {
+  const editor = getEditor()
+  if (!editor || !isEditing.value || !pagePatternRegistry.byKey[key]) return false
+  const destination = position ?? selectionInsertionPosition(editor)
+  const inserted = editor.commands.insertPagePatternAt(destination, clonePagePatternContent(key))
+  if (inserted) mobilePaletteOpen.value = false
+  return inserted
+}
+
+function insertPaletteItem(item: PagePaletteItem, position?: number) {
+  return item.kind === 'block'
+    ? insertBlock(item.key, position)
+    : insertPattern(item.key, position)
+}
+
 function runBlockCommand(command: 'duplicatePageBlock' | 'deletePageBlock' | 'movePageBlockUp' | 'movePageBlockDown') {
   const editor = getEditor()
   if (!editor || !isEditing.value) return
@@ -161,11 +178,12 @@ const toolbarItems = computed<EditorToolbarItem[][]>(() => [
   ]
 ])
 
-function startPaletteDrag(event: DragEvent, key: PageBlockComponentKey) {
+function startPaletteDrag(event: DragEvent, item: PagePaletteItem) {
   if (!isEditing.value || !event.dataTransfer) return
   event.dataTransfer.effectAllowed = 'copy'
-  event.dataTransfer.setData('application/x-halopress-page-block', key)
-  event.dataTransfer.setData('text/plain', key)
+  const payload = JSON.stringify(item)
+  event.dataTransfer.setData('application/x-halopress-page-library', payload)
+  event.dataTransfer.setData('text/plain', `${item.kind}:${item.key}`)
 }
 
 function dropTargetAt(editor: Editor, clientX: number, clientY: number) {
@@ -190,7 +208,7 @@ function dropTargetAt(editor: Editor, clientX: number, clientY: number) {
 }
 
 function handleCanvasDragOver(event: DragEvent) {
-  if (!isEditing.value || !event.dataTransfer?.types.includes('application/x-halopress-page-block')) return
+  if (!isEditing.value || !event.dataTransfer?.types.includes('application/x-halopress-page-library')) return
   const editor = getEditor()
   if (!editor) return
   const target = dropTargetAt(editor, event.clientX, event.clientY)
@@ -207,15 +225,24 @@ function clearDropTarget() {
 }
 
 function handleCanvasDrop(event: DragEvent) {
-  const rawKey = event.dataTransfer?.getData('application/x-halopress-page-block')
-  const key = rawKey as PageBlockComponentKey
   const position = dropPosition.value
-  if (!rawKey || position === null || !pageBlockRegistry.byKey[key]) {
+  let item: PagePaletteItem | null = null
+  try {
+    const parsed = JSON.parse(event.dataTransfer?.getData('application/x-halopress-page-library') || '')
+    if (parsed?.kind === 'block' && pageBlockRegistry.byKey[parsed.key as PageBlockComponentKey]) {
+      item = { kind: 'block', key: parsed.key as PageBlockComponentKey }
+    } else if (parsed?.kind === 'pattern' && pagePatternRegistry.byKey[parsed.key as PagePatternKey]) {
+      item = { kind: 'pattern', key: parsed.key as PagePatternKey }
+    }
+  } catch {
+    item = null
+  }
+  if (!item || position === null) {
     clearDropTarget()
     return
   }
   event.preventDefault()
-  insertBlock(key, position)
+  insertPaletteItem(item, position)
   clearDropTarget()
 }
 
@@ -264,7 +291,7 @@ defineShortcuts({
           <div class="flex justify-end border-b border-muted p-1">
             <UButton aria-label="Collapse block library" icon="i-lucide-panel-left-close" color="neutral" variant="ghost" size="xs" @click="paletteCollapsed = true;" />
           </div>
-          <PageBlockPalette class="min-h-0 flex-1" :editable="isEditing" @insert="insertBlock" @dragstart="startPaletteDrag" />
+          <PageBlockPalette class="min-h-0 flex-1" :editable="isEditing" @insert="insertPaletteItem" @dragstart="startPaletteDrag" />
         </template>
       </aside>
 
@@ -279,7 +306,7 @@ defineShortcuts({
           @drop="handleCanvasDrop"
         >
           <div v-if="dropIndicatorTop !== null" class="pointer-events-none absolute inset-x-0 z-20 h-0.5 bg-primary" :style="{ top: `${dropIndicatorTop}px` }" data-page-block-drop-indicator />
-          <div :class="mode === 'preview' ? 'invisible absolute inset-0 pointer-events-none' : ''" :aria-hidden="mode === 'preview'">
+          <div v-show="mode === 'edit'" :aria-hidden="mode === 'preview'">
             <UEditor
               ref="editorRef"
               v-slot="{ editor }"
@@ -296,7 +323,7 @@ defineShortcuts({
             </UEditor>
           </div>
           <PageDocumentRenderer
-            v-if="mode === 'preview'"
+            v-show="mode === 'preview'"
             :document="value"
             class="min-h-[calc(100dvh-12rem)] rounded-md border border-muted bg-default px-4 py-4 shadow-sm sm:px-6"
           />
@@ -325,7 +352,7 @@ defineShortcuts({
 
     <USlideover v-model:open="mobilePaletteOpen" title="Block library" side="left" :ui="{ body: 'p-0 sm:p-0 min-h-0' }">
       <template #body>
-        <PageBlockPalette class="h-full min-h-0" :editable="isEditing" @insert="insertBlock" @dragstart="startPaletteDrag" />
+        <PageBlockPalette class="h-full min-h-0" :editable="isEditing" @insert="insertPaletteItem" @dragstart="startPaletteDrag" />
       </template>
     </USlideover>
     <USlideover v-model:open="mobileInspectorOpen" title="Block inspector" side="right" :ui="{ body: 'p-0 sm:p-0 min-h-0' }">

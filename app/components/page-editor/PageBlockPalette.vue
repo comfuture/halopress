@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import type { CommandPaletteGroup, CommandPaletteItem } from '@nuxt/ui'
+import { pagePatternRegistry } from '~~/shared/page-patterns'
 
 import { pageBlockRegistry } from '~/editor/page/registry'
-import type { PageBlockComponentKey } from '~/editor/page/types'
+import type { PagePaletteItem } from '~/editor/page/palette'
 
 const props = withDefaults(defineProps<{
   editable?: boolean
@@ -11,19 +12,26 @@ const props = withDefaults(defineProps<{
 })
 
 const emit = defineEmits<{
-  insert: [key: PageBlockComponentKey]
-  dragstart: [event: DragEvent, key: PageBlockComponentKey]
+  insert: [item: PagePaletteItem]
+  dragstart: [event: DragEvent, item: PagePaletteItem]
 }>()
 
+const entries = computed(() => [
+  ...pagePatternRegistry.patterns.map(item => ({ ...item, kind: 'pattern' as const })),
+  ...pageBlockRegistry.components.map(item => ({ ...item, kind: 'block' as const }))
+])
+
 const paletteGroups = computed<CommandPaletteGroup<CommandPaletteItem>[]>(() => {
-  const categories = [...new Set(pageBlockRegistry.components.map(item => item.category))]
+  const categories = [...new Set(entries.value.map(item => item.category))]
   return categories.map(category => ({
     id: category.toLowerCase(),
     label: category,
-    items: pageBlockRegistry.components
+    items: entries.value
       .filter(item => item.category === category)
       .map(item => ({
-        value: item.key,
+        value: `${item.kind}:${item.key}`,
+        kind: item.kind,
+        entryKey: item.key,
         label: item.label,
         description: item.summary,
         summary: item.summary,
@@ -31,13 +39,13 @@ const paletteGroups = computed<CommandPaletteGroup<CommandPaletteItem>[]>(() => 
         keywords: item.keywords,
         icon: item.icon,
         disabled: !props.editable,
-        onSelect: () => emit('insert', item.key)
+        onSelect: () => emit('insert', { kind: item.kind, key: item.key } as PagePaletteItem)
       } as CommandPaletteItem))
   }))
 })
 
-function blockKey(value: unknown) {
-  return value as PageBlockComponentKey
+function paletteItem(item: CommandPaletteItem) {
+  return { kind: (item as any).kind, key: (item as any).entryKey } as PagePaletteItem
 }
 
 const fuse = {
@@ -58,7 +66,7 @@ const fuse = {
         Block library
       </h2>
       <p class="mt-1 text-xs text-muted">
-        Search, tap, press Enter, or drag. Tap inserts after the active selection, or at the end.
+        Search blocks and patterns, then tap, press Enter, or drag. Insertion follows the active selection.
       </p>
     </div>
 
@@ -79,12 +87,14 @@ const fuse = {
         <div
           class="flex w-full items-start gap-3 rounded-md p-2"
           :draggable="editable"
-          :data-page-block-key="item.value"
-          @dragstart="emit('dragstart', $event, blockKey(item.value))"
+          :data-page-library-kind="item.kind"
+          :data-page-library-key="item.entryKey"
+          @dragstart="emit('dragstart', $event, paletteItem(item))"
         >
           <UIcon :name="item.icon" class="mt-0.5 size-5 shrink-0 text-primary" />
           <span class="min-w-0 text-left">
             <span class="block text-sm font-medium text-highlighted">{{ item.label }}</span>
+            <UBadge :label="item.kind === 'pattern' ? 'Pattern' : 'Block'" color="neutral" variant="subtle" size="xs" class="mt-1" />
             <span class="mt-0.5 block text-xs text-muted">{{ item.description }}</span>
           </span>
         </div>

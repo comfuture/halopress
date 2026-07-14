@@ -1,6 +1,14 @@
 import { z } from 'zod'
 
-export const pageBlockKeys = ['pageHero', 'pageCard', 'pageCTA'] as const
+export const pageBlockKeys = [
+  'pageHero',
+  'pageCard',
+  'pageSection',
+  'pageTestimonial',
+  'pageLogos',
+  'pageFAQ',
+  'pageCTA'
+] as const
 export type PageBlockComponentKey = typeof pageBlockKeys[number]
 
 export type StoredPageBlockAttrs = {
@@ -57,6 +65,97 @@ const heroProps = z.object({
   links: z.array(link).max(12).optional()
 })
 
+const feature = z.object({
+  title: text,
+  description: description.optional(),
+  icon: icon.optional(),
+  orientation: orientation.optional(),
+  to: safeUrl.optional(),
+  target: target.optional()
+})
+
+const sectionProps = z.object({
+  headline: text.optional(),
+  title: text.optional(),
+  description: description.optional(),
+  icon: icon.optional(),
+  orientation: orientation.optional(),
+  reverse: z.boolean().optional(),
+  features: z.array(feature).max(6).optional(),
+  links: z.array(link).max(12).optional()
+})
+
+const testimonialProps = z.object({
+  quote: description.optional(),
+  author: text.optional(),
+  role: text.optional(),
+  company: text.optional()
+})
+
+const logoItem = z.object({
+  name: text,
+  src: safeUrl.optional(),
+  alt: text.optional()
+})
+
+const logosProps = z.object({
+  title: text.optional(),
+  items: z.array(logoItem).max(12).optional()
+})
+
+const faqItem = z.object({
+  question: text,
+  answer: description
+})
+
+const faqProps = z.object({
+  headline: text.optional(),
+  title: text.optional(),
+  description: description.optional(),
+  items: z.array(faqItem).max(12).optional()
+})
+
+const heroPatternProps = z.object({
+  headline: text.optional(),
+  title: text.optional(),
+  description: description.optional(),
+  orientation: orientation.optional(),
+  reverse: z.boolean().optional(),
+  links: z.array(link.strict()).max(12).optional()
+}).strict()
+
+const sectionPatternProps = z.object({
+  headline: text.optional(),
+  title: text.optional(),
+  description: description.optional(),
+  icon: icon.optional(),
+  orientation: orientation.optional(),
+  reverse: z.boolean().optional(),
+  features: z.array(feature.strict()).max(6).optional(),
+  links: z.array(link.strict()).max(12).optional()
+}).strict()
+
+const logosPatternProps = z.object({
+  title: text.optional(),
+  items: z.array(logoItem.strict()).max(12).optional()
+}).strict()
+
+const faqPatternProps = z.object({
+  headline: text.optional(),
+  title: text.optional(),
+  description: description.optional(),
+  items: z.array(faqItem.strict()).max(12).optional()
+}).strict()
+
+const ctaPatternProps = z.object({
+  title: text.optional(),
+  description: description.optional(),
+  orientation: orientation.optional(),
+  reverse: z.boolean().optional(),
+  variant: variant.optional(),
+  links: z.array(link.strict()).max(12).optional()
+}).strict()
+
 const cardProps = z.object({
   icon: icon.optional(),
   title: text.optional(),
@@ -85,24 +184,52 @@ const media = z.object({
   url: safeUrl.optional(),
   alt: z.string().max(500).optional(),
   width: z.number().int().positive().max(10000).optional(),
-  height: z.number().int().positive().max(10000).optional()
+  height: z.number().int().positive().max(10000).optional(),
+  requiredAction: z.string().max(500).optional()
 })
 
 const definitions = {
   pageHero: {
     componentName: 'UPageHero',
     defaultProps: { title: 'New Hero', description: '' },
-    propsSchema: heroProps
+    propsSchema: heroProps,
+    patternPropsSchema: heroPatternProps
   },
   pageCard: {
     componentName: 'UPageCard',
     defaultProps: { title: 'New Card', description: '' },
-    propsSchema: cardProps
+    propsSchema: cardProps,
+    patternPropsSchema: cardProps.strict()
+  },
+  pageSection: {
+    componentName: 'UPageSection',
+    defaultProps: { title: 'New Section', description: '' },
+    propsSchema: sectionProps,
+    patternPropsSchema: sectionPatternProps
+  },
+  pageTestimonial: {
+    componentName: 'PageBlockTestimonial',
+    defaultProps: { quote: '[Add a customer quote]', author: '[Add the customer name]' },
+    propsSchema: testimonialProps,
+    patternPropsSchema: testimonialProps.strict()
+  },
+  pageLogos: {
+    componentName: 'PageBlockLogos',
+    defaultProps: { title: 'Trusted by teams like yours', items: [] },
+    propsSchema: logosProps,
+    patternPropsSchema: logosPatternProps
+  },
+  pageFAQ: {
+    componentName: 'PageBlockFAQ',
+    defaultProps: { title: 'Frequently asked questions', items: [] },
+    propsSchema: faqProps,
+    patternPropsSchema: faqPatternProps
   },
   pageCTA: {
     componentName: 'UPageCTA',
     defaultProps: { title: 'New CTA', description: '' },
-    propsSchema: ctaProps
+    propsSchema: ctaProps,
+    patternPropsSchema: ctaPatternProps
   }
 } as const
 
@@ -151,6 +278,22 @@ export function resolvePageBlock(attrs: StoredPageBlockAttrs): ResolvedPageBlock
     props: parsedProps.data,
     media: parsedMedia.data
   }
+}
+
+export function isValidCuratedPageBlockAttrs(attrs: StoredPageBlockAttrs) {
+  const allowedAttrs = new Set(['component', 'props', 'advanced', 'media'])
+  if (Object.keys(attrs).some(key => !allowedAttrs.has(key))) return false
+  const key = typeof attrs.component === 'string' ? attrs.component : ''
+  if (!isPageBlockComponentKey(key)) return false
+  if (!attrs.props || typeof attrs.props !== 'object' || Array.isArray(attrs.props)) return false
+  if (attrs.advanced !== undefined) {
+    if (!attrs.advanced || typeof attrs.advanced !== 'object' || Array.isArray(attrs.advanced)) return false
+    if (Object.keys(attrs.advanced as Record<string, unknown>).length) return false
+  }
+  const rawMedia = attrs.media ?? {}
+  if (!rawMedia || typeof rawMedia !== 'object' || Array.isArray(rawMedia)) return false
+  return definitions[key].patternPropsSchema.safeParse(attrs.props).success
+    && media.strict().safeParse(rawMedia).success
 }
 
 export function validatePageDocumentBlocks(
