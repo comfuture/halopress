@@ -49,6 +49,9 @@ describe('page editor workspace contracts', () => {
     expect(editor).toContain('editor.view.posAtCoords')
     expect(editor).toContain('editor.commands.insertPageBlockAt')
     expect(editor).toContain('editor.commands.insertPagePatternAt')
+    const dropHandler = editor.indexOf('function handleCanvasDrop(event: DragEvent)')
+    expect(editor.indexOf('event.preventDefault()', dropHandler))
+      .toBeLessThan(editor.indexOf('const position = dropPosition.value', dropHandler))
   })
 
   it('keeps block actions live-selection based and inspector updates focus safe', async () => {
@@ -62,6 +65,7 @@ describe('page editor workspace contracts', () => {
     expect(inspector).toContain('<CmsAssetPicker v-model="selectedAssetId"')
     expect(inspector).toContain('Move link up')
     expect(inspector).toContain('field.type === \'object-list\'')
+    expect(inspector).toContain('[\'select\', \'color-token\', \'spacing\'].includes(itemField.type)')
     expect(inspector).toContain('Portable JSON only')
   })
 

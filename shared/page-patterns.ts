@@ -310,8 +310,16 @@ export function validatePagePatternDefinition(definition: PagePatternDefinition)
 
   const required = new Set(definition.compatibility.requiredBlocks)
   definition.content.content.forEach((node, index) => {
+    if (!node || typeof node !== 'object') {
+      issues.push(`Pattern node ${index + 1} is invalid.`)
+      return
+    }
     if (node.type !== 'pageBlock') {
       issues.push(`Pattern node ${index + 1} is not a page block.`)
+      return
+    }
+    if (!node.attrs || typeof node.attrs !== 'object' || Array.isArray(node.attrs)) {
+      issues.push(`Pattern node ${index + 1} is missing attributes.`)
       return
     }
     if (!isPageBlockComponentKey(node.attrs.component)) {

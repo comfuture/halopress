@@ -155,7 +155,7 @@ function addObjectItem(field: PageBlockField) {
   const item = Object.fromEntries((field.itemFields ?? []).map((itemField) => {
     const initial = itemField.type === 'boolean'
       ? false
-      : itemField.type === 'select'
+      : ['select', 'color-token', 'spacing'].includes(itemField.type)
         ? itemField.options?.[0]?.value ?? ''
         : ''
     return [itemField.key, initial]

@@ -225,6 +225,7 @@ function clearDropTarget() {
 }
 
 function handleCanvasDrop(event: DragEvent) {
+  event.preventDefault()
   const position = dropPosition.value
   let item: PagePaletteItem | null = null
   try {
@@ -241,7 +242,6 @@ function handleCanvasDrop(event: DragEvent) {
     clearDropTarget()
     return
   }
-  event.preventDefault()
   insertPaletteItem(item, position)
   clearDropTarget()
 }

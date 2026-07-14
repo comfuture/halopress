@@ -73,6 +73,16 @@ describe('page pattern registry', () => {
     ;(unsafe.content.content[0]!.attrs as any).renderer = 'ArbitraryComponent'
     expect(validatePagePatternDefinition(unsafe)).toContain('Pattern node 1 has invalid curated properties.')
   })
+
+  it('reports malformed runtime nodes without throwing', () => {
+    const missingNode = structuredClone(pagePatternDefinitions[0]!) as any
+    missingNode.content.content = [null]
+    expect(validatePagePatternDefinition(missingNode)).toContain('Pattern node 1 is invalid.')
+
+    const missingAttrs = structuredClone(pagePatternDefinitions[0]!) as any
+    missingAttrs.content.content = [{ type: 'pageBlock' }]
+    expect(validatePagePatternDefinition(missingAttrs)).toContain('Pattern node 1 is missing attributes.')
+  })
 })
 
 describe('page pattern visual fixtures', () => {
