@@ -581,7 +581,9 @@ migrations_dir = "migrations"
     const assetImageViews = [
       'app/pages/_desk/assets/index.vue',
       'app/pages/_desk/assets/[assetId].vue',
-      'app/pages/[schema]/[id].vue',
+      'app/components/public/FieldRenderer.vue',
+      'app/components/public/AssetGallery.vue',
+      'app/components/public/ContentCollectionRenderer.vue',
       'app/components/cms/AssetPicker.vue',
       'app/components/AssetActions.vue'
     ]

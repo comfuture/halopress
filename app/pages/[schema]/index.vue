@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ButtonProps } from '@nuxt/ui'
 import { PUBLIC_PAGE_ROUTE_PREFIX } from '~~/shared/public-routing'
+import { resolveSchemaPresentation } from '~/utils/schema-presentation'
 
 const route = useRoute()
 const router = useRouter()
@@ -35,15 +36,15 @@ const itemLinks = computed(() =>
     icon: 'i-lucide-file-text'
   }))
 )
+const presentation = computed(() => resolveSchemaPresentation(schema.value?.registry))
 
 const cursorStack = ref<string[]>([])
 const hasPrev = computed(() => cursorStack.value.length > 0 || Boolean(cursor.value))
 const hasNext = computed(() => Boolean(nextCursor.value))
 
 const heroDescription = computed(() => {
-  if (!schema.value) return `Schema ${schemaKey.value}`
   const count = items.value.length
-  return `Schema v${schema.value.version} · ${count} ${count === 1 ? 'entry' : 'entries'}`
+  return schema.value?.ast?.description || `${count} published ${count === 1 ? 'entry' : 'entries'}`
 })
 
 const heroLinks = [
@@ -104,24 +105,7 @@ function goPrev() {
         />
 
         <UPageSection title="Published entries" description="Recently published content for this schema.">
-          <UPageList divide>
-            <UPageCard
-              v-for="item in items"
-              :key="item.id"
-              :title="item.title || item.id"
-              :to="`/${schemaKey}/${item.id}`"
-              icon="i-lucide-file-text"
-            />
-          </UPageList>
-
-          <UAlert
-            v-if="items.length === 0"
-            title="Nothing published"
-            description="Drafts show up here once they are published."
-            icon="i-lucide-info"
-            variant="subtle"
-            class="mt-6"
-          />
+          <PublicContentCollectionRenderer :items="items" :schema-key="schemaKey" :template="presentation.collectionTemplate" />
 
           <div class="mt-8 flex items-center justify-between">
             <UButton
