@@ -1,4 +1,4 @@
-import { desc, eq } from 'drizzle-orm'
+import { desc, eq, ne } from 'drizzle-orm'
 import { getQuery } from 'h3'
 
 import { getDb } from '../../db/db'
@@ -30,6 +30,8 @@ export default defineEventHandler(async (event) => {
 
   if (status) {
     query = query.where(eq(pageTable.status, status))
+  } else {
+    query = query.where(ne(pageTable.status, 'deleted'))
   }
 
   const rows = await query
