@@ -19,7 +19,11 @@ const props = withDefaults(defineProps<{
     >
   </span>
   <AppLogo v-else-if="props.siteName === 'HaloPress'" :mark-only="props.markOnly" />
-  <span v-else class="inline-flex h-full items-center gap-2" :aria-label="props.siteName">
+  <span
+    v-else
+    class="inline-flex h-full items-center gap-2"
+    :aria-label="props.markOnly ? props.siteName : undefined"
+  >
     <img
       src="/branding/halopress-mark-256.png"
       alt=""

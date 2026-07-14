@@ -11,13 +11,18 @@ type AuthenticationSummary = {
   envManaged: boolean
 }
 
-const { data: authentication, pending, error, refresh } = await useFetch<AuthenticationSummary>('/api/settings/authentication')
-const {
-  data: presentation,
-  pending: presentationPending,
-  error: presentationError,
-  refresh: refreshPresentation
-} = await useFetch<{ configured: boolean, malformedStoredValue: boolean }>('/api/settings/site-presentation')
+const [
+  { data: authentication, pending, error, refresh },
+  {
+    data: presentation,
+    pending: presentationPending,
+    error: presentationError,
+    refresh: refreshPresentation
+  }
+] = await Promise.all([
+  useFetch<AuthenticationSummary>('/api/settings/authentication'),
+  useFetch<{ configured: boolean, malformedStoredValue: boolean }>('/api/settings/site-presentation')
+])
 
 const sections = computed(() => SETTINGS_SECTIONS.filter(section => section.id !== 'overview'))
 const presentationSectionIds = new Set(['site', 'appearance', 'navigation', 'footer'])
