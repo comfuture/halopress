@@ -11,10 +11,11 @@ type MembershipStatus = {
 }
 
 const { data: membership } = await useFetch<MembershipStatus>('/api/membership')
+const route = useRoute()
 const { signIn, getSession } = useAuth()
 const toast = useToast()
 const loading = ref(false)
-const completedStatus = ref<string | null>(null)
+const completedStatus = ref<string | null>(route.query.status === 'pending' ? 'pending' : null)
 const state = reactive({ name: '', email: '', password: '', confirmPassword: '', inviteCode: '' })
 const schema = z.object({
   name: z.string().trim().max(100),
@@ -71,20 +72,20 @@ async function submit() {
       </template>
 
       <UAlert
-        v-if="!membership?.registrationEnabled"
-        title="Registration is closed"
-        description="An administrator has not enabled public membership."
-        color="neutral"
-        variant="subtle"
-        icon="i-lucide-lock"
-      />
-      <UAlert
-        v-else-if="completedStatus === 'pending'"
+        v-if="completedStatus === 'pending'"
         title="Account awaiting approval"
         description="An administrator must activate your account before you can sign in."
         color="info"
         variant="subtle"
         icon="i-lucide-clock-3"
+      />
+      <UAlert
+        v-else-if="!membership?.registrationEnabled"
+        title="Registration is closed"
+        description="An administrator has not enabled public membership."
+        color="neutral"
+        variant="subtle"
+        icon="i-lucide-lock"
       />
       <div v-else class="space-y-5">
         <PublicAuthProviders callback-url="/" action="signup" />

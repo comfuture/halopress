@@ -1,4 +1,4 @@
-import { createError, readBody } from 'h3'
+import { createError, readBody, setResponseHeader } from 'h3'
 
 import { getAuthSession } from '../../../utils/auth'
 import { createGoogleLinkIntent, ExternalIdentityError } from '../../../utils/external-identities'
@@ -13,7 +13,8 @@ export default defineEventHandler(async (event) => {
     return { ok: true, provider: 'google' }
   } catch (error) {
     if (error instanceof ExternalIdentityError) {
-      throw createError({ statusCode: 401, statusMessage: error.message })
+      if (error.retryAfterSeconds) setResponseHeader(event, 'retry-after', error.retryAfterSeconds)
+      throw createError({ statusCode: error.code === 'rate_limited' ? 429 : 401, statusMessage: error.message })
     }
     throw error
   }

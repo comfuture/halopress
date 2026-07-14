@@ -7,8 +7,10 @@ import {
 } from '../../../cms/schema-key'
 import { schemaAstSchema } from '../../../cms/zod'
 import { compileSchemaAst } from '../../../cms/compiler'
+import { requireStaff } from '../../../utils/auth'
 
 export default defineEventHandler(async (event) => {
+  await requireStaff(event)
   const schemaKey = event.context.params?.schemaKey as string
   const body = await readBody<{ ast?: unknown }>(event)
   const parsed = schemaAstSchema.safeParse(body?.ast)

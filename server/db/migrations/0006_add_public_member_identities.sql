@@ -38,7 +38,7 @@ CREATE TABLE `registration_rate_limit` (
 );
 --> statement-breakpoint
 CREATE INDEX `idx_registration_rate_limit_reset` ON `registration_rate_limit` (`reset_at`);--> statement-breakpoint
-CREATE TEMP TABLE `_halopress_email_normalization_guard` (`email` text PRIMARY KEY);--> statement-breakpoint
+CREATE TABLE `_halopress_email_normalization_guard` (`email` text PRIMARY KEY);--> statement-breakpoint
 INSERT INTO `_halopress_email_normalization_guard` (`email`) SELECT lower(trim(`email`)) FROM `user`;--> statement-breakpoint
 DROP TABLE `_halopress_email_normalization_guard`;--> statement-breakpoint
 UPDATE `user` SET `email` = lower(trim(`email`));--> statement-breakpoint

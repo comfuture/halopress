@@ -13,6 +13,8 @@ const loading = ref(true)
 
 try {
   providers.value = await getProviders() || {}
+} catch {
+  providers.value = {}
 } finally {
   loading.value = false
 }

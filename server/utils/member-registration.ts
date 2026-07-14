@@ -42,12 +42,9 @@ export const invitationInputSchema = z.object({
 })
 
 export function getRegistrationRequestIp(event: H3Event) {
-  return String(
-    getHeader(event, 'cf-connecting-ip')
-    || getHeader(event, 'x-forwarded-for')?.split(',')[0]
-    || event.node?.req?.socket?.remoteAddress
-    || 'unknown'
-  ).trim()
+  const directAddress = event.node?.req?.socket?.remoteAddress || 'unknown'
+  if (!(event as any).context?.cloudflare) return String(directAddress).trim()
+  return String(getHeader(event, 'cf-connecting-ip') || directAddress).trim()
 }
 
 async function getCrypto() {
@@ -79,6 +76,20 @@ export async function registrationRateLimitKeys(input: {
   return await Promise.all([
     sha256Hex(`registration:ip:${input.tenantKey}:${input.ip || 'unknown'}:${window}`),
     sha256Hex(`registration:email:${input.tenantKey}:${email}:${window}`)
+  ])
+}
+
+export async function reauthenticationRateLimitKeys(input: {
+  tenantKey: string
+  userId: string
+  ip: string
+  now?: Date
+}) {
+  const now = input.now ?? new Date()
+  const window = Math.floor(now.getTime() / REGISTRATION_WINDOW_MS)
+  return await Promise.all([
+    sha256Hex(`reauthentication:user:${input.tenantKey}:${input.userId}:${window}`),
+    sha256Hex(`reauthentication:user-ip:${input.tenantKey}:${input.userId}:${input.ip || 'unknown'}:${window}`)
   ])
 }
 
@@ -124,6 +135,38 @@ export async function requireSafeMemberRole(db: any, roleKey: string) {
     .get()
   if (!role) throw new RegistrationError('Membership is not configured with a valid default role', 503)
   return role.roleKey as string
+}
+
+export async function claimMembershipInvitation(db: any, invitationId: string, email: string, now: Date) {
+  const claimed = await db
+    .update(membershipInvitation)
+    .set({ status: 'claimed', usedAt: now })
+    .where(and(
+      eq(membershipInvitation.id, invitationId),
+      eq(membershipInvitation.email, email),
+      eq(membershipInvitation.status, 'pending'),
+      gt(membershipInvitation.expiresAt, now)
+    ))
+    .returning({ id: membershipInvitation.id })
+  if (!claimed.length) throw new RegistrationError('A valid invitation is required', 403)
+}
+
+export async function releaseMembershipInvitation(db: any, invitationId: string, email: string) {
+  await db
+    .update(membershipInvitation)
+    .set({
+      status: sql`case when exists (
+        select 1 from membership_invitation replacement
+        where replacement.email = ${email}
+          and replacement.status = 'pending'
+          and replacement.id <> ${invitationId}
+      ) then 'superseded' else 'pending' end`,
+      usedAt: null
+    })
+    .where(and(
+      eq(membershipInvitation.id, invitationId),
+      eq(membershipInvitation.status, 'claimed')
+    ))
 }
 
 function isUniqueEmailError(error: unknown) {
@@ -174,6 +217,7 @@ export async function registerPasswordMember(event: H3Event, rawInput: unknown) 
   const status = policy.mode === 'approval' ? 'pending' : 'active'
 
   try {
+    if (invitation) await claimMembershipInvitation(db, invitation.id, email, now)
     await withDbTransaction(event, db, async (tx, statements) => {
       await executeDbStatement(tx.insert(user).values({
         id: userId,
@@ -194,11 +238,12 @@ export async function registerPasswordMember(event: H3Event, rawInput: unknown) 
           .set({ status: 'used', usedBy: userId, usedAt: now })
           .where(and(
             eq(membershipInvitation.id, invitation.id),
-            eq(membershipInvitation.status, 'pending')
+            eq(membershipInvitation.status, 'claimed')
           )), statements)
       }
     })
   } catch (error) {
+    if (invitation) await releaseMembershipInvitation(db, invitation.id, email).catch(() => {})
     if (isUniqueEmailError(error)) throw new RegistrationError('An account already exists for this email', 409)
     throw error
   }

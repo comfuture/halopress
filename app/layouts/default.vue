@@ -46,7 +46,7 @@ const accountItems = computed<DropdownMenuItem[][]>(() => {
     <UHeader
       :title="presentation.general.siteName"
       mode="drawer"
-      :toggle="navigationItems.length > 0"
+      :toggle="true"
       :ui="headerUi"
     >
       <template #left>

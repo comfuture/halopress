@@ -19,6 +19,10 @@ vi.mock('../server/utils/auth', () => ({
   requireAdmin: vi.fn(async () => {
     if (!authState.admin) throw Object.assign(new Error('Unauthorized'), { statusCode: 401 })
     return { user: { id: 'admin-1', role: 'admin' } }
+  }),
+  requireStaff: vi.fn(async () => {
+    if (!authState.authenticated) throw Object.assign(new Error('Unauthorized'), { statusCode: 401 })
+    return { user: { id: 'admin-1', role: 'admin', accountType: 'staff' } }
   })
 }))
 

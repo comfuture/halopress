@@ -22,7 +22,7 @@ describe('Desk product copy', () => {
     ['app/pages/_desk/pages/index.vue', 'Build and publish standalone pages for your site.'],
     ['app/pages/_desk/pages/[id].vue', 'Update the page, then save a draft or publish.'],
     ['app/pages/_desk/pages/new.vue', 'Build the page, then save a draft or publish.'],
-    ['app/pages/_desk/settings/authentication.vue', 'Let administrators sign in with Google while keeping password access.']
+    ['app/pages/_desk/settings/authentication.vue', 'Configure Google sign-in while keeping password access and explicit account linking.']
   ])('uses helpful guidance in %s', async (path, expected) => {
     expect(await readProjectFile(path)).toContain(expected)
   })

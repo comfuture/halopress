@@ -6,10 +6,16 @@ import { encode, getToken } from 'next-auth/jwt'
 
 import { decodeAuthToken, encodeAuthToken } from '../server/utils/auth-jwt'
 import { authSessionFromToken, hasSecureAuthSessionCookie } from '../server/utils/auth-session'
+import { isAuthTenantAllowed } from '../server/utils/auth-user'
 
 const secret = '1bccd7d3097bff829c970eb6a2c4a9232a3d65bfe74932a0c7317b1e9fef471e'
 
 describe('protected API session verification', () => {
+  it('rejects cross-tenant token refresh while permitting legacy claims to bind once', () => {
+    expect(isAuthTenantAllowed('tenant-a.example', 'tenant-b.example')).toBe(false)
+    expect(isAuthTenantAllowed('tenant-a.example', 'tenant-a.example')).toBe(true)
+    expect(isAuthTenantAllowed(undefined, 'tenant-a.example')).toBe(true)
+  })
   it('keeps session fetches in the browser instead of calling the same Worker during SSR', async () => {
     const root = resolve(import.meta.dirname, '..')
     const [middlewareSource, configSource] = await Promise.all([

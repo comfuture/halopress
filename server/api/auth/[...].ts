@@ -18,7 +18,7 @@ import {
   ExternalIdentityError,
   resolveGoogleIdentity
 } from '../../utils/external-identities'
-import { getActiveAuthUser } from '../../utils/auth-user'
+import { getActiveAuthUser, isAuthTenantAllowed } from '../../utils/auth-user'
 
 type CredentialInput = {
   identifier?: string
@@ -210,7 +210,7 @@ async function buildAuthHandler(config: AuthProviderConfig) {
             emailVerified: profileData.email_verified === true,
             linkUserId: await consumeGoogleLinkIntent(authEvent)
           })
-          if (linked.status !== 'active') return false
+          if (linked.status !== 'active') return '/signup?status=pending'
           user.id = linked.id
           user.email = linked.email
           user.name = linked.name
@@ -242,7 +242,7 @@ async function buildAuthHandler(config: AuthProviderConfig) {
         try {
           const db = await getDb(authEvent)
           const currentTenantKey = getTenantKey(authEvent)
-          if (typeof token.tenantKey === 'string' && token.tenantKey !== currentTenantKey) {
+          if (!isAuthTenantAllowed(token.tenantKey, currentTenantKey)) {
             return clearAuthClaims(token)
           }
           const current = await getActiveAuthUser(db, userId)

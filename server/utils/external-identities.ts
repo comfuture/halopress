@@ -12,8 +12,11 @@ import { resolveAuthSigningSecret } from './install-token'
 import { verifyPassword } from './password'
 import {
   consumeRegistrationRateLimit,
+  claimMembershipInvitation,
   getRegistrationRequestIp,
+  reauthenticationRateLimitKeys,
   registrationRateLimitKeys,
+  releaseMembershipInvitation,
   requireSafeMemberRole,
   RegistrationError
 } from './member-registration'
@@ -23,7 +26,7 @@ const LINK_COOKIE = 'halopress-oauth-link'
 const LINK_TTL_SECONDS = 5 * 60
 
 export class ExternalIdentityError extends Error {
-  constructor(message: string, readonly code: string) {
+  constructor(message: string, readonly code: string, readonly retryAfterSeconds?: number) {
     super(message)
   }
 }
@@ -185,7 +188,8 @@ export async function resolveGoogleIdentity(event: H3Event, input: GoogleIdentit
   const rateLimitKeys = await registrationRateLimitKeys({
     tenantKey: getTenantKey(event),
     ip: getRegistrationRequestIp(event),
-    email
+    email,
+    now
   })
   try {
     await consumeRegistrationRateLimit(db, rateLimitKeys, now)
@@ -220,6 +224,16 @@ export async function resolveGoogleIdentity(event: H3Event, input: GoogleIdentit
   const userId = newId()
   const status = policy.mode === 'approval' ? 'pending' : 'active'
   try {
+    if (invitation) {
+      try {
+        await claimMembershipInvitation(db, invitation.id, email, now)
+      } catch (error) {
+        if (error instanceof RegistrationError) {
+          throw new ExternalIdentityError(error.message, 'invitation_required')
+        }
+        throw error
+      }
+    }
     await withDbTransaction(event, db, async (tx, statements) => {
       await executeDbStatement(tx.insert(user).values({
         id: userId,
@@ -249,11 +263,12 @@ export async function resolveGoogleIdentity(event: H3Event, input: GoogleIdentit
           usedAt: now
         }).where(and(
           eq(membershipInvitation.id, invitation.id),
-          eq(membershipInvitation.status, 'pending')
+          eq(membershipInvitation.status, 'claimed')
         )), statements)
       }
     })
   } catch (error) {
+    if (invitation) await releaseMembershipInvitation(db, invitation.id, email).catch(() => {})
     if (!isIdentityConstraintError(error)) throw error
     const concurrentIdentity = await db.select({ userId: externalIdentity.userId }).from(externalIdentity).where(and(
       eq(externalIdentity.provider, 'google'),
@@ -275,6 +290,21 @@ export async function resolveGoogleIdentity(event: H3Event, input: GoogleIdentit
 
 export async function createGoogleLinkIntent(event: H3Event, userId: string, password: string) {
   const db = await getDb(event)
+  const now = new Date()
+  const keys = await reauthenticationRateLimitKeys({
+    tenantKey: getTenantKey(event),
+    userId,
+    ip: getRegistrationRequestIp(event),
+    now
+  })
+  try {
+    await consumeRegistrationRateLimit(db, keys, now)
+  } catch (error) {
+    if (error instanceof RegistrationError) {
+      throw new ExternalIdentityError(error.message, 'rate_limited', error.retryAfterSeconds)
+    }
+    throw error
+  }
   const row = await findActiveUser(db, userId)
   if (!row || row.status !== 'active' || !row.passwordHash || !row.passwordSalt) {
     throw new ExternalIdentityError('Password reauthentication is unavailable for this account', 'password_unavailable')

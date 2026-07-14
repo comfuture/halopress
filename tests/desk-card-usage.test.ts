@@ -40,8 +40,8 @@ describe('Desk card usage', () => {
       'app/components/OnboardingWidget.vue': 1,
       'app/pages/_desk/assets/index.vue': 1,
       'app/pages/_desk/index.vue': 2,
-      'app/pages/_desk/login.vue': 1,
-      'app/pages/_desk/pages/index.vue': 1
+      'app/pages/_desk/pages/index.vue': 1,
+      'app/pages/_desk/settings/membership.vue': 1
     })
   })
 

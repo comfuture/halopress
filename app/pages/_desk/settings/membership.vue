@@ -17,6 +17,7 @@ type Invitation = {
 }
 
 const toast = useToast()
+const locale = useDisplayLocale()
 const saving = ref(false)
 const inviting = ref(false)
 const invitationCode = ref('')
@@ -42,6 +43,13 @@ const roleOptions = computed(() => (data.value?.roles || []).map(role => ({
   label: role.title || role.roleKey,
   value: role.roleKey
 })))
+const formatExpiry = (value: string) => formatDateTime(value, locale.value, {
+  dateStyle: 'medium'
+})
+
+async function refreshAll() {
+  await Promise.all([refresh(), refreshInvitations()])
+}
 
 async function save() {
   saving.value = true
@@ -86,7 +94,7 @@ async function copyInvitation() {
     title="Membership"
     description="Control who can create a public account and which non-administrator role they receive."
     :pending="pending"
-    @refresh="refresh()"
+    @refresh="refreshAll"
   >
     <div class="mx-auto w-full max-w-3xl space-y-6">
       <UAlert v-if="error" title="Membership settings are unavailable" :description="error.statusMessage" color="error" variant="subtle" />
@@ -161,7 +169,7 @@ async function copyInvitation() {
           <div v-for="invitation in invitations.items" :key="invitation.id" class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-muted p-3">
             <div class="min-w-0">
               <p class="truncate text-sm font-medium text-highlighted">{{ invitation.email }}</p>
-              <p class="text-xs text-muted">{{ invitation.roleKey }} · expires {{ new Date(invitation.expiresAt).toLocaleDateString() }}</p>
+              <p class="text-xs text-muted">{{ invitation.roleKey }} · expires {{ formatExpiry(invitation.expiresAt) }}</p>
             </div>
             <UBadge :color="invitation.status === 'pending' ? 'info' : invitation.status === 'used' ? 'success' : 'neutral'" variant="soft">{{ invitation.status }}</UBadge>
           </div>

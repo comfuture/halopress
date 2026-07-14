@@ -10,6 +10,10 @@ export type ActiveAuthUser = {
   accountType: 'staff' | 'member'
 }
 
+export function isAuthTenantAllowed(tokenTenant: unknown, currentTenant: string) {
+  return typeof tokenTenant !== 'string' || tokenTenant === currentTenant
+}
+
 export async function getActiveAuthUser(db: any, userId: string): Promise<ActiveAuthUser | null> {
   if (!userId) return null
   const row = await db.select({

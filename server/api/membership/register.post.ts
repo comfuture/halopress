@@ -24,14 +24,16 @@ export default defineEventHandler(async (event) => {
   }
 
   const db = await getDb(event)
+  const now = new Date()
   const keys = await registrationRateLimitKeys({
     tenantKey: getTenantKey(event),
     ip: getRegistrationRequestIp(event),
-    email: parsed.data.email
+    email: parsed.data.email,
+    now
   })
 
   try {
-    await consumeRegistrationRateLimit(db, keys)
+    await consumeRegistrationRateLimit(db, keys, now)
     return await registerPasswordMember(event, parsed.data)
   } catch (error) {
     if (error instanceof RegistrationError) {
