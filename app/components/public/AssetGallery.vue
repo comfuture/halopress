@@ -19,10 +19,10 @@ function normalize(value: unknown): Item[] {
 
 const items = computed(() => normalize(props.value))
 const current = ref(0)
-const slides = ref<HTMLElement[]>([])
+const slides = ref<Array<HTMLElement | undefined>>([])
 
 function setSlideRef(element: unknown, index: number) {
-  if (typeof HTMLElement !== 'undefined' && element instanceof HTMLElement) slides.value[index] = element
+  slides.value[index] = typeof HTMLElement !== 'undefined' && element instanceof HTMLElement ? element : undefined
 }
 
 function go(index: number) {

@@ -63,3 +63,27 @@ export function presentationText(value: unknown): string {
   }
   return ''
 }
+
+export function safePresentationLink(value: unknown) {
+  if (typeof value !== 'string') return null
+  const candidate = value.trim()
+  if (!candidate) return null
+  if (candidate.startsWith('/') || candidate.startsWith('#') || candidate.startsWith('?')) return candidate
+  try {
+    const url = new URL(candidate)
+    return ['http:', 'https:'].includes(url.protocol) ? url.href : null
+  } catch {
+    return null
+  }
+}
+
+export function formatPresentationDate(value: unknown, includeTime = false, locale = 'en') {
+  if (typeof value !== 'string') return ''
+  const date = new Date(value)
+  return Number.isNaN(date.getTime())
+    ? value
+    : new Intl.DateTimeFormat(locale, {
+        dateStyle: 'medium',
+        ...(includeTime ? { timeStyle: 'short' } : {})
+      }).format(date)
+}

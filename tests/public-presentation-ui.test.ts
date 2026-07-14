@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { formatPresentationDate, safePresentationLink } from '../app/utils/schema-presentation'
 
 const root = resolve(import.meta.dirname, '..')
 
@@ -36,5 +37,20 @@ describe('public presentation UI contracts', () => {
     expect(picker).toContain('Remove asset ${index + 1}')
     expect(picker).toContain('Alt text for asset')
     expect(picker).toContain('Caption for asset')
+  })
+
+  it('keeps SSR formatting deterministic and allows only safe absolute or relative links', () => {
+    expect(formatPresentationDate('2026-07-14T05:00:00.000Z', false, 'en')).toBe('Jul 14, 2026')
+    expect(safePresentationLink('/about')).toBe('/about')
+    expect(safePresentationLink('#contact')).toBe('#contact')
+    expect(safePresentationLink('?page=2')).toBe('?page=2')
+    expect(safePresentationLink('https://example.com/path')).toBe('https://example.com/path')
+    expect(safePresentationLink('javascript:alert(1)')).toBeNull()
+  })
+
+  it('clears dynamic gallery refs when Vue unmounts a slide', async () => {
+    const gallery = await readFile(resolve(root, 'app/components/public/AssetGallery.vue'), 'utf8')
+    expect(gallery).toContain('Array<HTMLElement | undefined>')
+    expect(gallery).toContain(': undefined')
   })
 })

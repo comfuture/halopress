@@ -1,21 +1,9 @@
 <script setup lang="ts">
 import type { Content } from '@tiptap/core'
+import { formatPresentationDate, safePresentationLink } from '~/utils/schema-presentation'
 const props = defineProps<{ field: any; value: unknown }>()
-const safeLink = computed(() => {
-  if (typeof props.value !== 'string') return null
-  try {
-    const url = new URL(props.value)
-    return ['http:', 'https:'].includes(url.protocol) ? url.href : null
-  } catch { return null }
-})
-const formattedDate = computed(() => {
-  if (typeof props.value !== 'string') return ''
-  const date = new Date(props.value)
-  return Number.isNaN(date.getTime()) ? props.value : new Intl.DateTimeFormat(undefined, {
-    dateStyle: 'medium',
-    ...(props.field.renderer === 'datetime' ? { timeStyle: 'short' } : {})
-  }).format(date)
-})
+const safeLink = computed(() => safePresentationLink(props.value))
+const formattedDate = computed(() => formatPresentationDate(props.value, props.field.renderer === 'datetime'))
 </script>
 
 <template>
