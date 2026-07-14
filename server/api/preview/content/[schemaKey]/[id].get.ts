@@ -2,6 +2,7 @@ import { and, eq } from 'drizzle-orm'
 
 import { parseContentJson } from '../../../../cms/content-json'
 import { publicationMetadata } from '../../../../cms/publication'
+import { getActiveSchema } from '../../../../cms/repo'
 import { getDb } from '../../../../db/db'
 import { content as contentTable } from '../../../../db/schema'
 import { getAuthSession } from '../../../../utils/auth'
@@ -17,6 +18,7 @@ export default defineEventHandler(async (event) => {
   if (!session?.user) return sendH3Error(event, notFound('Content not found'))
   await requireSchemaPermission(event, schemaKey, 'read')
   const db = await getDb(event)
+  if (!await getActiveSchema(db, schemaKey)) return sendH3Error(event, notFound('Content not found'))
   const row = await db.select().from(contentTable).where(and(
     eq(contentTable.schemaKey, schemaKey),
     eq(contentTable.id, id)

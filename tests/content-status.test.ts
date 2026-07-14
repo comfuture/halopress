@@ -82,6 +82,19 @@ afterAll(() => {
 })
 
 describe('content working statuses', () => {
+  it('blocks new content creation while the schema is inactive', async () => {
+    await fixture.db.update(schemaActive).set({ status: 'inactive' }).where(eq(schemaActive.schemaKey, 'article'))
+    try {
+      bodyState.current = { content: { title: 'Blocked draft' } }
+      await expect(createHandler(event())).rejects.toMatchObject({
+        statusCode: 404,
+        statusMessage: 'Active schema not found'
+      })
+    } finally {
+      await fixture.db.update(schemaActive).set({ status: 'active' }).where(eq(schemaActive.schemaKey, 'article'))
+    }
+  })
+
   it('keeps generic creates and updates draft-only', async () => {
     bodyState.current = { content: { title: 'Draft original' } }
     const created = await createHandler(event())

@@ -4,7 +4,7 @@ import { getQuery } from 'h3'
 import { getDb } from '../../../db/db'
 import { content as contentTable, contentListing as contentListingTable, contentRef as contentRefTable } from '../../../db/schema'
 import { standalonePageRouteIsUnclaimed } from '../../../cms/page-delivery'
-import { applyPrivateDeliveryHeaders, applyPublicDeliveryHeaders, resolveDeliveryPolicy } from '../../../utils/delivery-policy'
+import { applyLifecyclePublicDeliveryHeaders, applyPrivateDeliveryHeaders, resolveDeliveryPolicy } from '../../../utils/delivery-policy'
 import { PUBLIC_PAGE_ROUTE_PREFIX } from '../../../../shared/public-routing'
 
 export default defineEventHandler(async (event) => {
@@ -16,7 +16,7 @@ export default defineEventHandler(async (event) => {
   const order = q.order === 'asc' ? 'asc' : 'desc'
   const status = policy.effectiveStatus
   const projectionScope = policy.isPublic || q.status === 'published' ? 'published' : 'working'
-  if (policy.isPublic) applyPublicDeliveryHeaders(event)
+  if (policy.isPublic) applyLifecyclePublicDeliveryHeaders(event)
   else applyPrivateDeliveryHeaders(event)
 
   const refField = typeof q.refField === 'string' ? q.refField : null

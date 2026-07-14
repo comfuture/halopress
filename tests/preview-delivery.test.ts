@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { getPreviewDataState } from '../app/utils/preview-delivery'
-import { content, page } from '../server/db/schema'
+import { content, page, schema, schemaActive } from '../server/db/schema'
 import { runMigrations } from '../server/utils/install'
 import { createTestSqliteDb } from './fixtures/sqlite'
 
@@ -67,6 +67,16 @@ beforeAll(async () => {
   dbState.current = fixture.db
   await runMigrations(fixture.db)
   const now = new Date('2026-07-13T00:00:00.000Z')
+  await fixture.db.insert(schema).values({
+    schemaKey: 'article',
+    version: 1,
+    title: 'Article',
+    astJson: JSON.stringify({ schemaKey: 'article', title: 'Article', fields: [] }),
+    jsonSchema: JSON.stringify({ type: 'object', properties: {} }),
+    registryJson: JSON.stringify({ fields: [], relations: [] }),
+    createdAt: now
+  })
+  await fixture.db.insert(schemaActive).values({ schemaKey: 'article', activeVersion: 1, updatedAt: now })
   await fixture.db.insert(content).values({
     id: 'content-draft',
     schemaKey: 'article',
@@ -117,6 +127,19 @@ async function expectFinalizedNotFound(
 }
 
 describe('preview delivery', () => {
+  it('uses a non-enumerating 404 while the schema is inactive', async () => {
+    await fixture.db.update(schemaActive).set({ status: 'inactive' })
+    try {
+      await expectFinalizedNotFound(
+        contentPreview,
+        responseEvent({ schemaKey: 'article', id: 'content-draft' }),
+        'Content not found'
+      )
+    } finally {
+      await fixture.db.update(schemaActive).set({ status: 'active' })
+    }
+  })
+
   it('returns working content with private noindex headers', async () => {
     const request = responseEvent({ schemaKey: 'article', id: 'content-draft' })
     await expect(contentPreview(request.event)).resolves.toMatchObject({

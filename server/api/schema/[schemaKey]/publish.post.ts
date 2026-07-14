@@ -3,7 +3,7 @@ import { desc, eq } from 'drizzle-orm'
 import { getDb } from '../../../db/db'
 import { compileSchemaAst } from '../../../cms/compiler'
 import { syncContentListing } from '../../../cms/content-listing'
-import { getActiveSchema, getDraft } from '../../../cms/repo'
+import { getDraft, getPublishedSchema } from '../../../cms/repo'
 import { getKindChanges, migrateSchemaContent } from '../../../cms/migrate'
 import { syncSearchConfig } from '../../../cms/search-config'
 import { syncSearchIndexForSchema } from '../../../cms/search-index'
@@ -57,7 +57,7 @@ export default defineEventHandler(async (event) => {
   } catch (error) {
     throw badRequest(error instanceof Error ? error.message : 'Invalid presentation bindings')
   }
-  const active = await getActiveSchema(db, schemaKey)
+  const active = await getPublishedSchema(db, schemaKey, { includeInactive: true })
   const kindChanges = getKindChanges(active?.ast ?? null, ast)
   const listingChanged = JSON.stringify(active?.registry?.listing ?? null) !== JSON.stringify(compiled.registry.listing ?? null)
 

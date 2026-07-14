@@ -1,0 +1,411 @@
+import { eq, or, sql } from 'drizzle-orm'
+import { describe, expect, it, vi } from 'vitest'
+
+import {
+  deactivateSchema,
+  deleteEmptySchema,
+  deleteSchemaResidue,
+  getSchemaDependencyImpact,
+  purgeSchema,
+  reactivateSchema
+} from '../server/cms/schema-lifecycle'
+import { getActiveSchema, getPublishedSchema, listActiveSchemas } from '../server/cms/repo'
+import {
+  asset,
+  content,
+  contentListing,
+  contentRef,
+  contentRefList,
+  contentSearchData,
+  documentAssetRef,
+  documentRevision,
+  publicationRevision,
+  schema,
+  schemaActive,
+  schemaDraft,
+  schemaRole,
+  searchConfig
+} from '../server/db/schema'
+import { runMigrations, seedRoles } from '../server/utils/install'
+import { createTestSqliteDb } from './fixtures/sqlite'
+
+async function seedSchemaLifecycle(db: any) {
+  const now = new Date('2026-07-14T00:00:00.000Z')
+  const schemaAst = (schemaKey: string) => JSON.stringify({ schemaKey, title: schemaKey, fields: [] })
+  const registry = JSON.stringify({ fields: [], relations: [] })
+
+  await seedRoles(db)
+  await db.insert(schema).values([
+    {
+      schemaKey: 'article',
+      version: 1,
+      title: 'Article',
+      astJson: schemaAst('article'),
+      jsonSchema: JSON.stringify({ type: 'object', properties: {} }),
+      registryJson: registry,
+      createdAt: now
+    },
+    {
+      schemaKey: 'external',
+      version: 1,
+      title: 'External',
+      astJson: schemaAst('external'),
+      jsonSchema: JSON.stringify({ type: 'object', properties: {} }),
+      registryJson: registry,
+      createdAt: now
+    }
+  ])
+  await db.insert(schemaActive).values([
+    { schemaKey: 'article', activeVersion: 1, updatedAt: now },
+    { schemaKey: 'external', activeVersion: 1, updatedAt: now }
+  ])
+  await db.insert(schemaDraft).values({
+    schemaKey: 'article',
+    title: 'Article',
+    astJson: schemaAst('article'),
+    currentRevision: 2,
+    updatedAt: now
+  })
+  await db.insert(schemaRole).values({
+    schemaKey: 'article',
+    roleKey: 'anonymous',
+    canRead: true,
+    canWrite: false,
+    canAdmin: false
+  })
+  await db.insert(content).values([
+    {
+      id: 'article-published',
+      schemaKey: 'article',
+      schemaVersion: 1,
+      status: 'published',
+      contentJson: JSON.stringify({ title: 'Published', related: 'external-owner' }),
+      publishedRevisionId: 'publication-article',
+      createdAt: now,
+      updatedAt: now
+    },
+    {
+      id: 'article-draft',
+      schemaKey: 'article',
+      schemaVersion: 1,
+      status: 'draft',
+      contentJson: JSON.stringify({ title: 'Draft' }),
+      createdAt: now,
+      updatedAt: now
+    },
+    {
+      id: 'external-owner',
+      schemaKey: 'external',
+      schemaVersion: 1,
+      status: 'draft',
+      contentJson: JSON.stringify({ article: 'article-published' }),
+      createdAt: now,
+      updatedAt: now
+    }
+  ])
+  await db.insert(contentListing).values([
+    { contentId: 'article-published', schemaKey: 'article', schemaVersion: 1, title: 'Published', status: 'published', createdAt: now, updatedAt: now },
+    { contentId: 'article-published', projectionScope: 'published', schemaKey: 'article', schemaVersion: 1, title: 'Published', status: 'published', createdAt: now, updatedAt: now },
+    { contentId: 'article-draft', schemaKey: 'article', schemaVersion: 1, title: 'Draft', status: 'draft', createdAt: now, updatedAt: now },
+    { contentId: 'external-owner', schemaKey: 'external', schemaVersion: 1, title: 'External', status: 'draft', createdAt: now, updatedAt: now }
+  ])
+  await db.insert(searchConfig).values({
+    schemaKey: 'article',
+    fieldId: 'article-title',
+    fieldKey: 'title',
+    kind: 'string',
+    searchMode: 'exact'
+  })
+  await db.insert(contentSearchData).values([
+    { contentId: 'article-published', fieldId: 'article-title', dataType: 'text', text: 'Published' },
+    { contentId: 'article-published', projectionScope: 'published', fieldId: 'article-title', dataType: 'text', text: 'Published' }
+  ])
+  await db.insert(contentRef).values([
+    { contentId: 'article-published', fieldPath: 'related', targetKind: 'content', targetSchemaKey: 'external', targetId: 'external-owner' },
+    { contentId: 'external-owner', fieldPath: 'article', targetKind: 'content', targetSchemaKey: 'article', targetId: 'article-published' }
+  ])
+  await db.insert(contentRefList).values([
+    { ownerContentId: 'article-published', fieldKey: 'related', position: 0, itemKind: 'content', itemSchemaKey: 'external', itemId: 'external-owner' },
+    { ownerContentId: 'external-owner', fieldKey: 'articles', position: 0, itemKind: 'content', itemSchemaKey: 'article', itemId: 'article-published' }
+  ])
+  await db.insert(publicationRevision).values({
+    id: 'publication-article',
+    documentKind: 'content',
+    documentId: 'article-published',
+    schemaKey: 'article',
+    schemaVersion: 1,
+    contentJson: JSON.stringify({ title: 'Published' }),
+    createdAt: now
+  })
+  await db.insert(publicationRevision).values({
+    id: 'publication-page-collision',
+    documentKind: 'page',
+    documentId: 'article-published',
+    title: 'Unrelated page',
+    contentJson: JSON.stringify({ title: 'Unrelated page' }),
+    createdAt: now
+  })
+  await db.insert(documentRevision).values([
+    {
+      id: 'document-article',
+      documentKind: 'content',
+      documentId: 'article-published',
+      schemaKey: 'article',
+      revision: 1,
+      action: 'publish',
+      snapshotJson: JSON.stringify({ title: 'Published' }),
+      createdAt: now
+    },
+    {
+      id: 'document-schema-draft',
+      documentKind: 'schema-draft',
+      documentId: 'article',
+      schemaKey: 'article',
+      revision: 2,
+      action: 'save',
+      snapshotJson: schemaAst('article'),
+      createdAt: now
+    },
+    {
+      id: 'document-page-collision',
+      documentKind: 'page',
+      documentId: 'article-published',
+      revision: 1,
+      action: 'publish',
+      snapshotJson: JSON.stringify({ title: 'Unrelated page' }),
+      createdAt: now
+    }
+  ])
+  await db.insert(asset).values({
+    id: 'article-asset',
+    kind: 'image',
+    status: 'ready',
+    objectKey: 'article-asset',
+    mimeType: 'image/png',
+    sizeBytes: 1,
+    createdAt: now
+  })
+  await db.insert(documentAssetRef).values({
+    documentKind: 'content',
+    documentId: 'article-published',
+    projectionScope: 'working',
+    assetId: 'article-asset'
+  })
+}
+
+describe('schema lifecycle', () => {
+  it('deactivates and reactivates without losing schema dependencies', async () => {
+    const fixture = await createTestSqliteDb()
+    try {
+      await runMigrations(fixture.db)
+      await seedSchemaLifecycle(fixture.db)
+
+      const before = await getSchemaDependencyImpact(fixture.db, 'article')
+      expect(before).toMatchObject({
+        status: 'active',
+        counts: {
+          contentTotal: 2,
+          contentByStatus: { draft: 1, published: 1 },
+          versions: 1,
+          drafts: 1,
+          inboundReferences: 2,
+          outboundReferences: 2,
+          searchProjections: 2,
+          permissions: 1,
+          publicationRevisions: 1,
+          documentRevisions: 2,
+          assetReferences: 1
+        }
+      })
+
+      const inactive = await deactivateSchema(fixture.db, 'article', 'admin-1')
+      expect(inactive).toMatchObject({ status: 'inactive', deactivatedBy: 'admin-1' })
+      expect((await listActiveSchemas(fixture.db)).map(item => item.schemaKey)).toEqual(['external'])
+      await expect(getActiveSchema(fixture.db, 'article')).resolves.toBeNull()
+      await expect(getPublishedSchema(fixture.db, 'article', { includeInactive: true }))
+        .resolves.toMatchObject({ schemaKey: 'article', status: 'inactive' })
+
+      const active = await reactivateSchema(fixture.db, 'article', 'admin-2')
+      expect(active).toMatchObject({ status: 'active', reactivatedBy: 'admin-2' })
+      expect(active.counts).toEqual(before.counts)
+      expect((await listActiveSchemas(fixture.db)).map(item => item.schemaKey)).toEqual(['article', 'external'])
+    } finally {
+      fixture.close()
+    }
+  })
+
+  it('rejects guarded deletion with actionable dependency counts', async () => {
+    const fixture = await createTestSqliteDb()
+    try {
+      await runMigrations(fixture.db)
+      await seedSchemaLifecycle(fixture.db)
+      await deactivateSchema(fixture.db, 'article', 'admin-1')
+
+      await expect(deleteEmptySchema({ context: {} } as any, fixture.db, 'article')).rejects.toMatchObject({
+        statusCode: 409,
+        data: {
+          impact: expect.objectContaining({
+            status: 'inactive',
+            counts: expect.objectContaining({ contentTotal: 2, inboundReferences: 2 })
+          })
+        }
+      })
+      await expect(purgeSchema({ context: {} } as any, fixture.db, 'article', 'wrong'))
+        .rejects.toMatchObject({ statusCode: 400 })
+    } finally {
+      fixture.close()
+    }
+  })
+
+  it('deletes an inactive empty schema with its configuration metadata', async () => {
+    const fixture = await createTestSqliteDb()
+    try {
+      await runMigrations(fixture.db)
+      await seedRoles(fixture.db)
+      const now = new Date('2026-07-14T00:00:00.000Z')
+      await fixture.db.insert(schema).values({
+        schemaKey: 'empty',
+        version: 1,
+        title: 'Empty',
+        astJson: JSON.stringify({ schemaKey: 'empty', title: 'Empty', fields: [] }),
+        jsonSchema: JSON.stringify({ type: 'object', properties: {} }),
+        registryJson: JSON.stringify({ fields: [], relations: [] }),
+        createdAt: now
+      })
+      await fixture.db.insert(schemaActive).values({ schemaKey: 'empty', activeVersion: 1, updatedAt: now })
+      await fixture.db.insert(schemaDraft).values({
+        schemaKey: 'empty',
+        title: 'Empty',
+        astJson: JSON.stringify({ schemaKey: 'empty', title: 'Empty', fields: [] }),
+        updatedAt: now
+      })
+      await fixture.db.insert(schemaRole).values({
+        schemaKey: 'empty',
+        roleKey: 'anonymous',
+        canRead: true,
+        canWrite: false,
+        canAdmin: false
+      })
+      await deactivateSchema(fixture.db, 'empty', 'admin-1')
+
+      await expect(deleteEmptySchema({ context: {} } as any, fixture.db, 'empty'))
+        .resolves.toMatchObject({ canDelete: true, counts: { contentTotal: 0 } })
+      await expect(getSchemaDependencyImpact(fixture.db, 'empty'))
+        .rejects.toMatchObject({ statusCode: 404 })
+    } finally {
+      fixture.close()
+    }
+  })
+
+  it('purges all schema residue transactionally without deleting assets or unrelated content', async () => {
+    const fixture = await createTestSqliteDb()
+    try {
+      await runMigrations(fixture.db)
+      await seedSchemaLifecycle(fixture.db)
+      await deactivateSchema(fixture.db, 'article', 'admin-1')
+      await purgeSchema({ context: {} } as any, fixture.db, 'article', 'article')
+
+      expect(await fixture.db.select().from(schema).where(eq(schema.schemaKey, 'article'))).toEqual([])
+      expect(await fixture.db.select().from(schemaActive).where(eq(schemaActive.schemaKey, 'article'))).toEqual([])
+      expect(await fixture.db.select().from(schemaDraft).where(eq(schemaDraft.schemaKey, 'article'))).toEqual([])
+      expect(await fixture.db.select().from(schemaRole).where(eq(schemaRole.schemaKey, 'article'))).toEqual([])
+      expect(await fixture.db.select().from(content).where(eq(content.schemaKey, 'article'))).toEqual([])
+      expect(await fixture.db.select().from(contentListing).where(eq(contentListing.schemaKey, 'article'))).toEqual([])
+      expect(await fixture.db.select().from(searchConfig).where(eq(searchConfig.schemaKey, 'article'))).toEqual([])
+      expect(await fixture.db.select().from(publicationRevision).where(eq(publicationRevision.schemaKey, 'article'))).toEqual([])
+      expect(await fixture.db.select().from(documentRevision).where(or(
+        eq(documentRevision.schemaKey, 'article'),
+        eq(documentRevision.documentId, 'article')
+      ))).toEqual([])
+      expect(await fixture.db.select().from(publicationRevision)
+        .where(eq(publicationRevision.id, 'publication-page-collision'))).toHaveLength(1)
+      expect(await fixture.db.select().from(documentRevision)
+        .where(eq(documentRevision.id, 'document-page-collision'))).toHaveLength(1)
+      expect(await fixture.db.select().from(contentRef).where(eq(contentRef.targetSchemaKey, 'article'))).toEqual([])
+      expect(await fixture.db.select().from(contentRefList).where(eq(contentRefList.itemSchemaKey, 'article'))).toEqual([])
+      expect(await fixture.db.select().from(content).where(eq(content.id, 'external-owner'))).toHaveLength(1)
+      expect(await fixture.db.select().from(asset).where(eq(asset.id, 'article-asset'))).toHaveLength(1)
+    } finally {
+      fixture.close()
+    }
+  })
+
+  it('rolls back earlier cleanup when the final schema delete fails under foreign keys', async () => {
+    const fixture = await createTestSqliteDb()
+    try {
+      await runMigrations(fixture.db)
+      await seedSchemaLifecycle(fixture.db)
+      await deactivateSchema(fixture.db, 'article', 'admin-1')
+      const before = await getSchemaDependencyImpact(fixture.db, 'article')
+      await fixture.db.run(sql.raw(`
+        CREATE TRIGGER prevent_article_schema_delete
+        BEFORE DELETE ON schema
+        WHEN OLD.schema_key = 'article'
+        BEGIN
+          SELECT RAISE(ABORT, 'forced schema purge failure');
+        END
+      `))
+
+      await expect(purgeSchema({ context: {} } as any, fixture.db, 'article', 'article'))
+        .rejects.toThrow('Failed query')
+      await expect(getSchemaDependencyImpact(fixture.db, 'article')).resolves.toMatchObject({
+        status: 'inactive',
+        counts: before.counts
+      })
+      expect(await fixture.db.select().from(content).where(eq(content.schemaKey, 'article'))).toHaveLength(2)
+      expect(await fixture.db.select().from(contentRef).where(or(
+        eq(contentRef.targetSchemaKey, 'article'),
+        sql`${contentRef.contentId} in ('article-published', 'article-draft')`
+      ))).toHaveLength(2)
+    } finally {
+      fixture.close()
+    }
+  })
+
+  it('keeps cleanup atomic when emptiness or inactive lifecycle guards no longer hold', async () => {
+    const fixture = await createTestSqliteDb()
+    try {
+      await runMigrations(fixture.db)
+      await seedSchemaLifecycle(fixture.db)
+      await deactivateSchema(fixture.db, 'article', 'admin-1')
+
+      await deleteSchemaResidue({ context: {} } as any, fixture.db, 'article', { guard: 'empty' })
+      await expect(getSchemaDependencyImpact(fixture.db, 'article')).resolves.toMatchObject({
+        status: 'inactive',
+        counts: { contentTotal: 2, inboundReferences: 2 }
+      })
+
+      await reactivateSchema(fixture.db, 'article', 'admin-2')
+      await deleteSchemaResidue({ context: {} } as any, fixture.db, 'article', { guard: 'inactive' })
+      await expect(getSchemaDependencyImpact(fixture.db, 'article')).resolves.toMatchObject({
+        status: 'active',
+        counts: { contentTotal: 2, inboundReferences: 2 }
+      })
+    } finally {
+      fixture.close()
+    }
+  })
+
+  it('collects the destructive cleanup as one D1 batch and propagates batch failure', async () => {
+    const failure = new Error('D1 batch failed')
+    const statements: unknown[] = []
+    const db = {
+      delete: vi.fn((table: unknown) => ({
+        where: vi.fn((_condition: unknown) => {
+          const statement = { table }
+          statements.push(statement)
+          return statement
+        })
+      })),
+      batch: vi.fn(async () => { throw failure }),
+      transaction: vi.fn()
+    }
+    const event = { context: { cloudflare: { env: { DB: {} } } } }
+
+    await expect(deleteSchemaResidue(event as any, db as any, 'article')).rejects.toBe(failure)
+    expect(db.transaction).not.toHaveBeenCalled()
+    expect(db.batch).toHaveBeenCalledOnce()
+    expect(db.batch).toHaveBeenCalledWith(statements)
+    expect(statements).toHaveLength(13)
+  })
+})

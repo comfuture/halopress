@@ -36,6 +36,13 @@
       "when": 1784003960138,
       "tag": "0004_add_editorial_safety_revisions",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1784006346142,
+      "tag": "0005_add_schema_lifecycle_status",
+      "breakpoints": true
     }
   ]
 }

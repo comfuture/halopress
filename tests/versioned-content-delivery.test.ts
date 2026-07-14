@@ -4,7 +4,8 @@ import {
   content,
   page,
   publicationRevision,
-  schema
+  schema,
+  schemaActive
 } from '../server/db/schema'
 import type { SchemaPermission } from '../server/utils/schema-permission'
 import { runMigrations } from '../server/utils/install'
@@ -107,6 +108,7 @@ beforeAll(async () => {
       createdAt: now
     }
   ])
+  await fixture.db.insert(schemaActive).values({ schemaKey: 'article', activeVersion: 2, updatedAt: now })
   await fixture.db.insert(content).values({
     id: 'article-1',
     schemaKey: 'article',
@@ -200,6 +202,7 @@ describe('versioned content delivery', () => {
       }),
       createdAt: now
     })
+    await fixture.db.insert(schemaActive).values({ schemaKey: 'p', activeVersion: 1, updatedAt: now })
     await fixture.db.insert(content).values({
       id: 'legacy-route',
       schemaKey: 'p',

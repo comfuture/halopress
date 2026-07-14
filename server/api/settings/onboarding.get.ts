@@ -34,10 +34,15 @@ export default defineEventHandler(async (event) => {
         eq(schemaTable.schemaKey, schemaActiveTable.schemaKey),
         eq(schemaTable.version, schemaActiveTable.activeVersion)
       ))
+      .where(eq(schemaActiveTable.status, 'active'))
       .orderBy(schemaActiveTable.schemaKey),
     db
       .select({ total: sql<number>`count(1)` })
       .from(contentTable)
+      .innerJoin(schemaActiveTable, and(
+        eq(schemaActiveTable.schemaKey, contentTable.schemaKey),
+        eq(schemaActiveTable.status, 'active')
+      ))
       .where(and(eq(contentTable.status, 'published'), ne(contentTable.id, BOOTSTRAP_CONTENT_ID)))
       .get(),
     getGoogleAuthenticationSettings(event),

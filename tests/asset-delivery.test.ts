@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { documentAssetRef, page } from '../server/db/schema'
+import { content, documentAssetRef, page, schema as schemaTable, schemaActive } from '../server/db/schema'
 import { assertAssetIsNotRetained, requireAssetDelivery } from '../server/utils/asset-delivery'
 import { runMigrations } from '../server/utils/install'
 import { createTestSqliteDb } from './fixtures/sqlite'
@@ -36,12 +36,35 @@ beforeEach(() => {
   authState.authenticated = false
 })
 
+async function seedActiveArticle(db: any) {
+  const now = new Date('2026-07-14T00:00:00.000Z')
+  await db.insert(schemaTable).values({
+    schemaKey: 'article',
+    version: 1,
+    title: 'Article',
+    astJson: JSON.stringify({ schemaKey: 'article', title: 'Article', fields: [] }),
+    jsonSchema: JSON.stringify({ type: 'object', properties: {} }),
+    createdAt: now
+  })
+  await db.insert(schemaActive).values({ schemaKey: 'article', activeVersion: 1, updatedAt: now })
+  await db.insert(content).values({
+    id: 'article-1',
+    schemaKey: 'article',
+    schemaVersion: 1,
+    status: 'published',
+    contentJson: '{}',
+    createdAt: now,
+    updatedAt: now
+  })
+}
+
 describe('asset delivery retention', () => {
   it('keeps working-only assets private while published assets remain public', async () => {
     const fixture = await createTestSqliteDb()
     dbState.current = fixture.db
     try {
       await runMigrations(fixture.db)
+      await seedActiveArticle(fixture.db)
       await fixture.db.insert(documentAssetRef).values([
         { documentKind: 'content', documentId: 'article-1', projectionScope: 'working', assetId: 'draft-only' },
         { documentKind: 'content', documentId: 'article-1', projectionScope: 'published', assetId: 'live' }
@@ -80,6 +103,31 @@ describe('asset delivery retention', () => {
       expect(publicRequest.header('cache-control')).toMatch(/^public,/)
       await expect(assertAssetIsNotRetained(fixture.db as any, 'brand-logo'))
         .rejects.toMatchObject({ statusCode: 409 })
+    } finally {
+      fixture.close()
+      dbState.current = null
+    }
+  })
+
+  it('blocks assets owned only by inactive content while retaining shared page delivery', async () => {
+    const fixture = await createTestSqliteDb()
+    dbState.current = fixture.db
+    try {
+      await runMigrations(fixture.db)
+      await seedActiveArticle(fixture.db)
+      await fixture.db.insert(documentAssetRef).values([
+        { documentKind: 'content', documentId: 'article-1', projectionScope: 'published', assetId: 'inactive-only' },
+        { documentKind: 'content', documentId: 'article-1', projectionScope: 'published', assetId: 'shared' },
+        { documentKind: 'page', documentId: 'page-1', projectionScope: 'published', assetId: 'shared' }
+      ])
+
+      await expect(requireAssetDelivery(responseEvent().event as any, 'inactive-only'))
+        .resolves.toEqual({ isPublic: true })
+      await fixture.db.update(schemaActive).set({ status: 'inactive' }).where(eq(schemaActive.schemaKey, 'article'))
+      await expect(requireAssetDelivery(responseEvent().event as any, 'inactive-only'))
+        .rejects.toMatchObject({ statusCode: 404, statusMessage: 'Asset not found' })
+      await expect(requireAssetDelivery(responseEvent().event as any, 'shared'))
+        .resolves.toEqual({ isPublic: true })
     } finally {
       fixture.close()
       dbState.current = null
