@@ -101,7 +101,12 @@ async function logout() {
 
       <template #footer>
         <div class="flex items-center justify-between gap-2">
-          <span class="text-xs text-muted truncate">{{ data?.user?.email || 'Guest' }}</span>
+          <ClientOnly>
+            <span class="text-xs text-muted truncate">{{ data?.user?.email || 'Guest' }}</span>
+            <template #fallback>
+              <span class="text-xs text-muted truncate">Guest</span>
+            </template>
+          </ClientOnly>
           <UButton icon="i-lucide-log-out" color="neutral" variant="ghost" @click="logout" />
         </div>
       </template>
