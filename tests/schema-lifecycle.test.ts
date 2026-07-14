@@ -444,6 +444,24 @@ describe('schema lifecycle', () => {
       expect(await fixture.db.select().from(content).where(eq(content.id, 'external-owner'))).toHaveLength(1)
       expect(await fixture.db.select().from(asset).where(eq(asset.id, 'article-asset'))).toHaveLength(1)
 
+      const recreatedAt = new Date('2026-07-14T01:00:00.000Z')
+      await fixture.db.insert(schema).values({
+        schemaKey: 'article',
+        version: 1,
+        title: 'Recreated article',
+        astJson: JSON.stringify({ schemaKey: 'article', title: 'Recreated article', fields: [] }),
+        jsonSchema: JSON.stringify({ type: 'object', properties: {} }),
+        registryJson: JSON.stringify({ fields: [], relations: [] }),
+        createdAt: recreatedAt
+      })
+      await fixture.db.insert(schemaActive).values({
+        schemaKey: 'article',
+        activeVersion: 1,
+        status: 'inactive',
+        deactivatedAt: recreatedAt,
+        updatedAt: recreatedAt
+      })
+
       await syncContentRefs({
         db: fixture.db,
         contentId: 'external-owner',
@@ -466,6 +484,20 @@ describe('schema lifecycle', () => {
               kind: 'ref_list'
             },
             {
+              fieldId: 'external-scoped-article',
+              fieldKey: 'scopedArticle',
+              targetKind: 'content',
+              targetSchemaKey: 'article',
+              kind: 'ref'
+            },
+            {
+              fieldId: 'external-scoped-articles',
+              fieldKey: 'scopedArticles',
+              targetKind: 'content',
+              targetSchemaKey: 'article',
+              kind: 'ref_list'
+            },
+            {
               fieldId: 'external-live-article',
               fieldKey: 'liveArticle',
               targetKind: 'content',
@@ -482,6 +514,8 @@ describe('schema lifecycle', () => {
         content: {
           article: 'article-published',
           articles: ['article-draft'],
+          scopedArticle: 'article-published',
+          scopedArticles: ['article-draft'],
           liveArticle: 'external-owner',
           liveArticles: ['external-owner']
         }
@@ -492,10 +526,21 @@ describe('schema lifecycle', () => {
       ))).toEqual([])
       expect(await fixture.db.select().from(contentRefList)
         .where(eq(contentRefList.itemId, 'article-draft'))).toEqual([])
+      expect(await fixture.db.select().from(contentRef).where(or(
+        eq(contentRef.fieldPath, 'scopedArticle'),
+        eq(contentRef.fieldPath, 'scopedArticles')
+      ))).toEqual([])
+      expect(await fixture.db.select().from(contentRefList)
+        .where(eq(contentRefList.fieldKey, 'scopedArticles'))).toEqual([])
       expect(await fixture.db.select().from(contentRef)
         .where(eq(contentRef.targetId, 'external-owner'))).toHaveLength(2)
       expect(await fixture.db.select().from(contentRefList)
         .where(eq(contentRefList.itemId, 'external-owner'))).toHaveLength(1)
+      await expect(getSchemaDependencyImpact(fixture.db, 'article')).resolves.toMatchObject({
+        status: 'inactive',
+        canDelete: true,
+        counts: { contentTotal: 0, inboundReferences: 0 }
+      })
     } finally {
       fixture.close()
     }

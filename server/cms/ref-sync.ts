@@ -1,7 +1,7 @@
 import { and, eq, sql } from 'drizzle-orm'
 import type { QueryBuilder } from 'drizzle-orm/sqlite-core'
 import type { Db } from '../db/db'
-import { content as contentTable, contentRef, contentRefList, schema as schemaTable } from '../db/schema'
+import { content as contentTable, contentRef, contentRefList } from '../db/schema'
 import { executeDbStatement } from '../db/transaction'
 import type { DbStatement } from '../db/transaction'
 import type { SchemaRegistry } from './types'
@@ -49,9 +49,9 @@ export async function syncContentRefs(args: {
                 targetSchemaKey: sql<string | null>`${targetSchemaKey}`.as('target_schema_key'),
                 targetId: sql<string>`${targetId}`.as('target_id')
               })
-              return targetSchemaKey
-                ? selection.from(schemaTable).where(eq(schemaTable.schemaKey, targetSchemaKey)).limit(1)
-                : selection.from(contentTable).where(eq(contentTable.id, targetId)).limit(1)
+              return selection.from(contentTable).where(targetSchemaKey
+                ? and(eq(contentTable.id, targetId), eq(contentTable.schemaKey, targetSchemaKey))
+                : eq(contentTable.id, targetId)).limit(1)
             })
           : db.insert(contentRef).values({
               contentId,
@@ -81,9 +81,9 @@ export async function syncContentRefs(args: {
                 assetId: sql<string | null>`${assetId}`.as('asset_id'),
                 metaJson: sql<string | null>`${metaJson}`.as('meta_json')
               })
-              return targetSchemaKey
-                ? selection.from(schemaTable).where(eq(schemaTable.schemaKey, targetSchemaKey)).limit(1)
-                : selection.from(contentTable).where(eq(contentTable.id, targetId)).limit(1)
+              return selection.from(contentTable).where(targetSchemaKey
+                ? and(eq(contentTable.id, targetId), eq(contentTable.schemaKey, targetSchemaKey))
+                : eq(contentTable.id, targetId)).limit(1)
             })
           : db.insert(contentRefList).values({
               ownerContentId: contentId,
