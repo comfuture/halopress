@@ -109,7 +109,8 @@ export function safePresentationLink(value: unknown) {
 
 export function formatPresentationDate(value: unknown, includeTime = false, locale = 'en') {
   if (typeof value !== 'string') return ''
-  const date = new Date(value)
+  const timezoneLessDateTime = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?$/.test(value)
+  const date = new Date(timezoneLessDateTime ? `${value}Z` : value)
   return Number.isNaN(date.getTime())
     ? value
     : new Intl.DateTimeFormat(locale, {

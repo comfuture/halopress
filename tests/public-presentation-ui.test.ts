@@ -55,6 +55,7 @@ describe('public presentation UI contracts', () => {
   it('keeps SSR formatting deterministic and allows only safe absolute or relative links', () => {
     expect(formatPresentationDate('2026-07-14T05:00:00.000Z', false, 'en')).toBe('Jul 14, 2026')
     expect(formatPresentationDate('2026-07-14', false, 'en')).toBe('Jul 14, 2026')
+    expect(formatPresentationDate('2026-07-14T00:30', true, 'en')).toBe('Jul 14, 2026, 12:30 AM')
     expect(safePresentationLink('/about')).toBe('/about')
     expect(safePresentationLink('#contact')).toBe('#contact')
     expect(safePresentationLink('?page=2')).toBe('?page=2')
