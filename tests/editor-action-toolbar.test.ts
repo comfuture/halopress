@@ -14,12 +14,24 @@ describe('editor action toolbar', () => {
     const source = await readFile(files.actions, 'utf8')
 
     expect(source).toContain('icon="i-lucide-eye"')
+    expect(source).toContain('@click="openPreview"')
     expect(source).toContain('aria-label="Save Draft"')
     expect(source).toContain('label="Publish"')
     expect(source).toContain('icon="i-lucide-ellipsis-vertical"')
     expect(source).toContain('aria-label="More actions"')
     expect(source).not.toContain('color="warning"')
     expect(source).not.toContain('color="error"')
+  })
+
+  it('keeps draft preview in a fullscreen modal instead of leaving the editor', async () => {
+    const source = await readFile(files.actions, 'utf8')
+
+    expect(source).toContain('v-model:open="previewOpen"')
+    expect(source).toContain('<UModal')
+    expect(source).toContain('fullscreen')
+    expect(source).toContain('<iframe')
+    expect(source).toContain(':src="previewTo"')
+    expect(source).not.toContain('target="_blank"')
   })
 
   it('moves secondary and destructive edit actions into menu item models', async () => {

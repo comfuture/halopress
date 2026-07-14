@@ -21,20 +21,42 @@ defineEmits<{
   saveDraft: []
   publish: []
 }>()
+
+const previewOpen = ref(false)
+
+function openPreview() {
+  previewOpen.value = true
+}
 </script>
 
 <template>
   <UTooltip v-if="previewTo" :text="previewLabel">
     <UButton
-      :to="previewTo"
-      target="_blank"
       color="neutral"
       variant="ghost"
       icon="i-lucide-eye"
       square
       :aria-label="previewLabel"
+      @click="openPreview"
     />
   </UTooltip>
+
+  <UModal
+    v-if="previewTo"
+    v-model:open="previewOpen"
+    fullscreen
+    :title="previewLabel"
+    description="Private preview"
+    :ui="{ body: 'p-0 overflow-hidden' }"
+  >
+    <template #body>
+      <iframe
+        :src="previewTo"
+        :title="previewLabel"
+        class="block h-full min-h-0 w-full border-0 bg-default"
+      />
+    </template>
+  </UModal>
 
   <UTooltip text="Save Draft">
     <UButton
