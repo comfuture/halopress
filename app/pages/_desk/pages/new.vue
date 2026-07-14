@@ -77,12 +77,13 @@ const currentJson = computed(() => stableStringify(buildSnapshot()))
 const isDirty = computed(() => currentJson.value !== lastSavedJson.value)
 const draftValidationIssues = computed(() => validatePageDocumentBlocks(state.content, { allowUnknown: true }))
 const publishValidationIssues = computed(() => validatePageDocumentBlocks(state.content))
-const canSaveDraft = computed(() => isDirty.value && !draftValidationIssues.value.length && !savingDraft.value)
-const canPublish = computed(() => isDirty.value && !publishValidationIssues.value.length && !publishing.value)
+const hasStarterChoice = computed(() => starterChoice.value !== null)
+const canSaveDraft = computed(() => hasStarterChoice.value && isDirty.value && !draftValidationIssues.value.length && !savingDraft.value)
+const canPublish = computed(() => hasStarterChoice.value && isDirty.value && !publishValidationIssues.value.length && !publishing.value)
 const { allowNextNavigation } = useUnsavedNavigationGuard(isDirty)
 
 async function saveDraft() {
-  if (!isDirty.value) return
+  if (!canSaveDraft.value) return
   savingDraft.value = true
   try {
     const res = await $fetch<{ id: string }>('/api/page', {
@@ -100,7 +101,7 @@ async function saveDraft() {
 }
 
 async function publish() {
-  if (!isDirty.value) return
+  if (!canPublish.value) return
   publishing.value = true
   let createdId: string | null = null
   try {
