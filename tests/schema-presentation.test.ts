@@ -22,6 +22,8 @@ describe('versioned schema presentation', () => {
         preset: 'article',
         collectionTemplate: 'cards',
         detailTemplate: 'article',
+        slugFieldId: 'title-id',
+        structuredDataType: 'NewsArticle',
         slots: { title: 'title-id', body: 'body-id', gallery: 'gallery-id' }
       }
     }
@@ -32,6 +34,9 @@ describe('versioned schema presentation', () => {
       preset: 'article',
       collectionTemplate: 'cards',
       detailTemplate: 'article',
+      slugFieldId: 'title-id',
+      slugField: { fieldId: 'title-id', fieldKey: 'title' },
+      structuredDataType: 'NewsArticle',
       slots: {
         title: { fieldId: 'title-id', fieldKey: 'title' },
         body: { fieldId: 'body-id', fieldKey: 'body' },
@@ -79,6 +84,14 @@ describe('versioned schema presentation', () => {
       ...base,
       presentation: { ...base.presentation!, slots: { gallery: 'price-id' } }
     }, 1)).toThrow('does not support number')
+    expect(() => compileSchemaAst({
+      ...base,
+      presentation: { ...base.presentation!, slugFieldId: 'missing', slots: {} }
+    }, 1)).toThrow('slug binding references a missing field')
+    expect(() => compileSchemaAst({
+      ...base,
+      presentation: { ...base.presentation!, slugFieldId: 'price-id', slots: {} }
+    }, 1)).toThrow('slug binding does not support number')
   })
 
   it('keeps template and renderer names allowlisted by strict Zod parsing', () => {

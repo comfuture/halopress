@@ -1,5 +1,7 @@
 import { and, eq } from 'drizzle-orm'
 import type { H3Event } from 'h3'
+import { legacyPagePath } from '../../shared/public-routing'
+import type { PublicSeoOverrides } from '../../shared/public-seo'
 
 import type { Db } from '../db/db'
 import { documentAssetRef, page as pageTable, publicationRevision } from '../db/schema'
@@ -12,6 +14,7 @@ import { mutateWithDocumentRevision } from './document-revisions'
 import { normalizePageContent } from './page-content'
 import { getPublicationRevision, publicationMetadata, publicationRevisionValues } from './publication'
 import { assertEditorialTransition } from './publication-transitions'
+import { getCanonicalPublicRoute, pageCanonicalPath, publishCanonicalRoute } from './public-routes'
 
 function mutationMetadata(existing: any, expectedRevision: number, overrides: Record<string, unknown>) {
   const identity = { ...existing, ...overrides }
@@ -33,6 +36,8 @@ export async function savePageWorking(args: {
   existing: any
   title: string | null
   content: Record<string, unknown>
+  publicPath?: string | null
+  seo?: PublicSeoOverrides | null
   actorId: string | null
   expectedRevision: number
 }) {
@@ -55,6 +60,8 @@ export async function savePageWorking(args: {
         title: args.title,
         status,
         contentJson: JSON.stringify(args.content),
+        publicPath: args.publicPath ?? null,
+        seoJson: args.seo ? JSON.stringify(args.seo) : null,
         currentRevision: nextRevision,
         updatedBy: args.actorId,
         updatedAt: now
@@ -68,6 +75,7 @@ export async function savePageWorking(args: {
         documentId: args.existing.id,
         projectionScope: 'working',
         content: args.content,
+        additionalAssetIds: args.seo?.imageAssetId ? [args.seo.imageAssetId] : [],
         trustedOrigin: getTrustedRequestOrigin(args.event),
         statements
       })
@@ -86,11 +94,18 @@ export async function publishPageWorking(args: {
   existing: any
   title: string | null
   content: Record<string, unknown>
+  publicPath?: string | null
+  seo?: PublicSeoOverrides | null
   actorId: string | null
   expectedRevision: number
 }) {
   assertEditorialTransition(args.existing.status, 'publish')
   const revisionId = newId()
+  const publicPath = pageCanonicalPath({
+    pageId: args.existing.id,
+    requestedPath: args.publicPath,
+    title: args.title
+  })
   let publishedAt = new Date()
   await mutateWithDocumentRevision({
     event: args.event,
@@ -117,6 +132,8 @@ export async function publishPageWorking(args: {
         title: args.title,
         status: 'published',
         contentJson: JSON.stringify(args.content),
+        publicPath,
+        seoJson: args.seo ? JSON.stringify(args.seo) : null,
         currentRevision: nextRevision,
         publishedRevisionId: revisionId,
         firstPublishedAt: args.existing.firstPublishedAt ?? now,
@@ -139,14 +156,26 @@ export async function publishPageWorking(args: {
           documentId: args.existing.id,
           projectionScope,
           content: args.content,
+          additionalAssetIds: args.seo?.imageAssetId ? [args.seo.imageAssetId] : [],
           trustedOrigin: getTrustedRequestOrigin(args.event),
           statements
         })
       }
+      await publishCanonicalRoute({
+        db: tx,
+        statements,
+        documentKind: 'page',
+        documentId: args.existing.id,
+        path: publicPath,
+        legacyPath: legacyPagePath(args.existing.id),
+        seo: args.seo ?? null,
+        now
+      })
     }
   })
   return mutationMetadata(args.existing, args.expectedRevision, {
     status: 'published',
+    publicPath,
     publishedRevisionId: revisionId,
     firstPublishedAt: args.existing.firstPublishedAt ?? publishedAt,
     publishedAt,
@@ -171,6 +200,7 @@ export async function discardPageWorking(args: {
   const revision = await getPublicationRevision(args.db, 'page', args.existing.id, args.existing.publishedRevisionId)
   if (!revision) throw conflict('No published revision to restore')
   const content = normalizePageContent(revision.contentJson)
+  const route = await getCanonicalPublicRoute(args.db, 'page', args.existing.id)
   let updatedAt = new Date()
   await mutateWithDocumentRevision({
     event: args.event,
@@ -188,6 +218,8 @@ export async function discardPageWorking(args: {
         title: revision.title,
         status: 'published',
         contentJson: revision.contentJson,
+        publicPath: route?.path ?? args.existing.publicPath ?? null,
+        seoJson: route?.seo ? JSON.stringify(route.seo) : null,
         currentRevision: nextRevision,
         transitionAt: now,
         transitionBy: args.actorId,
@@ -203,6 +235,7 @@ export async function discardPageWorking(args: {
         documentId: args.existing.id,
         projectionScope: 'working',
         content,
+        additionalAssetIds: route?.seo?.imageAssetId ? [route.seo.imageAssetId] : [],
         trustedOrigin: getTrustedRequestOrigin(args.event),
         statements
       })
@@ -210,6 +243,7 @@ export async function discardPageWorking(args: {
   })
   return mutationMetadata(args.existing, args.expectedRevision, {
     status: 'published',
+    publicPath: route?.path ?? args.existing.publicPath ?? null,
     transitionAt: updatedAt,
     transitionBy: args.actorId,
     updatedAt,

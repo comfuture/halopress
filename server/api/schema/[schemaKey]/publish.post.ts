@@ -11,11 +11,12 @@ import { schema as schemaTable, schemaActive as schemaActiveTable } from '../../
 import { requireAdmin } from '../../../utils/auth'
 import { badRequest, notFound } from '../../../utils/http'
 import { schemaAstSchema } from '../../../cms/zod'
-import { assertSchemaKeyCanBePersisted } from '../../../cms/schema-key'
+import { assertSchemaKeyCanBePersisted, assertSchemaKeyCanBePublished } from '../../../cms/schema-key'
 import { assertExpectedRevision, requireExpectedRevision } from '../../../cms/document-revisions'
 import { ensureAnonymousSchemaRole } from '../../../utils/install'
 import { getTrustedRequestOrigin } from '../../../utils/request-origin'
 import { queueWidgetCacheInvalidation } from '../../../utils/widget-cache'
+import { assertPublicRouteAvailable, publishSchemaCollectionRoute } from '../../../cms/public-routes'
 
 export default defineEventHandler(async (event) => {
   const session = await requireAdmin(event)
@@ -42,6 +43,7 @@ export default defineEventHandler(async (event) => {
   }
   if (ast.schemaKey !== schemaKey) throw badRequest('schemaKey mismatch')
   await assertSchemaKeyCanBePersisted(db, schemaKey)
+  assertSchemaKeyCanBePublished(schemaKey)
 
   const latest = await db
     .select({ version: schemaTable.version })
@@ -62,6 +64,15 @@ export default defineEventHandler(async (event) => {
   const listingChanged = JSON.stringify(active?.registry?.listing ?? null) !== JSON.stringify(compiled.registry.listing ?? null)
 
   const now = new Date()
+
+  // Schema publication has several legacy post-publish synchronization steps,
+  // so reject collection-path collisions before writing the new version.
+  await assertPublicRouteAvailable({
+    db,
+    documentKind: 'schema',
+    documentId: schemaKey,
+    path: `/${schemaKey}`
+  })
 
   await db.insert(schemaTable).values({
     schemaKey,
@@ -93,6 +104,7 @@ export default defineEventHandler(async (event) => {
     })
 
   await ensureAnonymousSchemaRole(db, schemaKey)
+  await publishSchemaCollectionRoute({ db, schemaKey, now })
 
   let migrated = 0
   if (body?.migrate && kindChanges.length) {

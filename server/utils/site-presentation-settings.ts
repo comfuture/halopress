@@ -13,6 +13,7 @@ import { syncDocumentAssetRefs } from '../cms/asset-refs'
 import { getDb } from '../db/db'
 import { asset as assetTable } from '../db/schema'
 import { getSetting, upsertSetting } from './settings'
+import { canonicalPathMap, type PublicDocumentKind } from '../cms/public-routes'
 
 export const SITE_PRESENTATION_SETTING_KEY = 'site.presentation'
 export const SITE_PRESENTATION_GROUP = 'site.presentation'
@@ -143,7 +144,42 @@ export async function getSitePresentationAdmin(event: H3Event): Promise<SitePres
 export async function getPublicSitePresentation(event: H3Event): Promise<PublicSitePresentation> {
   const resolved = await resolveSitePresentation(event)
   const availableIds = await availableBrandingAssetIds(event, resolved.value)
-  return toPublicSitePresentation(resolved.value, availableIds, revisionFor(resolved.value))
+  const presentation = toPublicSitePresentation(resolved.value, availableIds, revisionFor(resolved.value))
+  const destinations = [
+    ...presentation.navigation.items.flatMap(item => [item.destination, ...item.children.map(child => child.destination)]),
+    ...presentation.footer.links.map(item => item.destination)
+  ]
+  const identities = destinations.flatMap((destination) => {
+    if (destination.type === 'page') return [{ documentKind: 'page' as PublicDocumentKind, documentId: destination.pageId }]
+    if (destination.type === 'collection') return [{ documentKind: 'schema' as PublicDocumentKind, documentId: destination.schemaKey }]
+    if (destination.type === 'content') return [{ documentKind: 'content' as PublicDocumentKind, documentId: destination.contentId }]
+    return []
+  })
+  const paths = await canonicalPathMap(await getDb(event), identities)
+  const withPath = (destination: typeof destinations[number]) => {
+    const key = destination.type === 'page'
+      ? `page:${destination.pageId}`
+      : destination.type === 'collection'
+        ? `schema:${destination.schemaKey}`
+        : destination.type === 'content'
+          ? `content:${destination.contentId}`
+          : null
+    return key && paths.get(key) ? { ...destination, publicPath: paths.get(key)! } : destination
+  }
+  return {
+    ...presentation,
+    navigation: {
+      items: presentation.navigation.items.map(item => ({
+        ...item,
+        destination: withPath(item.destination),
+        children: item.children.map(child => ({ ...child, destination: withPath(child.destination) }))
+      }))
+    },
+    footer: {
+      ...presentation.footer,
+      links: presentation.footer.links.map(item => ({ ...item, destination: withPath(item.destination) }))
+    }
+  } as PublicSitePresentation
 }
 
 export async function updateSitePresentation(

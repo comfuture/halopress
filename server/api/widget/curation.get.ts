@@ -8,6 +8,7 @@ import { coerceSearchValue, searchDataTypeForKind } from '../../cms/search-helpe
 import { applyPrivateDeliveryHeaders, requireContentOwnerDelivery, resolveDeliveryPolicy } from '../../utils/delivery-policy'
 import { badRequest } from '../../utils/http'
 import { applyWidgetCacheHeaders, resolveWidgetCacheKey, withWidgetCache } from '../../utils/widget-cache'
+import { attachCanonicalPublicPaths } from '../../cms/public-routes'
 
 type ContentItem = {
   id: string
@@ -207,6 +208,7 @@ export default defineEventHandler(async (event) => {
 
   setHeader(event, 'X-Widget-Cache', cacheStatus)
   setHeader(event, 'X-Widget-Cache-Backend', backend)
+  data = await attachCanonicalPublicPaths(await getDb(event), data)
 
   return {
     widget: 'curation',

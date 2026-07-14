@@ -11,6 +11,7 @@ import {
   documentAssetRef,
   documentRevision,
   publicationRevision,
+  publicRoute,
   schema as schemaTable,
   schemaActive,
   schemaDraft,
@@ -251,6 +252,8 @@ export async function deleteSchemaResidue(
   const guard = cleanupGuard(schemaKey, options.guard ?? 'none')
 
   await withDbTransaction(event, db, async (tx: Db, statements) => {
+    await executeDbStatement(tx.delete(publicRoute)
+      .where(guardedWhere(eq(publicRoute.schemaKey, schemaKey), guard)), statements)
     await executeDbStatement(tx.delete(contentSearchData)
       .where(guardedWhere(sql`${contentSearchData.contentId} in (${ownedContent})`, guard)), statements)
     await executeDbStatement(tx.delete(contentRef)

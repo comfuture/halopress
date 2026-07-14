@@ -25,6 +25,7 @@ export type PresentationPreset = 'generic' | 'article' | 'catalog'
 export type CollectionTemplate = 'list' | 'cards' | 'catalog-grid'
 export type DetailTemplate = 'document' | 'article' | 'catalog'
 export type PresentationSlot = 'title' | 'description' | 'image' | 'body' | 'gallery' | 'price'
+export type StructuredDataType = 'WebPage' | 'Article' | 'BlogPosting' | 'NewsArticle' | 'Product'
 export type FieldRendererKey =
   | 'text'
   | 'long_text'
@@ -45,12 +46,15 @@ export type SchemaPresentationConfig = {
   preset: PresentationPreset
   collectionTemplate: CollectionTemplate
   detailTemplate: DetailTemplate
+  slugFieldId?: string
+  structuredDataType?: StructuredDataType
   slots?: Partial<Record<PresentationSlot, string>>
   renderers?: Array<{ fieldId: string; renderer: FieldRendererKey }>
 }
 
 export type CompiledSchemaPresentation = Omit<SchemaPresentationConfig, 'slots' | 'renderers'> & {
   schemaVersion: number
+  slugField?: { fieldId: string; fieldKey: string }
   slots: Partial<Record<PresentationSlot, { fieldId: string; fieldKey: string }>>
   fields: Array<{
     fieldId: string

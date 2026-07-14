@@ -1,5 +1,7 @@
 import { and, eq } from 'drizzle-orm'
 import type { H3Event } from 'h3'
+import type { PublicSeoOverrides } from '../../shared/public-seo'
+import { legacyContentPath } from '../../shared/public-routing'
 
 import type { Db } from '../db/db'
 import { content as contentTable, contentListing as contentListingTable, publicationRevision } from '../db/schema'
@@ -13,6 +15,7 @@ import { deleteContentProjections, syncContentProjections } from './content-proj
 import { mutateWithDocumentRevision } from './document-revisions'
 import { getPublicationRevision, publicationMetadata, publicationRevisionValues } from './publication'
 import { assertEditorialTransition } from './publication-transitions'
+import { contentCanonicalPath, getCanonicalPublicRoute, publishCanonicalRoute } from './public-routes'
 import { getSchemaVersion } from './repo'
 import type { SchemaRegistry } from './types'
 
@@ -46,6 +49,7 @@ export async function saveContentWorking(args: {
   schemaKey: string
   active: ActiveContentSchema
   content: Record<string, unknown>
+  seo?: PublicSeoOverrides | null
   actorId: string | null
   expectedRevision: number
 }) {
@@ -79,6 +83,7 @@ export async function saveContentWorking(args: {
       await executeDbStatement(tx.update(contentTable).set({
         status,
         contentJson: JSON.stringify(args.content),
+        seoJson: args.seo ? JSON.stringify(args.seo) : null,
         schemaVersion: args.active.version,
         currentRevision: nextRevision,
         updatedBy: args.actorId,
@@ -99,6 +104,7 @@ export async function saveContentWorking(args: {
         updatedAt: now,
         projectionScope: 'working',
         trustedOrigin: getTrustedRequestOrigin(args.event),
+        additionalAssetIds: args.seo?.imageAssetId ? [args.seo.imageAssetId] : [],
         statements
       })
     }
@@ -117,11 +123,18 @@ export async function publishContentWorking(args: {
   schemaKey: string
   active: ActiveContentSchema
   content: Record<string, unknown>
+  seo?: PublicSeoOverrides | null
   actorId: string | null
   expectedRevision: number
 }) {
   assertEditorialTransition(args.existing.status, 'publish')
   const revisionId = newId()
+  const publicPath = contentCanonicalPath({
+    schemaKey: args.schemaKey,
+    contentId: args.existing.id,
+    content: args.content,
+    registry: args.active.registry
+  })
   let publishedAt = new Date()
   await mutateWithDocumentRevision({
     event: args.event,
@@ -160,6 +173,8 @@ export async function publishContentWorking(args: {
       await executeDbStatement(tx.update(contentTable).set({
         status: 'published',
         contentJson: JSON.stringify(args.content),
+        publicPath,
+        seoJson: args.seo ? JSON.stringify(args.seo) : null,
         schemaVersion: args.active.version,
         currentRevision: nextRevision,
         publishedRevisionId: revisionId,
@@ -190,13 +205,26 @@ export async function publishContentWorking(args: {
           updatedAt: now,
           projectionScope,
           trustedOrigin: getTrustedRequestOrigin(args.event),
+          additionalAssetIds: args.seo?.imageAssetId ? [args.seo.imageAssetId] : [],
           statements
         })
       }
+      await publishCanonicalRoute({
+        db: tx,
+        statements,
+        documentKind: 'content',
+        documentId: args.existing.id,
+        schemaKey: args.schemaKey,
+        path: publicPath,
+        legacyPath: legacyContentPath(args.schemaKey, args.existing.id),
+        seo: args.seo ?? null,
+        now
+      })
     }
   })
   return mutationMetadata(args.existing, args.expectedRevision, {
     status: 'published',
+    publicPath,
     publishedRevisionId: revisionId,
     firstPublishedAt: args.existing.firstPublishedAt ?? publishedAt,
     publishedAt,
@@ -229,6 +257,7 @@ export async function discardContentWorking(args: {
   const version = await getSchemaVersion(args.db, args.schemaKey, revision.schemaVersion)
   if (!version?.registry) throw notFound('Published schema not found')
   const content = parseContentJson(revision.contentJson)
+  const route = await getCanonicalPublicRoute(args.db, 'content', args.existing.id)
   let updatedAt = new Date()
 
   await mutateWithDocumentRevision({
@@ -251,6 +280,8 @@ export async function discardContentWorking(args: {
       await executeDbStatement(tx.update(contentTable).set({
         status: 'published',
         contentJson: revision.contentJson,
+        publicPath: route?.path ?? args.existing.publicPath ?? null,
+        seoJson: route?.seo ? JSON.stringify(route.seo) : null,
         schemaVersion: revision.schemaVersion,
         currentRevision: nextRevision,
         transitionAt: now,
@@ -273,12 +304,14 @@ export async function discardContentWorking(args: {
         updatedAt: now,
         projectionScope: 'working',
         trustedOrigin: getTrustedRequestOrigin(args.event),
+        additionalAssetIds: route?.seo?.imageAssetId ? [route.seo.imageAssetId] : [],
         statements
       })
     }
   })
   return mutationMetadata(args.existing, args.expectedRevision, {
     status: 'published',
+    publicPath: route?.path ?? args.existing.publicPath ?? null,
     transitionAt: updatedAt,
     transitionBy: args.actorId,
     updatedAt,

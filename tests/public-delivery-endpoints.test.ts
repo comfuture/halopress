@@ -8,6 +8,7 @@ import {
   contentSearchData,
   page as pageTable,
   publicationRevision,
+  publicRoute,
   schema as schemaTable,
   schemaActive as schemaActiveTable,
   searchConfig
@@ -200,6 +201,16 @@ beforeAll(async () => {
     title: 'Published new',
     timestamp: '2026-07-13T00:00:50.000Z',
     category: 'news'
+  })
+  await fixture.db.insert(publicRoute).values({
+    path: '/article/published-target',
+    routeKind: 'canonical',
+    documentKind: 'content',
+    documentId: 'published-target',
+    schemaKey: 'article',
+    seoJson: JSON.stringify({ title: 'Published SEO' }),
+    createdAt: new Date('2026-07-13T00:00:40.000Z'),
+    updatedAt: new Date('2026-07-13T00:00:40.000Z')
   })
   await addContent({
     id: 'draft-near-new',
@@ -530,7 +541,8 @@ describe('public delivery endpoint visibility', () => {
   it('keeps the last published revision public while its working copy is edited', async () => {
     await fixture.db.update(contentTable).set({
       status: 'draft',
-      contentJson: JSON.stringify({ title: 'Unreleased edit', category: 'draft-news' })
+      contentJson: JSON.stringify({ title: 'Unreleased edit', category: 'draft-news' }),
+      seoJson: JSON.stringify({ title: 'Unreleased SEO' })
     }).where(eq(contentTable.id, 'published-target'))
     await fixture.db.update(contentListingTable).set({
       title: 'Unreleased edit',
@@ -548,6 +560,7 @@ describe('public delivery endpoint visibility', () => {
       title: 'Published target',
       status: 'published',
       content: { title: 'Published target', category: 'news' },
+      seo: { title: 'Published SEO' },
       publicationState: 'published',
       hasDraftChanges: false
     })
@@ -562,6 +575,7 @@ describe('public delivery endpoint visibility', () => {
       title: 'Unreleased edit',
       status: 'draft',
       content: { title: 'Unreleased edit', category: 'draft-news' },
+      seo: { title: 'Unreleased SEO' },
       publicationState: 'published-with-draft',
       hasDraftChanges: true
     })

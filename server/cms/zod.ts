@@ -44,6 +44,8 @@ const presentationConfig = z.object({
   preset: z.enum(['generic', 'article', 'catalog']),
   collectionTemplate: z.enum(['list', 'cards', 'catalog-grid']),
   detailTemplate: z.enum(['document', 'article', 'catalog']),
+  slugFieldId: z.string().min(1).optional(),
+  structuredDataType: z.enum(['WebPage', 'Article', 'BlogPosting', 'NewsArticle', 'Product']).optional(),
   slots: z.object({
     title: z.string().min(1).optional(),
     description: z.string().min(1).optional(),

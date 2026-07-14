@@ -19,6 +19,7 @@ export default defineEventHandler(async (event) => {
       title: pageTable.title,
       status: pageTable.status,
       currentRevision: pageTable.currentRevision,
+      publicPath: pageTable.publicPath,
       publishedRevisionId: pageTable.publishedRevisionId,
       firstPublishedAt: pageTable.firstPublishedAt,
       publishedAt: pageTable.publishedAt,

@@ -12,6 +12,7 @@ import { badRequest, forbidden, notFound } from '../../../../utils/http'
 import { requireSchemaPermission } from '../../../../utils/schema-permission'
 import { queueWidgetCacheInvalidation } from '../../../../utils/widget-cache'
 import { requireExpectedRevision } from '../../../../cms/document-revisions'
+import { normalizePublicSeoOverrides, parsePublicSeoJson } from '../../../../../shared/public-seo'
 
 export default defineEventHandler(async (event) => {
   const schemaKey = event.context.params?.schemaKey as string
@@ -19,8 +20,8 @@ export default defineEventHandler(async (event) => {
   const permission = await requireSchemaPermission(event, schemaKey, 'publish')
   const session = await getAuthSession(event)
   const actorId = (session?.user as any)?.id ?? null
-  const body = await readBody<{ revision?: number, content?: Record<string, unknown> }>(event)
-  if (body?.content !== undefined && !permission.canWrite && !permission.canAdmin) {
+  const body = await readBody<{ revision?: number, content?: Record<string, unknown>, seo?: unknown }>(event)
+  if ((body?.content !== undefined || body?.seo !== undefined) && !permission.canWrite && !permission.canAdmin) {
     throw forbidden('Write permission is required to change content while publishing')
   }
   const expectedRevision = requireExpectedRevision(body?.revision)
@@ -35,6 +36,14 @@ export default defineEventHandler(async (event) => {
   const input = body?.content ?? parseContentJson(existing.contentJson)
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw badRequest('Invalid content')
   const content = validateContentJson(active.jsonSchema, input)
+  let seo = parsePublicSeoJson(existing.seoJson)
+  if (body?.seo !== undefined) {
+    try {
+      seo = normalizePublicSeoOverrides(body.seo)
+    } catch (error) {
+      throw badRequest(error instanceof Error ? error.message : 'Invalid SEO metadata')
+    }
+  }
   const publication = await publishContentWorking({
     event,
     db,
@@ -42,6 +51,7 @@ export default defineEventHandler(async (event) => {
     schemaKey,
     active: active as any,
     content,
+    seo,
     actorId,
     expectedRevision
   })

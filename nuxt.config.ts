@@ -54,7 +54,8 @@ export default defineNuxtConfig({
   compatibilityDate: '2026-05-18',
 
   nitro: {
-    preset: 'cloudflare-module'
+    preset: 'cloudflare-module',
+    errorHandler: '~~/server/error-handler.ts'
   },
 
   hooks: {

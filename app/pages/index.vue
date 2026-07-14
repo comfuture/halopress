@@ -126,7 +126,7 @@ const showCuration = computed(() => Boolean(curationSchema.value))
                       <NuxtLink
                         v-for="item in items"
                         :key="item.id"
-                        :to="`${linkBase}/${item.id}`"
+                        :to="item.publicPath || `${linkBase}/${item.id}`"
                         class="group flex items-center gap-3 rounded-md border border-default px-3 py-2 transition hover:bg-elevated/60"
                       >
                         <UAvatar
@@ -212,7 +212,7 @@ const showCuration = computed(() => Boolean(curationSchema.value))
                       <NuxtLink
                         v-for="item in items"
                         :key="item.id"
-                        :to="`${linkBase}/${item.id}`"
+                        :to="item.publicPath || `${linkBase}/${item.id}`"
                         class="group flex items-center gap-3 rounded-md border border-default px-3 py-2 transition hover:bg-elevated/60"
                       >
                         <UAvatar

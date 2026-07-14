@@ -11,6 +11,8 @@ import { getSchemaVersion } from '../../../cms/repo'
 import { getPublicationRevision, publicationMetadata } from '../../../cms/publication'
 import { hasStandalonePageRouteClaim, standalonePageRouteIsUnclaimed } from '../../../cms/page-delivery'
 import { PUBLIC_PAGE_ROUTE_PREFIX } from '../../../../shared/public-routing'
+import { parsePublicSeoJson } from '../../../../shared/public-seo'
+import { getCanonicalPublicRoute } from '../../../cms/public-routes'
 
 export default defineEventHandler(async (event) => {
   const schemaKey = event.context.params?.schemaKey as string
@@ -88,6 +90,10 @@ export default defineEventHandler(async (event) => {
     sourceSchema = await getSchemaVersion(db, schemaKey, sourceSchemaVersion)
     if (!sourceSchema) throw notFound('Content not found')
   }
+
+  const publishedRoute = usePublished
+    ? await getCanonicalPublicRoute(db, 'content', row.id)
+    : null
 
   let surroundings: { prev: any; next: any } | undefined
   if (includeSurroundings) {
@@ -183,6 +189,9 @@ export default defineEventHandler(async (event) => {
     description: item.description ?? null,
     image: item.image ?? null,
     content,
+    publicPath: row.publicPath ?? null,
+    publishedPublicPath: publishedRoute?.path ?? null,
+    seo: usePublished ? publishedRoute?.seo ?? null : parsePublicSeoJson(row.seoJson),
     ...(includeSchema ? { schema: sourceSchema } : {}),
     createdAt: row.createdAt,
     updatedAt: sourceUpdatedAt,

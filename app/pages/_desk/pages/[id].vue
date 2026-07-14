@@ -2,7 +2,6 @@
 import type { BreadcrumbItem, DropdownMenuItem } from '@nuxt/ui'
 import type { JSONContent } from '@tiptap/vue-3'
 import { validatePageDocumentBlocks } from '~~/shared/page-blocks'
-import { PUBLIC_PAGE_ROUTE_PREFIX } from '~~/shared/public-routing'
 import PageEditor from '~/components/PageEditor.vue'
 
 definePageMeta({
@@ -40,13 +39,31 @@ const emptyDoc: JSONContent = { type: 'doc', content: [{ type: 'paragraph' }] }
 const state = reactive({
   title: '',
   status: 'draft',
+  publicPath: '',
+  seoTitle: '',
+  seoDescription: '',
+  seoImageAssetId: '',
+  structuredDataType: '',
   content: emptyDoc as JSONContent
 })
+
+function publicMetadataPayload() {
+  return {
+    publicPath: state.publicPath,
+    seo: {
+      title: state.seoTitle || undefined,
+      description: state.seoDescription || undefined,
+      imageAssetId: state.seoImageAssetId || undefined,
+      structuredDataType: state.structuredDataType || undefined
+    }
+  }
+}
 
 function buildSnapshot() {
   return {
     title: state.title || '',
     status: state.status,
+    ...publicMetadataPayload(),
     content: state.content
   }
 }
@@ -112,6 +129,11 @@ watch(
     if (!next) return
     state.title = next.title || ''
     state.status = next.status || 'draft'
+    state.publicPath = next.publicPath || ''
+    state.seoTitle = next.seo?.title || ''
+    state.seoDescription = next.seo?.description || ''
+    state.seoImageAssetId = next.seo?.imageAssetId || ''
+    state.structuredDataType = next.seo?.structuredDataType || ''
     state.content = next.content || emptyDoc
     lastSavedJson.value = stableStringify(buildSnapshot())
   },
@@ -124,7 +146,7 @@ async function saveDraft() {
   try {
     await $fetch(`/api/page/${id.value}`, {
       method: 'PUT',
-      body: { revision: currentRevision.value, title: state.title, content: state.content }
+      body: { revision: currentRevision.value, title: state.title, content: state.content, ...publicMetadataPayload() }
     })
     toast.add({ title: 'Saved draft' })
     await refresh()
@@ -141,7 +163,7 @@ async function publish() {
   try {
     await $fetch(`/api/page/${id.value}/publish`, {
       method: 'POST',
-      body: { revision: currentRevision.value, title: state.title, content: state.content }
+      body: { revision: currentRevision.value, title: state.title, content: state.content, ...publicMetadataPayload() }
     })
     toast.add({ title: 'Published' })
     await refresh()
@@ -262,7 +284,7 @@ const actionMenuItems = computed<DropdownMenuItem[][]>(() => {
     groups.push([{
       label: 'View published',
       icon: 'i-lucide-external-link',
-      to: `/${PUBLIC_PAGE_ROUTE_PREFIX}/${id.value}`,
+      to: doc.value?.publishedPublicPath || undefined,
       target: '_blank'
     }])
   }
@@ -365,6 +387,18 @@ const actionMenuItems = computed<DropdownMenuItem[][]>(() => {
           <p v-if="publishValidationIssues[0]" class="text-sm text-error">
             {{ publishValidationIssues[0].message }}
           </p>
+        </div>
+
+        <div class="border-b border-muted bg-default p-4">
+          <CmsPublicMetadataFields
+            v-model:public-path="state.publicPath"
+            v-model:title="state.seoTitle"
+            v-model:description="state.seoDescription"
+            v-model:image-asset-id="state.seoImageAssetId"
+            v-model:structured-data-type="state.structuredDataType"
+            show-path
+            :disabled="isDeleted"
+          />
         </div>
 
         <PageEditor v-model="state.content" :editable="!isDeleted" class="min-h-0 flex-1" />

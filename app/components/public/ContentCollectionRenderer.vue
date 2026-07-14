@@ -12,7 +12,7 @@ const layoutClass = computed(() => props.template === 'list'
     <NuxtLink
       v-for="item in items"
       :key="item.id"
-      :to="`/${schemaKey}/${item.id}`"
+      :to="item.publicPath || `/${schemaKey}/${item.id}`"
       class="group block overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
       :class="template === 'list' ? 'flex items-center gap-4 p-4' : 'rounded-xl border border-default bg-default'"
     >

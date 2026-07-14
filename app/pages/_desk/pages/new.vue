@@ -34,8 +34,25 @@ const emptyDoc: JSONContent = { type: 'doc', content: [{ type: 'paragraph' }] }
 
 const state = reactive({
   title: '',
+  publicPath: '',
+  seoTitle: '',
+  seoDescription: '',
+  seoImageAssetId: '',
+  structuredDataType: '',
   content: emptyDoc as JSONContent
 })
+
+function publicMetadataPayload() {
+  return {
+    publicPath: state.publicPath,
+    seo: {
+      title: state.seoTitle || undefined,
+      description: state.seoDescription || undefined,
+      imageAssetId: state.seoImageAssetId || undefined,
+      structuredDataType: state.structuredDataType || undefined
+    }
+  }
+}
 const starterChoice = ref<'blank' | 'starter' | null>(null)
 
 function chooseStarter(choice: 'blank' | 'starter') {
@@ -48,6 +65,7 @@ function chooseStarter(choice: 'blank' | 'starter') {
 function buildSnapshot() {
   return {
     title: state.title || '',
+    ...publicMetadataPayload(),
     content: state.content
   }
 }
@@ -69,7 +87,7 @@ async function saveDraft() {
   try {
     const res = await $fetch<{ id: string }>('/api/page', {
       method: 'POST',
-      body: { title: state.title, content: state.content }
+      body: { title: state.title, content: state.content, ...publicMetadataPayload() }
     })
     toast.add({ title: 'Created', description: res.id })
     allowNextNavigation()
@@ -88,12 +106,12 @@ async function publish() {
   try {
     const created = await $fetch<{ id: string; revision: number }>('/api/page', {
       method: 'POST',
-      body: { title: state.title, content: state.content }
+      body: { title: state.title, content: state.content, ...publicMetadataPayload() }
     })
     createdId = created.id
     await $fetch(`/api/page/${created.id}/publish`, {
       method: 'POST',
-      body: { revision: created.revision, title: state.title, content: state.content }
+      body: { revision: created.revision, title: state.title, content: state.content, ...publicMetadataPayload() }
     })
     toast.add({ title: 'Published', description: created.id })
     allowNextNavigation()
@@ -150,6 +168,17 @@ async function publish() {
           <p v-if="publishValidationIssues[0]" class="mt-2 text-sm text-error">
             {{ publishValidationIssues[0].message }}
           </p>
+        </div>
+
+        <div class="border-b border-muted bg-default p-4">
+          <CmsPublicMetadataFields
+            v-model:public-path="state.publicPath"
+            v-model:title="state.seoTitle"
+            v-model:description="state.seoDescription"
+            v-model:image-asset-id="state.seoImageAssetId"
+            v-model:structured-data-type="state.structuredDataType"
+            show-path
+          />
         </div>
 
         <div

@@ -47,6 +47,7 @@ export const REQUIRED_INSTALL_TABLES = [
   'membership_invitation',
   'page',
   'publication_revision',
+  'public_route',
   'registration_rate_limit',
   'schema',
   'schema_active',

@@ -5,6 +5,8 @@ type Presentation = {
   preset: 'generic' | 'article' | 'catalog'
   collectionTemplate: 'list' | 'cards' | 'catalog-grid'
   detailTemplate: 'document' | 'article' | 'catalog'
+  slugFieldId?: string
+  structuredDataType?: 'WebPage' | 'Article' | 'BlogPosting' | 'NewsArticle' | 'Product'
   slots: Partial<Record<'title' | 'description' | 'image' | 'body' | 'gallery' | 'price', string>>
 }
 
@@ -26,6 +28,13 @@ const detailOptions = [
   { label: 'Article', value: 'article' },
   { label: 'Catalog', value: 'catalog' }
 ]
+const structuredDataOptions = [
+  { label: 'Web page', value: 'WebPage' },
+  { label: 'Article', value: 'Article' },
+  { label: 'Blog post', value: 'BlogPosting' },
+  { label: 'News article', value: 'NewsArticle' },
+  { label: 'Product', value: 'Product' }
+]
 
 function options(kinds: string[]) {
   return props.fields.filter(field => !field.system && kinds.includes(field.kind)).map(field => ({
@@ -43,6 +52,7 @@ const slotOptions = computed(() => ({
   gallery: options(['asset_list', 'asset']),
   price: options(['number', 'integer', 'string'])
 }))
+const slugOptions = computed(() => options(['string', 'text']))
 
 function first(kinds: string[], keys: string[]) {
   const fields = props.fields.filter(field => !field.system && kinds.includes(field.kind))
@@ -76,6 +86,9 @@ function applyPreset(value: unknown) {
     preset: value,
     collectionTemplate: value === 'generic' ? 'list' : value === 'article' ? 'cards' : 'catalog-grid',
     detailTemplate: value === 'generic' ? 'document' : value,
+    slugFieldId: props.modelValue.slugFieldId,
+    structuredDataType: props.modelValue.structuredDataType
+      ?? (value === 'article' ? 'Article' : value === 'catalog' ? 'Product' : 'WebPage'),
     slots
   })
 }
@@ -94,6 +107,28 @@ function applyPreset(value: unknown) {
       </UFormField>
       <UFormField label="Detail template">
         <USelect :model-value="modelValue.detailTemplate" :items="detailOptions" class="w-full" @update:model-value="update({ detailTemplate: $event as Presentation['detailTemplate'] })" />
+      </UFormField>
+    </div>
+    <div class="grid gap-4 md:grid-cols-2">
+      <UFormField label="Slug source" description="Published values from this field generate stable content slugs.">
+        <USelectMenu
+          :model-value="modelValue.slugFieldId"
+          :items="slugOptions"
+          value-key="value"
+          label-key="label"
+          clear
+          placeholder="Use the title mapping"
+          class="w-full"
+          @update:model-value="update({ slugFieldId: typeof $event === 'string' ? $event : undefined })"
+        />
+      </UFormField>
+      <UFormField label="Structured data type" description="Only this safe schema.org type is emitted.">
+        <USelect
+          :model-value="modelValue.structuredDataType || 'WebPage'"
+          :items="structuredDataOptions"
+          class="w-full"
+          @update:model-value="update({ structuredDataType: $event as Presentation['structuredDataType'] })"
+        />
       </UFormField>
     </div>
     <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">

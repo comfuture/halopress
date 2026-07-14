@@ -14,13 +14,14 @@ import { badRequest, notFound } from '../../../utils/http'
 import { newId } from '../../../utils/ids'
 import { getTrustedRequestOrigin } from '../../../utils/request-origin'
 import { requireSchemaPermission } from '../../../utils/schema-permission'
+import { normalizePublicSeoOverrides } from '../../../../shared/public-seo'
 
 export default defineEventHandler(async (event) => {
   const schemaKey = event.context.params?.schemaKey as string
   await requireSchemaPermission(event, schemaKey, 'write')
   const session = await getAuthSession(event)
   const actorId = (session?.user as any)?.id ?? null
-  const body = await readBody<{ status?: string, content?: Record<string, unknown> }>(event)
+  const body = await readBody<{ status?: string, content?: Record<string, unknown>, seo?: unknown }>(event)
   assertDraftWriteStatus(body?.status)
   const db = await getDb(event)
   const active = await getActiveSchema(db, schemaKey)
@@ -29,6 +30,12 @@ export default defineEventHandler(async (event) => {
   const input = body?.content ?? {}
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw badRequest('Invalid content')
   const content = validateContentJson(active.jsonSchema, input)
+  let seo = null
+  try {
+    seo = normalizePublicSeoOverrides(body?.seo)
+  } catch (error) {
+    throw badRequest(error instanceof Error ? error.message : 'Invalid SEO metadata')
+  }
   const id = newId()
   const now = new Date()
   const status = 'draft'
@@ -41,6 +48,7 @@ export default defineEventHandler(async (event) => {
       schemaVersion: active.version,
       status,
       contentJson: JSON.stringify(content),
+      seoJson: seo ? JSON.stringify(seo) : null,
       currentRevision: 1,
       createdBy: actorId,
       updatedBy: actorId,
@@ -69,6 +77,7 @@ export default defineEventHandler(async (event) => {
       updatedAt: now,
       projectionScope: 'working',
       trustedOrigin: getTrustedRequestOrigin(event),
+      additionalAssetIds: seo?.imageAssetId ? [seo.imageAssetId] : [],
       statements
     })
   })
