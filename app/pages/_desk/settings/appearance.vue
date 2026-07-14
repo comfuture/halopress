@@ -4,6 +4,7 @@ import {
   SITE_NEUTRAL_COLORS,
   SITE_PRIMARY_COLORS,
   SITE_THEME_PRESETS,
+  siteThemePresetTokens,
   type SitePresentation
 } from '~~/shared/site-presentation'
 
@@ -24,8 +25,7 @@ const neutralItems = SITE_NEUTRAL_COLORS.map(value => ({ label: value[0]!.toUppe
 function applyPreset(value: string) {
   if (!(value in SITE_THEME_PRESETS)) return
   const presetName = value as keyof typeof SITE_THEME_PRESETS
-  const preset = SITE_THEME_PRESETS[presetName]
-  Object.assign(state, { preset: presetName, ...preset })
+  Object.assign(state, siteThemePresetTokens(presetName))
 }
 
 async function save() {
