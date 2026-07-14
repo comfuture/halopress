@@ -1,7 +1,9 @@
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
+import { reactive } from 'vue'
 import { describe, expect, it } from 'vitest'
 
+import { clonePageBlockAttrs } from '../app/editor/page/inspector-state'
 import { buildPageDocumentSegments, sanitizePageDocument } from '../app/editor/page/render-document'
 import { commitPageBlockLink, createPageBlockLinkDrafts, movePageBlockLink } from '../app/editor/page/links'
 import { pageBlockRegistry } from '../app/editor/page/registry'
@@ -63,6 +65,26 @@ describe('page block registry', () => {
     ])
   })
 
+  it('clones reactive inspector state into a detached plain snapshot', () => {
+    const editing = reactive({
+      component: 'pageCard',
+      props: { title: 'Reactive title', links: [{ label: 'Docs', to: '/docs' }] },
+      advanced: { spacing: 'wide' },
+      media: { url: '/assets/example/raw', alt: 'Example' }
+    })
+
+    const snapshot = clonePageBlockAttrs(editing)
+
+    expect(snapshot).toEqual({
+      component: 'pageCard',
+      props: { title: 'Reactive title', links: [{ label: 'Docs', to: '/docs' }] },
+      advanced: { spacing: 'wide' },
+      media: { url: '/assets/example/raw', alt: 'Example' }
+    })
+    expect(snapshot.props).not.toBe(editing.props)
+    expect(snapshot.media).not.toBe(editing.media)
+  })
+
   it('updates inspector attributes without forcing editor focus or cached node positions', async () => {
     const root = resolve(import.meta.dirname, '..')
     const editor = await readFile(resolve(root, 'app/components/PageEditor.vue'), 'utf8')
@@ -71,6 +93,8 @@ describe('page block registry', () => {
     expect(inspector).toContain('@update:model-value="updateLink(index, \'label\', $event)"')
     expect(inspector).toContain('@update:model-value="updateLink(index, \'to\', $event)"')
     expect(inspector).toContain('if (samePageBlockAttrs(attrs)) return')
+    expect(inspector).toContain('watch(editing, queueCommit, { deep: true, flush: \'sync\' })')
+    expect(inspector).not.toContain('setTimeout')
     expect(editor).toContain('editor.commands.updatePageBlockAttributes(attrs)')
     expect(editor).not.toContain('.focus()')
     expect(editor).not.toContain('selectedBlock.value.pos')

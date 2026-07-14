@@ -7,6 +7,7 @@ import {
   movePageBlockLink,
   type PageBlockLinkDraft
 } from '~/editor/page/links'
+import { clonePageBlockAttrs } from '~/editor/page/inspector-state'
 import type { PageBlockAttrs, PageBlockField } from '~/editor/page/types'
 
 const props = defineProps<{
@@ -35,7 +36,6 @@ const syncing = ref(false)
 const linkDrafts = ref<PageBlockLinkDraft[]>([])
 const advancedText = ref('{}')
 const advancedError = ref<string>()
-let commitTimer: ReturnType<typeof setTimeout> | undefined
 
 const linkTargetOptions = [
   { label: 'Same tab', value: '_self' },
@@ -56,10 +56,6 @@ const iconOptions = [
   'i-lucide-star'
 ].map(value => ({ label: value.replace('i-lucide-', ''), value, icon: value }))
 
-function cloneAttrs(attrs: PageBlockAttrs): PageBlockAttrs {
-  return structuredClone(attrs)
-}
-
 function samePageBlockAttrs(attrs: PageBlockAttrs) {
   return editing.component === attrs.component
     && JSON.stringify(editing.props) === JSON.stringify(attrs.props)
@@ -70,12 +66,8 @@ function samePageBlockAttrs(attrs: PageBlockAttrs) {
 function resetFromAttrs(attrs: PageBlockAttrs | null) {
   if (!attrs) return
   if (samePageBlockAttrs(attrs)) return
-  if (commitTimer) {
-    clearTimeout(commitTimer)
-    commitTimer = undefined
-  }
   syncing.value = true
-  const next = cloneAttrs(attrs)
+  const next = clonePageBlockAttrs(attrs)
   editing.component = next.component
   editing.props = next.props
   editing.advanced = next.advanced
@@ -92,14 +84,10 @@ watch(() => props.attrs, resetFromAttrs, { immediate: true, deep: true })
 
 function queueCommit() {
   if (syncing.value || !props.attrs || !props.editable) return
-  if (commitTimer) clearTimeout(commitTimer)
-  commitTimer = setTimeout(() => emit('update', cloneAttrs(editing)), 180)
+  emit('update', clonePageBlockAttrs(editing))
 }
 
-watch(editing, queueCommit, { deep: true })
-onBeforeUnmount(() => {
-  if (commitTimer) clearTimeout(commitTimer)
-})
+watch(editing, queueCommit, { deep: true, flush: 'sync' })
 
 const validationMessage = computed(() => {
   if (!props.attrs) return undefined
