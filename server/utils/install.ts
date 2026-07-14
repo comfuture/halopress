@@ -37,6 +37,7 @@ export const REQUIRED_INSTALL_TABLES = [
   'content_ref_list',
   'content_search_data',
   'document_asset_ref',
+  'document_revision',
   'installation',
   'page',
   'publication_revision',

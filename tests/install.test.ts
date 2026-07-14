@@ -80,6 +80,20 @@ describe('installation state', () => {
     })
   })
 
+  it('requires the editorial revision table before reporting installation readiness', async () => {
+    await withDatabase(async (db) => {
+      await runMigrations(db)
+      await db.run(sql.raw('DROP TABLE document_revision'))
+
+      expect(await getInstallStatus(db)).toMatchObject({
+        ready: false,
+        canInstall: false,
+        phase: 'migration_required',
+        missingTables: ['document_revision']
+      })
+    })
+  })
+
   it('does not report ready until the lease owner explicitly completes installation', async () => {
     await withDatabase(async (db) => {
       await runMigrations(db)
