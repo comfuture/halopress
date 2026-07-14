@@ -34,7 +34,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     description: 'Public identity, metadata, and site shell.',
     icon: 'i-lucide-globe-2',
     to: '/_desk/settings/site',
-    availability: 'extension'
+    availability: 'available'
   },
   {
     id: 'appearance',
@@ -42,7 +42,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     description: 'Theme, colors, typography, and color mode.',
     icon: 'i-lucide-palette',
     to: '/_desk/settings/appearance',
-    availability: 'extension'
+    availability: 'available'
   },
   {
     id: 'navigation',
@@ -50,7 +50,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     description: 'Public header links and their order.',
     icon: 'i-lucide-menu',
     to: '/_desk/settings/navigation',
-    availability: 'extension'
+    availability: 'available'
   },
   {
     id: 'footer',
@@ -58,7 +58,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     description: 'Footer layout, links, and copyright.',
     icon: 'i-lucide-panel-bottom',
     to: '/_desk/settings/footer',
-    availability: 'extension'
+    availability: 'available'
   },
   {
     id: 'authentication',

@@ -12,14 +12,30 @@ type AuthenticationSummary = {
 }
 
 const { data: authentication, pending, error, refresh } = await useFetch<AuthenticationSummary>('/api/settings/authentication')
+const {
+  data: presentation,
+  pending: presentationPending,
+  error: presentationError,
+  refresh: refreshPresentation
+} = await useFetch<{ configured: boolean, malformedStoredValue: boolean }>('/api/settings/site-presentation')
 
 const sections = computed(() => SETTINGS_SECTIONS.filter(section => section.id !== 'overview'))
+const presentationSectionIds = new Set(['site', 'appearance', 'navigation', 'footer'])
 
 function statusFor(sectionId: string) {
+  if (presentationSectionIds.has(sectionId)) {
+    if (presentation.value?.malformedStoredValue) return { label: 'Needs repair', color: 'warning' as const }
+    if (presentation.value?.configured) return { label: 'Configured', color: 'success' as const }
+    return { label: 'Defaults active', color: 'info' as const }
+  }
   if (sectionId !== 'authentication') return { label: 'Ready to extend', color: 'neutral' as const }
   if (authentication.value?.enabled) return { label: 'Enabled', color: 'success' as const }
   if (authentication.value?.configured) return { label: 'Ready to enable', color: 'info' as const }
   return { label: 'Not configured', color: 'neutral' as const }
+}
+
+async function refreshAll() {
+  await Promise.all([refresh(), refreshPresentation()])
 }
 </script>
 
@@ -28,14 +44,14 @@ function statusFor(sectionId: string) {
     section="overview"
     title="Settings"
     description="Manage deployment-owned configuration through typed, purpose-built sections."
-    :pending="pending"
-    @refresh="refresh()"
+    :pending="pending || presentationPending"
+    @refresh="refreshAll"
   >
     <div class="space-y-6">
       <UAlert
-        v-if="error"
+        v-if="error || presentationError"
         title="Some settings status is unavailable"
-        :description="error.statusMessage || 'Refresh the page and try again.'"
+        :description="error?.statusMessage || presentationError?.statusMessage || 'Refresh the page and try again.'"
         color="warning"
         variant="subtle"
         icon="i-lucide-triangle-alert"
@@ -57,7 +73,11 @@ function statusFor(sectionId: string) {
                 {{ statusFor(section.id).label }}
               </UBadge>
               <span class="text-xs text-muted">
-                {{ section.id === 'authentication' && authentication?.envManaged ? 'Environment managed' : 'Desk section' }}
+                {{ section.id === 'authentication' && authentication?.envManaged
+                  ? 'Environment managed'
+                  : presentationSectionIds.has(section.id) && !presentation?.configured
+                    ? 'Built-in default'
+                    : 'Desk section' }}
               </span>
             </div>
           </template>

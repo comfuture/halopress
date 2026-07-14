@@ -5,7 +5,7 @@ import { documentAssetRef } from '../db/schema'
 import { executeDbStatement } from '../db/transaction'
 import type { DbStatement } from '../db/transaction'
 
-export type DocumentKind = 'content' | 'page'
+export type DocumentKind = 'content' | 'page' | 'settings'
 export type ProjectionScope = 'working' | 'published'
 
 const assetPathPattern = /(?:^|["'(\s])\/assets\/([^/?#"')\s]+)\/raw(?:[?#][^\s"')]*)?/g
