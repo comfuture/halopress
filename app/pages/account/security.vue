@@ -5,19 +5,12 @@ definePageMeta({ layout: 'default' })
 
 const route = useRoute()
 const toast = useToast()
-const { data: session, status, getSession, getProviders, signIn } = useAuth()
+const { getProviders, signIn } = useAuth()
 const providers = await getProviders().catch(() => ({} as Record<string, unknown>))
 const googleAvailable = Boolean(providers?.google)
 const loading = ref(false)
 const state = reactive({ password: '' })
 const schema = z.object({ password: z.string().min(1, 'Enter your current password') })
-
-onMounted(async () => {
-  if (status.value === 'loading') await getSession()
-  if (!session.value?.user) {
-    await navigateTo('/login?callbackUrl=%2Faccount%2Fsecurity', { replace: true })
-  }
-})
 
 async function connectGoogle() {
   loading.value = true

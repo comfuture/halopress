@@ -21,6 +21,9 @@ try {
 
 const oauthProviders = computed(() => Object.values(providers.value)
   .filter((provider): provider is { id: string; name: string } => Boolean(provider?.id) && provider?.id !== 'credentials'))
+const providerIcon = (providerId: string) => providerId === 'google'
+  ? 'i-simple-icons-google'
+  : 'i-lucide-key-round'
 
 async function continueWith(providerId: string) {
   const continuation = `/auth/continue?callbackUrl=${encodeURIComponent(props.callbackUrl)}`
@@ -37,7 +40,7 @@ async function continueWith(providerId: string) {
       block
       color="neutral"
       variant="outline"
-      icon="i-simple-icons-google"
+      :icon="providerIcon(provider.id)"
       :loading="loading"
       @click="continueWith(provider.id)"
     >

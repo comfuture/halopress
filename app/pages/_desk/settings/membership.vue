@@ -17,14 +17,19 @@ type Invitation = {
 }
 
 const toast = useToast()
-const locale = useDisplayLocale()
 const saving = ref(false)
 const inviting = ref(false)
 const invitationCode = ref('')
 const state = reactive({ mode: 'disabled' as MembershipSettings['mode'], defaultRole: 'user' })
 const invitationState = reactive({ email: '', roleKey: 'user', expiresInDays: 7 })
-const { data, pending, error, refresh } = await useFetch<MembershipSettings>('/api/settings/membership')
-const { data: invitations, refresh: refreshInvitations } = await useFetch<{ items: Invitation[] }>('/api/settings/membership/invitations')
+const [
+  { data, pending, error, refresh },
+  { data: invitations, refresh: refreshInvitations }
+] = await Promise.all([
+  useFetch<MembershipSettings>('/api/settings/membership'),
+  useFetch<{ items: Invitation[] }>('/api/settings/membership/invitations')
+])
+const locale = useDisplayLocale()
 
 watch(data, (value) => {
   if (!value) return
@@ -43,8 +48,9 @@ const roleOptions = computed(() => (data.value?.roles || []).map(role => ({
   label: role.title || role.roleKey,
   value: role.roleKey
 })))
-const formatExpiry = (value: string) => formatDateTime(value, locale.value, {
-  dateStyle: 'medium'
+const formatExpiry = (value: string) => formatDate(value, locale.value, {
+  month: 'short',
+  timeZone: 'UTC'
 })
 
 async function refreshAll() {
@@ -83,8 +89,16 @@ async function createInvitation() {
 }
 
 async function copyInvitation() {
-  await navigator.clipboard.writeText(invitationCode.value)
-  toast.add({ title: 'Invitation code copied', color: 'success' })
+  if (typeof navigator === 'undefined' || typeof navigator.clipboard?.writeText !== 'function') {
+    toast.add({ title: 'Clipboard access is not available', color: 'error' })
+    return
+  }
+  try {
+    await navigator.clipboard.writeText(invitationCode.value)
+    toast.add({ title: 'Invitation code copied', color: 'success' })
+  } catch {
+    toast.add({ title: 'Could not copy invitation code', color: 'error' })
+  }
 }
 </script>
 

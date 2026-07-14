@@ -2,6 +2,8 @@ import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
+import { formatDate } from '../app/composables/useDisplayLocale'
+
 const root = resolve(import.meta.dirname, '..')
 
 async function readProjectFile(path: string) {
@@ -55,8 +57,14 @@ describe('public membership UI contracts', () => {
   })
 
   it('requires explicit password reauthentication before linking Google by stable identity', async () => {
-    const security = await readProjectFile('app/pages/account/security.vue')
+    const [security, middleware] = await Promise.all([
+      readProjectFile('app/pages/account/security.vue'),
+      readProjectFile('app/middleware/desk-auth.global.ts')
+    ])
 
+    expect(security).not.toContain('onMounted(')
+    expect(middleware).toContain(`to.path === '/account' || to.path.startsWith('/account/')`)
+    expect(middleware).toContain('if (isAccountRoute) return')
     expect(security).toContain('Matching email alone never links accounts.')
     expect(security).toContain('<UFormField label="Current password" name="password" required>')
     expect(security).toMatch(/<UInput[^>]*type="password"[^>]*autocomplete="current-password"/)
@@ -64,5 +72,27 @@ describe('public membership UI contracts', () => {
     expect(security).toContain(`'/api/account/link/google'`)
     expect(security).toContain(`signIn('google'`)
     expect(security).toContain(`provider's stable account identity`)
+  })
+
+  it('uses resilient provider icons and invitation controls', async () => {
+    const [providers, membership, locale] = await Promise.all([
+      readProjectFile('app/components/PublicAuthProviders.vue'),
+      readProjectFile('app/pages/_desk/settings/membership.vue'),
+      readProjectFile('app/composables/useDisplayLocale.ts')
+    ])
+
+    expect(providers).toContain(`providerId === 'google'`)
+    expect(providers).toContain(`:icon="providerIcon(provider.id)"`)
+    expect(providers).toContain(`'i-lucide-key-round'`)
+    expect(membership).toMatch(/await Promise\.all\(\[\s*useFetch<MembershipSettings>/)
+    expect(membership).toContain(`const locale = useDisplayLocale()`)
+    expect(locale).toContain(`useState<string>('display-locale'`)
+    expect(membership).toContain(`timeZone: 'UTC'`)
+    expect(formatDate('2026-07-14T23:30:00-10:00', 'en-US', {
+      month: 'short',
+      timeZone: 'UTC'
+    })).toBe('Jul 15, 2026')
+    expect(membership).toContain(`typeof navigator.clipboard?.writeText !== 'function'`)
+    expect(membership).toContain('Could not copy invitation code')
   })
 })

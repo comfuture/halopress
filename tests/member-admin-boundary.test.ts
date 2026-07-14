@@ -10,6 +10,7 @@ vi.mock('../server/utils/auth', () => ({
 vi.stubGlobal('defineEventHandler', (handler: (event: any) => Promise<any>) => handler)
 
 let middleware: (event: any) => Promise<any>
+let accountMiddleware: (event: any) => Promise<any>
 
 function request(path: string) {
   const headers = new Map<string, unknown>()
@@ -39,6 +40,7 @@ function request(path: string) {
 
 beforeAll(async () => {
   middleware = (await import('../server/middleware/desk-auth')).default
+  accountMiddleware = (await import('../server/middleware/account-auth')).default
 })
 
 beforeEach(() => {
@@ -71,5 +73,27 @@ describe('server Desk membership boundary', () => {
     await expect(middleware(target.event)).resolves.toBeUndefined()
     expect(target.status()).toBe(200)
     expect(target.location()).toBeUndefined()
+  })
+})
+
+describe('server account boundary', () => {
+  it('does not guard unrelated routes with an account prefix', async () => {
+    const target = request('/accounting')
+    await expect(accountMiddleware(target.event)).resolves.toBeUndefined()
+    expect(target.status()).toBe(200)
+  })
+
+  it('redirects anonymous account requests before SSR rendering', async () => {
+    const target = request('/account/security?linked=google')
+    await accountMiddleware(target.event)
+    expect(target.status()).toBe(302)
+    expect(target.location()).toBe('/login?callbackUrl=%2Faccount%2Fsecurity%3Flinked%3Dgoogle')
+  })
+
+  it('allows active member sessions to manage their sign-in methods', async () => {
+    authState.session = { user: { id: 'member-1', role: 'user', accountType: 'member' } }
+    const target = request('/account/security')
+    await expect(accountMiddleware(target.event)).resolves.toBeUndefined()
+    expect(target.status()).toBe(200)
   })
 })
