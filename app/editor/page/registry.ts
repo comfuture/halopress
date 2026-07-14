@@ -46,7 +46,7 @@ const ctaFields: PageBlockComponent['fields'] = [
 ]
 
 const cardFields: PageBlockComponent['fields'] = [
-  { key: 'icon', label: 'Icon', type: 'text', help: 'Icon name, e.g. i-lucide-sparkles' },
+  { key: 'icon', label: 'Icon', type: 'icon', help: 'Choose a supported Lucide icon.' },
   { key: 'title', label: 'Title', type: 'text' },
   { key: 'description', label: 'Description', type: 'textarea' },
   { key: 'orientation', label: 'Orientation', type: 'select', options: orientationOptions },
@@ -60,9 +60,9 @@ const cardFields: PageBlockComponent['fields'] = [
     { label: 'Naked', value: 'naked' }
   ] },
   { key: 'highlight', label: 'Highlight', type: 'boolean' },
-  { key: 'highlightColor', label: 'Highlight Color', type: 'select', options: colorOptions },
+  { key: 'highlightColor', label: 'Highlight Color', type: 'color-token', options: colorOptions },
   { key: 'spotlight', label: 'Spotlight', type: 'boolean' },
-  { key: 'spotlightColor', label: 'Spotlight Color', type: 'select', options: colorOptions },
+  { key: 'spotlightColor', label: 'Spotlight Color', type: 'color-token', options: colorOptions },
   { key: 'to', label: 'Link To', type: 'url', placeholder: 'https://' },
   { key: 'target', label: 'Link Target', type: 'select', options: targetOptions }
 ]
@@ -77,7 +77,14 @@ const components: PageBlockComponent[] = [
       url: '',
       alt: ''
     },
-    fields: heroFields
+    fields: heroFields,
+    category: 'Hero',
+    icon: 'i-lucide-layout-template',
+    summary: 'A prominent introduction with headline, media, and actions.',
+    keywords: ['banner', 'headline', 'intro', 'landing'],
+    compatibility: 'page',
+    preview: { title: 'Hero', description: 'Large headline, description, media, and actions' },
+    insertion: 'block'
   },
   {
     key: 'pageCard',
@@ -88,7 +95,14 @@ const components: PageBlockComponent[] = [
       url: '',
       alt: ''
     },
-    fields: cardFields
+    fields: cardFields,
+    category: 'Content',
+    icon: 'i-lucide-square-stack',
+    summary: 'A linked content card with optional media and highlight.',
+    keywords: ['content', 'feature', 'link', 'tile'],
+    compatibility: 'page',
+    preview: { title: 'Card', description: 'Compact linked content with media and icon' },
+    insertion: 'block'
   },
   {
     key: 'pageCTA',
@@ -99,7 +113,14 @@ const components: PageBlockComponent[] = [
       url: '',
       alt: ''
     },
-    fields: ctaFields
+    fields: ctaFields,
+    category: 'Conversion',
+    icon: 'i-lucide-megaphone',
+    summary: 'A focused call to action with safe structured links.',
+    keywords: ['action', 'button', 'conversion', 'promo'],
+    compatibility: 'page',
+    preview: { title: 'Call to action', description: 'Focused message with action links' },
+    insertion: 'block'
   }
 ]
 

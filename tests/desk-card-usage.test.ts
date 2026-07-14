@@ -47,7 +47,7 @@ describe('Desk card usage', () => {
 
   it('uses semantic groups for related Desk controls', async () => {
     const groupedFormFiles = [
-      'app/components/PageEditor.vue',
+      'app/components/page-editor/PageBlockInspector.vue',
       'app/components/cms/AssetPicker.vue',
       'app/components/cms/ContentForm.vue',
       'app/components/cms/ReferencePicker.vue',

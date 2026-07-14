@@ -4,6 +4,9 @@ export type PageBlockLinkDraft = {
   label: string
   to: string
   target: '_self' | '_blank'
+  icon?: string
+  color?: string
+  variant?: string
   original: Record<string, unknown>
   error?: string
 }
@@ -26,6 +29,9 @@ export function createPageBlockLinkDrafts(value: unknown): PageBlockLinkDraft[] 
       label: typeof original.label === 'string' ? original.label : '',
       to: typeof original.to === 'string' ? original.to : '',
       target: original.target === '_blank' ? '_blank' as const : '_self' as const,
+      icon: typeof original.icon === 'string' ? original.icon : '',
+      color: typeof original.color === 'string' ? original.color : '',
+      variant: typeof original.variant === 'string' ? original.variant : '',
       original: { ...original }
     }
   })
@@ -50,6 +56,34 @@ export function commitPageBlockLink(
   }
   if (draft.target === '_blank') next.target = '_blank'
   else delete next.target
+  if (draft.icon) next.icon = draft.icon
+  else delete next.icon
+  if (draft.color) next.color = draft.color
+  else delete next.color
+  if (draft.variant) next.variant = draft.variant
+  else delete next.variant
   links[index] = next
   return { links }
+}
+
+export function movePageBlockLink(
+  drafts: PageBlockLinkDraft[],
+  current: unknown,
+  index: number,
+  direction: -1 | 1
+): { drafts: PageBlockLinkDraft[], links: Record<string, unknown>[] } | undefined {
+  const destination = index + direction
+  if (index < 0 || destination < 0 || destination >= drafts.length) return undefined
+
+  const nextDrafts = [...drafts]
+  const [draft] = nextDrafts.splice(index, 1)
+  nextDrafts.splice(destination, 0, draft!)
+
+  const links = Array.isArray(current)
+    ? current.slice(0, 12).map(curatedLinkProperties)
+    : []
+  const [link] = links.splice(index, 1)
+  links.splice(destination, 0, link ?? {})
+
+  return { drafts: nextDrafts, links }
 }

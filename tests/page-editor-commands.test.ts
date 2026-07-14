@@ -1,0 +1,190 @@
+// @vitest-environment happy-dom
+
+import { Editor } from '@tiptap/core'
+import { NodeSelection } from '@tiptap/pm/state'
+import StarterKit from '@tiptap/starter-kit'
+import { afterEach, describe, expect, it } from 'vitest'
+
+import PageBlock from '../app/editor/page/PageBlock'
+import type { PageBlockAttrs, PageBlockComponentKey } from '../app/editor/page/types'
+
+const editors: Editor[] = []
+const testStarterKit = StarterKit.configure({ trailingNode: false })
+
+function block(component: PageBlockComponentKey, title: string) {
+  return {
+    type: 'pageBlock',
+    attrs: {
+      component,
+      props: { title },
+      advanced: {},
+      media: { url: '', alt: '' }
+    }
+  }
+}
+
+function createEditor(components: PageBlockComponentKey[] = ['pageHero', 'pageCard', 'pageCTA']) {
+  const editor = new Editor({
+    extensions: [testStarterKit, PageBlock],
+    content: {
+      type: 'doc',
+      content: components.map(component => block(component, component))
+    }
+  })
+  editors.push(editor)
+  return editor
+}
+
+function positionAt(editor: Editor, index: number) {
+  let position = -1
+  editor.state.doc.forEach((_node, offset, childIndex) => {
+    if (childIndex === index) position = offset
+  })
+  if (position < 0) throw new Error(`Missing document child ${index}`)
+  return position
+}
+
+function selectAt(editor: Editor, index: number) {
+  editor.commands.setNodeSelection(positionAt(editor, index))
+}
+
+function components(editor: Editor) {
+  return (editor.getJSON().content ?? []).map(node => node.attrs?.component)
+}
+
+function titleAt(editor: Editor, index: number) {
+  return (editor.getJSON().content?.[index]?.attrs?.props as { title?: string } | undefined)?.title
+}
+
+function expectSingleTransaction(editor: Editor, action: () => boolean) {
+  let transactions = 0
+  const handler = () => {
+    transactions += 1
+  }
+  editor.on('transaction', handler)
+  expect(action()).toBe(true)
+  editor.off('transaction', handler)
+  expect(transactions).toBe(1)
+}
+
+afterEach(() => {
+  while (editors.length) editors.pop()?.destroy()
+})
+
+describe('page block transaction commands', () => {
+  it('inserts registered blocks at exact top-level positions and selects the insertion', () => {
+    const editor = createEditor(['pageHero', 'pageCTA'])
+    const attrs: PageBlockAttrs & { component: PageBlockComponentKey } = {
+      component: 'pageCard',
+      props: { title: 'Inserted card' },
+      advanced: {},
+      media: { url: '', alt: '' }
+    }
+
+    expectSingleTransaction(editor, () => editor.commands.insertPageBlockAt(positionAt(editor, 1), attrs))
+
+    expect(components(editor)).toEqual(['pageHero', 'pageCard', 'pageCTA'])
+    expect(titleAt(editor, 1)).toBe('Inserted card')
+    expect(editor.state.selection).toBeInstanceOf(NodeSelection)
+    expect(editor.state.selection.from).toBe(positionAt(editor, 1))
+    expect(editor.commands.undo()).toBe(true)
+    expect(components(editor)).toEqual(['pageHero', 'pageCTA'])
+  })
+
+  it('rejects unknown component keys and non-top-level insertion positions', () => {
+    const editor = new Editor({
+      extensions: [testStarterKit, PageBlock],
+      content: {
+        type: 'doc',
+        content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Text' }] }]
+      }
+    })
+    editors.push(editor)
+    const before = editor.getJSON()
+    const attrs = {
+      component: 'retiredBlock',
+      props: {},
+      advanced: {},
+      media: {}
+    } as any
+
+    expect(editor.commands.insertPageBlockAt(0, attrs)).toBe(false)
+    expect(editor.commands.insertPageBlockAt(1, { ...attrs, component: 'pageHero' })).toBe(false)
+    expect(editor.getJSON()).toEqual(before)
+  })
+
+  it('duplicates the live selected block, selects the copy, and undoes in one step', () => {
+    const editor = createEditor()
+    selectAt(editor, 1)
+
+    expectSingleTransaction(editor, () => editor.commands.duplicatePageBlock())
+
+    expect(components(editor)).toEqual(['pageHero', 'pageCard', 'pageCard', 'pageCTA'])
+    expect(editor.state.selection).toBeInstanceOf(NodeSelection)
+    expect(editor.state.selection.from).toBe(positionAt(editor, 2))
+    expect(editor.commands.undo()).toBe(true)
+    expect(components(editor)).toEqual(['pageHero', 'pageCard', 'pageCTA'])
+  })
+
+  it('deletes the live selected block and selects a neighboring page block', () => {
+    const editor = createEditor()
+    selectAt(editor, 1)
+
+    expectSingleTransaction(editor, () => editor.commands.deletePageBlock())
+
+    expect(components(editor)).toEqual(['pageHero', 'pageCTA'])
+    expect(editor.state.selection).toBeInstanceOf(NodeSelection)
+    expect(editor.state.selection.from).toBe(positionAt(editor, 1))
+    expect(editor.commands.undo()).toBe(true)
+    expect(components(editor)).toEqual(['pageHero', 'pageCard', 'pageCTA'])
+
+    selectAt(editor, 2)
+    expect(editor.commands.deletePageBlock()).toBe(true)
+    expect(editor.state.selection.from).toBe(positionAt(editor, 1))
+  })
+
+  it('moves the live selected block in either direction with stable selection', () => {
+    const editor = createEditor()
+    selectAt(editor, 1)
+
+    expectSingleTransaction(editor, () => editor.commands.movePageBlockUp())
+    expect(components(editor)).toEqual(['pageCard', 'pageHero', 'pageCTA'])
+    expect(editor.state.selection.from).toBe(positionAt(editor, 0))
+    expect(editor.commands.undo()).toBe(true)
+
+    selectAt(editor, 1)
+    expectSingleTransaction(editor, () => editor.commands.movePageBlockDown())
+    expect(components(editor)).toEqual(['pageHero', 'pageCTA', 'pageCard'])
+    expect(editor.state.selection.from).toBe(positionAt(editor, 2))
+    expect(editor.commands.undo()).toBe(true)
+    expect(components(editor)).toEqual(['pageHero', 'pageCard', 'pageCTA'])
+  })
+
+  it('updates selected block attributes without using a cached position', () => {
+    const editor = createEditor()
+    selectAt(editor, 2)
+
+    expectSingleTransaction(editor, () => editor.commands.updatePageBlockAttributes({
+      props: { title: 'Updated CTA' }
+    }))
+
+    expect(titleAt(editor, 2)).toBe('Updated CTA')
+    expect(editor.state.selection).toBeInstanceOf(NodeSelection)
+    expect(editor.state.selection.from).toBe(positionAt(editor, 2))
+    expect(editor.commands.undo()).toBe(true)
+    expect(titleAt(editor, 2)).toBe('pageCTA')
+  })
+
+  it('rejects commands without a registered page-block NodeSelection', () => {
+    const editor = createEditor(['pageHero'])
+    const before = editor.getJSON()
+    editor.commands.selectAll()
+
+    expect(editor.commands.duplicatePageBlock()).toBe(false)
+    expect(editor.commands.deletePageBlock()).toBe(false)
+    expect(editor.commands.movePageBlockUp()).toBe(false)
+    expect(editor.commands.movePageBlockDown()).toBe(false)
+    expect(editor.commands.updatePageBlockAttributes({ component: 'retiredBlock' } as any)).toBe(false)
+    expect(editor.getJSON()).toEqual(before)
+  })
+})

@@ -19,7 +19,9 @@ export default defineEventHandler(async (event) => {
   const existing = await db.select().from(pageTable).where(eq(pageTable.id, id)).get()
   if (!existing) throw notFound('Page not found')
   const title = body?.title !== undefined ? body.title.trim() || null : existing.title
-  const content = body?.content !== undefined ? normalizePageContent(body.content) : normalizePageContent(existing.contentJson)
+  const content = body?.content !== undefined
+    ? normalizePageContent(body.content, { mode: 'publish' })
+    : normalizePageContent(existing.contentJson, { mode: 'publish' })
   return {
     ok: true,
     ...(await publishPageWorking({

@@ -1,9 +1,11 @@
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
+import { reactive } from 'vue'
 import { describe, expect, it } from 'vitest'
 
+import { clonePageBlockAttrs } from '../app/editor/page/inspector-state'
 import { buildPageDocumentSegments, sanitizePageDocument } from '../app/editor/page/render-document'
-import { commitPageBlockLink, createPageBlockLinkDrafts } from '../app/editor/page/links'
+import { commitPageBlockLink, createPageBlockLinkDrafts, movePageBlockLink } from '../app/editor/page/links'
 import { pageBlockRegistry } from '../app/editor/page/registry'
 import { normalizePageContent } from '../server/cms/page-content'
 import { resolvePageBlock } from '../shared/page-blocks'
@@ -44,13 +46,58 @@ describe('page block registry', () => {
     })).toHaveProperty('error')
   })
 
-  it('updates link document attributes as editors type without stealing inspector focus', async () => {
-    const editor = await readFile(resolve(import.meta.dirname, '../app/components/PageEditor.vue'), 'utf8')
+  it('moves link drafts without revalidating or discarding incomplete input', () => {
+    const drafts = createPageBlockLinkDrafts([
+      { label: 'First', to: '/first' },
+      { label: 'Second', to: '/second' }
+    ])
+    drafts[0]!.to = 'javascript:in-progress'
 
-    expect(editor).toContain('@update:model-value="updateLinkText(index, \'label\', $event)"')
-    expect(editor).toContain('@update:model-value="updateLinkText(index, \'to\', $event)"')
-    expect(editor).not.toContain('@blur="commitLink(index)"')
-    expect(editor).toContain('editor\n    .chain()\n    .setNodeSelection(selectedBlock.value.pos)')
+    const moved = movePageBlockLink(drafts, [
+      { label: 'First', to: '/first' },
+      { label: 'Second', to: '/second' }
+    ], 0, 1)
+
+    expect(moved?.drafts.map(draft => draft.to)).toEqual(['/second', 'javascript:in-progress'])
+    expect(moved?.links).toEqual([
+      { label: 'Second', to: '/second' },
+      { label: 'First', to: '/first' }
+    ])
+  })
+
+  it('clones reactive inspector state into a detached plain snapshot', () => {
+    const editing = reactive({
+      component: 'pageCard',
+      props: { title: 'Reactive title', links: [{ label: 'Docs', to: '/docs' }] },
+      advanced: { spacing: 'wide' },
+      media: { url: '/assets/example/raw', alt: 'Example' }
+    })
+
+    const snapshot = clonePageBlockAttrs(editing)
+
+    expect(snapshot).toEqual({
+      component: 'pageCard',
+      props: { title: 'Reactive title', links: [{ label: 'Docs', to: '/docs' }] },
+      advanced: { spacing: 'wide' },
+      media: { url: '/assets/example/raw', alt: 'Example' }
+    })
+    expect(snapshot.props).not.toBe(editing.props)
+    expect(snapshot.media).not.toBe(editing.media)
+  })
+
+  it('updates inspector attributes without forcing editor focus or cached node positions', async () => {
+    const root = resolve(import.meta.dirname, '..')
+    const editor = await readFile(resolve(root, 'app/components/PageEditor.vue'), 'utf8')
+    const inspector = await readFile(resolve(root, 'app/components/page-editor/PageBlockInspector.vue'), 'utf8')
+
+    expect(inspector).toContain('@update:model-value="updateLink(index, \'label\', $event)"')
+    expect(inspector).toContain('@update:model-value="updateLink(index, \'to\', $event)"')
+    expect(inspector).toContain('if (samePageBlockAttrs(attrs)) return')
+    expect(inspector).toContain('watch(editing, queueCommit, { deep: true, flush: \'sync\' })')
+    expect(inspector).not.toContain('setTimeout')
+    expect(editor).toContain('editor.commands.updatePageBlockAttributes(attrs)')
+    expect(editor).not.toContain('.focus()')
+    expect(editor).not.toContain('selectedBlock.value.pos')
   })
 
   it('resolves only code-owned components and strips unchecked properties', () => {
