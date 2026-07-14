@@ -24,19 +24,20 @@ export default defineEventHandler(async (event) => {
   const body = await readBody<{ ast?: unknown; note?: string; migrate?: boolean; revision?: number }>(event)
   const db = await getDb(event)
 
+  const draft = await getDraft(db, schemaKey)
+  if (!draft) throw notFound('Draft not found')
+  assertExpectedRevision({
+    currentRevision: draft.revision,
+    updatedAt: draft.updatedAt,
+    updatedBy: draft.updatedBy
+  }, requireExpectedRevision(body?.revision))
+
   let ast: any = null
   if (body?.ast) {
     const parsed = schemaAstSchema.safeParse(body.ast)
     if (!parsed.success) throw badRequest('Invalid AST', parsed.error.flatten())
     ast = parsed.data
   } else {
-    const draft = await getDraft(db, schemaKey)
-    if (!draft) throw notFound('Draft not found')
-    assertExpectedRevision({
-      currentRevision: draft.revision,
-      updatedAt: draft.updatedAt,
-      updatedBy: draft.updatedBy
-    }, requireExpectedRevision(body?.revision))
     ast = draft.ast
   }
   if (ast.schemaKey !== schemaKey) throw badRequest('schemaKey mismatch')
