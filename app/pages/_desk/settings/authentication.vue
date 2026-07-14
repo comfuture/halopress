@@ -127,25 +127,14 @@ function discardChanges() {
 </script>
 
 <template>
-  <UDashboardPanel id="desk-authentication-settings">
-    <template #header>
-      <DeskNavbar title="Authentication" description="Let administrators sign in with Google while keeping password access.">
-        <template #actions>
-          <UButton
-            color="neutral"
-            variant="outline"
-            icon="i-lucide-rotate-cw"
-            :loading="pending"
-            @click="refresh()"
-          >
-            Refresh
-          </UButton>
-        </template>
-      </DeskNavbar>
-    </template>
-
-    <template #body>
-      <div class="mx-auto w-full max-w-3xl space-y-6 pb-10">
+  <SettingsShell
+    section="authentication"
+    title="Authentication"
+    description="Let administrators sign in with Google while keeping password access."
+    :pending="pending"
+    @refresh="refresh()"
+  >
+    <div class="mx-auto w-full max-w-3xl space-y-6">
         <UAlert
           v-if="error"
           title="Authentication settings are unavailable"
@@ -339,7 +328,6 @@ function discardChanges() {
           <UIcon name="i-lucide-loader-circle" class="size-6 animate-spin text-muted" />
           <span class="sr-only">Loading authentication settings</span>
         </div>
-      </div>
-    </template>
-  </UDashboardPanel>
+    </div>
+  </SettingsShell>
 </template>

@@ -317,7 +317,8 @@ describe('dashboard onboarding', () => {
     expect(dashboard).toContain('items-start gap-4 sm:gap-6')
 
     const settings = await readFile(join(projectRoot, 'app/pages/_desk/settings/index.vue'), 'utf8')
-    expect(settings).toContain('await navigateTo(\'/_desk\', { replace: true })')
+    expect(settings).toContain('<SettingsShell')
+    expect(settings).not.toContain('navigateTo(')
 
     const statusApi = await readFile(join(projectRoot, 'server/api/settings/onboarding.get.ts'), 'utf8')
     expect(statusApi).toContain('BOOTSTRAP_CONTENT_ID')

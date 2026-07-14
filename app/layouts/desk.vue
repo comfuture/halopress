@@ -69,7 +69,7 @@ const navItems = computed(() => ([
   },
   {
     label: 'Settings',
-    to: '/_desk/settings/authentication',
+    to: '/_desk/settings',
     icon: 'i-lucide-settings',
     active: isSettingsRoute.value
   },
