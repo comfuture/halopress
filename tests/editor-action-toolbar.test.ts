@@ -6,7 +6,8 @@ const files = {
   contentEdit: new URL('../app/pages/_desk/content/[schemaKey]/[id].vue', import.meta.url),
   contentNew: new URL('../app/pages/_desk/content/[schemaKey]/new.vue', import.meta.url),
   pageEdit: new URL('../app/pages/_desk/pages/[id].vue', import.meta.url),
-  pageNew: new URL('../app/pages/_desk/pages/new.vue', import.meta.url)
+  pageNew: new URL('../app/pages/_desk/pages/new.vue', import.meta.url),
+  pageListApi: new URL('../server/api/page/index.get.ts', import.meta.url)
 }
 
 describe('editor action toolbar', () => {
@@ -66,6 +67,14 @@ describe('editor action toolbar', () => {
       expect(source).not.toContain('Download JSON')
       expect(source).not.toContain('i-lucide-download')
     }
+  })
+
+  it('keeps soft-deleted pages out of the default page list', async () => {
+    const source = await readFile(files.pageListApi, 'utf8')
+
+    expect(source).toContain(`ne(pageTable.status, 'deleted')`)
+    expect(source).toContain('if (status)')
+    expect(source).toContain('eq(pageTable.status, status)')
   })
 
   it('uses the shared action presentation across all content and page editors', async () => {
