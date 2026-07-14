@@ -88,6 +88,11 @@ export function compileSchemaPresentation(ast: SchemaAst, schemaVersion: number)
     detailTemplate: 'document' as const
   }
   const fieldsById = new Map(ast.fields.filter(field => !field.system).map(field => [field.id, field]))
+  const slugField = config.slugFieldId ? fieldsById.get(config.slugFieldId) : undefined
+  if (config.slugFieldId && !slugField) throw new Error('Presentation slug binding references a missing field')
+  if (slugField && !['string', 'text'].includes(slugField.kind)) {
+    throw new Error(`Presentation slug binding does not support ${slugField.kind}`)
+  }
   const slots = { ...inferredSlots(ast), ...config.slots }
   const compiledSlots: CompiledSchemaPresentation['slots'] = {}
 
@@ -125,6 +130,9 @@ export function compileSchemaPresentation(ast: SchemaAst, schemaVersion: number)
     preset: config.preset,
     collectionTemplate: config.collectionTemplate,
     detailTemplate: config.detailTemplate,
+    slugFieldId: config.slugFieldId,
+    slugField: slugField ? { fieldId: slugField.id, fieldKey: slugField.key } : undefined,
+    structuredDataType: config.structuredDataType ?? (config.preset === 'article' ? 'Article' : config.preset === 'catalog' ? 'Product' : 'WebPage'),
     slots: compiledSlots,
     fields
   }

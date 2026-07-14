@@ -6,6 +6,7 @@ import { content as contentTable, contentListing as contentListingTable, content
 import { standalonePageRouteIsUnclaimed } from '../../../cms/page-delivery'
 import { applyLifecyclePublicDeliveryHeaders, applyPrivateDeliveryHeaders, resolveDeliveryPolicy } from '../../../utils/delivery-policy'
 import { PUBLIC_PAGE_ROUTE_PREFIX } from '../../../../shared/public-routing'
+import { attachCanonicalPublicPaths } from '../../../cms/public-routes'
 
 export default defineEventHandler(async (event) => {
   const schemaKey = event.context.params?.schemaKey as string
@@ -81,7 +82,7 @@ export default defineEventHandler(async (event) => {
 
   const rows = await query
   const hasMore = rows.length > pageSize
-  const items = hasMore ? rows.slice(0, pageSize) : rows
+  const items = await attachCanonicalPublicPaths(db, hasMore ? rows.slice(0, pageSize) : rows)
 
   const nextCursor = hasMore ? String(items[items.length - 1]!.id) : null
   return { items, nextCursor }

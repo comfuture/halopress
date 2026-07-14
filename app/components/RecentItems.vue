@@ -1,6 +1,7 @@
 <script setup lang="ts">
 type WidgetItem = {
   id: string
+  publicPath: string | null
   schemaKey: string
   schemaVersion: number
   title: string | null
@@ -52,7 +53,7 @@ const { data, pending, error, refresh } = await useAsyncData(
 const items = computed(() => data.value?.items ?? [])
 const skeletonCount = computed(() => Math.min(props.limit, 6))
 const basePath = computed(() => props.linkBase || `/${props.schema}`)
-const linkFor = (item: WidgetItem) => `${basePath.value}/${item.id}`
+const linkFor = (item: WidgetItem) => item.publicPath || `${basePath.value}/${item.id}`
 const slotProps = computed(() => ({
   items: items.value,
   pending: pending.value,

@@ -1,15 +1,53 @@
 <script setup lang="ts">
 import type { ButtonProps } from '@nuxt/ui'
-import { PUBLIC_PAGE_ROUTE_PREFIX } from '~~/shared/public-routing'
+import { PUBLIC_PAGE_ROUTE_PREFIX, publicPathFromDecodedSegments, publicPathToHref } from '~~/shared/public-routing'
 import { resolveSchemaPresentation } from '~/utils/schema-presentation'
 
 const route = useRoute()
 const router = useRouter()
-const schemaKey = computed(() => String(route.params.schema))
-
-const { data: schema, error: schemaError } = await useFetch<any>(() => `/api/schema/${schemaKey.value}/active`)
-if (schemaError.value || !schema.value) {
+const { applyPublic, applyPrivateNoindex } = usePublicPageDeliveryHeaders()
+let requestedPath = ''
+try {
+  requestedPath = publicPathFromDecodedSegments([String(route.params.schema)])
+} catch {
+  applyPrivateNoindex()
   throw createError({ statusCode: 404, statusMessage: 'Not Found' })
+}
+const routeResult = await useFetch<any>('/api/delivery/route', { query: { path: requestedPath } })
+if (routeResult.error.value || !routeResult.data.value) {
+  applyPrivateNoindex()
+  throw createError({ statusCode: 404, statusMessage: 'Not Found' })
+}
+const resolvedRoute = routeResult.data.value
+const isAlias = resolvedRoute?.routeKind === 'alias'
+if (isAlias) {
+  applyPublic()
+  await navigateTo(publicPathToHref(resolvedRoute.canonicalPath), { redirectCode: 301 })
+}
+if (!isAlias && !['schema', 'page'].includes(resolvedRoute.documentKind)) {
+  applyPrivateNoindex()
+  throw createError({ statusCode: 404, statusMessage: 'Not Found' })
+}
+const schemaKey = computed(() => String(resolvedRoute.documentId))
+
+const standalonePage = ref<any>(null)
+if (!isAlias && resolvedRoute?.documentKind === 'page') {
+  const { data, error } = await useFetch<any>(() => `/api/delivery/page/${resolvedRoute.documentId}`)
+  if (error.value || !data.value) {
+    applyPrivateNoindex()
+    throw createError({ statusCode: 404, statusMessage: 'Not Found' })
+  }
+  standalonePage.value = data.value
+}
+
+const schema = ref<any>(null)
+if (!isAlias && !standalonePage.value) {
+  const result = await useFetch<any>(() => `/api/schema/${schemaKey.value}/active`)
+  if (result.error.value || !result.data.value) {
+    applyPrivateNoindex()
+    throw createError({ statusCode: 404, statusMessage: 'Not Found' })
+  }
+  schema.value = result.data.value
 }
 const pageSize = computed(() => {
   const raw = Number(route.query.pageSize ?? 20)
@@ -19,20 +57,27 @@ const pageSize = computed(() => {
 const order = computed(() => (route.query.order === 'asc' ? 'asc' : 'desc'))
 const cursor = computed(() => (typeof route.query.cursor === 'string' && route.query.cursor.length ? route.query.cursor : null))
 
-const { items, nextCursor, error: contentError } = await useHalopressQuery(schemaKey, {
-  status: 'published',
-  pageSize,
-  order,
-  cursor,
-  respectStandalonePageClaims: computed(() => schemaKey.value === PUBLIC_PAGE_ROUTE_PREFIX)
-})
+let queryResult: Awaited<ReturnType<typeof useHalopressQuery>> | null = null
+if (!isAlias && !standalonePage.value) {
+  queryResult = await useHalopressQuery(schemaKey, {
+    status: 'published',
+    pageSize,
+    order,
+    cursor,
+    respectStandalonePageClaims: computed(() => schemaKey.value === PUBLIC_PAGE_ROUTE_PREFIX)
+  })
+}
+const items = computed(() => queryResult?.items.value ?? [])
+const nextCursor = computed(() => queryResult?.nextCursor.value ?? null)
+const contentError = computed(() => queryResult?.error.value ?? null)
 if (contentError.value) {
+  applyPrivateNoindex()
   throw createError({ statusCode: 404, statusMessage: 'Not Found' })
 }
 const itemLinks = computed(() =>
   items.value.map((item: any) => ({
     label: item.title || item.id,
-    to: `/${schemaKey.value}/${item.id}`,
+    to: item.publicPath || `/${schemaKey.value}/${item.id}`,
     icon: 'i-lucide-file-text'
   }))
 )
@@ -46,6 +91,10 @@ const heroDescription = computed(() => {
   const count = items.value.length
   return schema.value?.ast?.description || `${count} published ${count === 1 ? 'entry' : 'entries'}`
 })
+if (!isAlias) {
+  applyPublic()
+  usePublicRouteSeo(computed(() => resolvedRoute?.seo))
+}
 
 const heroLinks = [
   { label: 'Back to Schemas', to: '/', variant: 'outline' },
@@ -79,7 +128,14 @@ function goPrev() {
 </script>
 
 <template>
-  <UContainer>
+  <UContainer v-if="standalonePage" class="py-8">
+    <UPage>
+      <UPageHeader :title="standalonePage.title || 'Untitled page'" />
+      <UPageBody><PageDocumentRenderer :document="standalonePage.content" /></UPageBody>
+    </UPage>
+  </UContainer>
+
+  <UContainer v-else>
     <UPage class="space-y-8">
       <template #left>
         <UPageAside>

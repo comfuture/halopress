@@ -59,6 +59,8 @@ type SchemaAst = {
     preset: 'generic' | 'article' | 'catalog'
     collectionTemplate: 'list' | 'cards' | 'catalog-grid'
     detailTemplate: 'document' | 'article' | 'catalog'
+    slugFieldId?: string
+    structuredDataType?: 'WebPage' | 'Article' | 'BlogPosting' | 'NewsArticle' | 'Product'
     slots: Partial<Record<'title' | 'description' | 'image' | 'body' | 'gallery' | 'price', string>>
   }
 }
@@ -149,6 +151,8 @@ const state = reactive({
     preset: 'generic' as 'generic' | 'article' | 'catalog',
     collectionTemplate: 'list' as 'list' | 'cards' | 'catalog-grid',
     detailTemplate: 'document' as 'document' | 'article' | 'catalog',
+    slugFieldId: undefined as string | undefined,
+    structuredDataType: 'WebPage' as 'WebPage' | 'Article' | 'BlogPosting' | 'NewsArticle' | 'Product',
     slots: {} as Partial<Record<'title' | 'description' | 'image' | 'body' | 'gallery' | 'price', string>>
   }
 })
@@ -398,6 +402,10 @@ watch(
     }
     if (state.listing.imageFieldKey !== null && (!state.listing.imageFieldKey || !fieldKeys.has(state.listing.imageFieldKey))) {
       state.listing.imageFieldKey = toListingStateValue(inferred.imageFieldKey)
+    }
+    const fieldIds = new Set(state.fields.filter(field => !field.system).map(field => field.id))
+    if (state.presentation.slugFieldId && !fieldIds.has(state.presentation.slugFieldId)) {
+      state.presentation.slugFieldId = undefined
     }
   },
   { immediate: true }

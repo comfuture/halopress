@@ -3,6 +3,7 @@ import type { MaybeRef } from 'vue'
 
 export type HalopressItem = {
   id: string
+  publicPath?: string | null
   schemaKey: string
   schemaVersion: number
   title: string | null

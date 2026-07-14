@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm'
 import { foreignKey, index, integer, primaryKey, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 
 export const userRole = sqliteTable('user_role', {
@@ -161,6 +162,8 @@ export const content = sqliteTable('content', {
   schemaVersion: integer('schema_version').notNull(),
   status: text('status').notNull(),
   contentJson: text('content_json').notNull(),
+  publicPath: text('public_path'),
+  seoJson: text('seo_json'),
   currentRevision: integer('current_revision').notNull().default(1),
   publishedRevisionId: text('published_revision_id'),
   firstPublishedAt: integer('first_published_at', { mode: 'timestamp' }),
@@ -185,6 +188,8 @@ export const page = sqliteTable('page', {
   title: text('title'),
   status: text('status').notNull().default('draft'),
   contentJson: text('content_json').notNull(),
+  publicPath: text('public_path'),
+  seoJson: text('seo_json'),
   currentRevision: integer('current_revision').notNull().default(1),
   publishedRevisionId: text('published_revision_id'),
   firstPublishedAt: integer('first_published_at', { mode: 'timestamp' }),
@@ -202,6 +207,24 @@ export const page = sqliteTable('page', {
   pk: primaryKey({ columns: [t.id] }),
   byStatus: index('idx_page_status').on(t.status, t.updatedAt),
   byUpdatedAt: index('idx_page_updated_at').on(t.updatedAt)
+}))
+
+export const publicRoute = sqliteTable('public_route', {
+  path: text('path').notNull(),
+  routeKind: text('route_kind').notNull(),
+  documentKind: text('document_kind').notNull(),
+  documentId: text('document_id').notNull(),
+  schemaKey: text('schema_key'),
+  seoJson: text('seo_json'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull()
+}, t => ({
+  pk: primaryKey({ columns: [t.path] }),
+  canonicalDocumentUnique: uniqueIndex('idx_public_route_canonical_document')
+    .on(t.documentKind, t.documentId)
+    .where(sql`${t.routeKind} = 'canonical'`),
+  byDocument: index('idx_public_route_document').on(t.documentKind, t.documentId, t.routeKind),
+  bySchema: index('idx_public_route_schema').on(t.schemaKey, t.routeKind, t.path)
 }))
 
 export const publicationRevision = sqliteTable('publication_revision', {

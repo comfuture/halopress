@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { schemaAstSchema } from '../server/cms/zod'
 import {
   assertSchemaKeyCanBePersisted,
+  assertSchemaKeyCanBePublished,
   isReservedSchemaKeyError,
   RESERVED_SCHEMA_KEY_CODE,
   RESERVED_SCHEMA_KEY_MESSAGE
@@ -40,6 +41,7 @@ describe('schema key routing constraints', () => {
         createdAt: new Date('2026-07-13T00:00:00.000Z')
       })
       await expect(assertSchemaKeyCanBePersisted(fixture.db as any, 'p')).resolves.toBeUndefined()
+      expect(() => assertSchemaKeyCanBePublished('p')).toThrowError(RESERVED_SCHEMA_KEY_MESSAGE)
     } finally {
       fixture.close()
     }
@@ -51,6 +53,7 @@ describe('schema key routing constraints', () => {
       title: 'Article',
       fields: []
     }).success).toBe(true)
+    expect(() => assertSchemaKeyCanBePublished('article')).not.toThrow()
   })
 
   it('identifies only the tagged reserved-key domain error', () => {

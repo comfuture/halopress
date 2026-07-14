@@ -10,14 +10,25 @@ import { assertDraftWriteStatus } from '../../cms/publication-transitions'
 import { requireAdmin } from '../../utils/auth'
 import { newId } from '../../utils/ids'
 import { getTrustedRequestOrigin } from '../../utils/request-origin'
+import { badRequest } from '../../utils/http'
+import { normalizePublicPath } from '../../../shared/public-routing'
+import { normalizePublicSeoOverrides } from '../../../shared/public-seo'
 
 export default defineEventHandler(async (event) => {
   const session = await requireAdmin(event)
-  const body = await readBody<{ title?: string, status?: string, content?: unknown }>(event)
+  const body = await readBody<{ title?: string, status?: string, content?: unknown, publicPath?: string | null, seo?: unknown }>(event)
   assertDraftWriteStatus(body?.status)
   const id = newId()
   const title = body?.title?.trim() || null
   const content = normalizePageContent(body?.content)
+  let publicPath: string | null = null
+  let seo = null
+  try {
+    publicPath = body?.publicPath?.trim() ? normalizePublicPath(body.publicPath) : null
+    seo = body?.seo === undefined ? null : normalizePublicSeoOverrides(body.seo)
+  } catch (error) {
+    throw badRequest(error instanceof Error ? error.message : 'Invalid public metadata')
+  }
   const now = new Date()
   const status = 'draft'
   const actorId = (session.user as any)?.id ?? null
@@ -29,6 +40,8 @@ export default defineEventHandler(async (event) => {
       title,
       status,
       contentJson: JSON.stringify(content),
+      publicPath,
+      seoJson: seo ? JSON.stringify(seo) : null,
       currentRevision: 1,
       createdBy: actorId,
       updatedBy: actorId,
@@ -50,6 +63,7 @@ export default defineEventHandler(async (event) => {
       documentId: id,
       projectionScope: 'working',
       content,
+      additionalAssetIds: seo?.imageAssetId ? [seo.imageAssetId] : [],
       trustedOrigin: getTrustedRequestOrigin(event),
       statements
     })

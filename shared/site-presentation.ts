@@ -193,6 +193,9 @@ export function defaultSitePresentation(): SitePresentation {
 }
 
 export function resolvePublicNavigationTarget(destination: PublicNavigationDestination) {
+  if (typeof (destination as PublicNavigationDestination & { publicPath?: unknown }).publicPath === 'string') {
+    return (destination as PublicNavigationDestination & { publicPath: string }).publicPath
+  }
   if (destination.type === 'home') return '/'
   if (destination.type === 'page') return `/p/${encodeURIComponent(destination.pageId)}`
   if (destination.type === 'collection') return `/${encodeURIComponent(destination.schemaKey)}/`

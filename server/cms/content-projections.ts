@@ -38,6 +38,7 @@ export async function syncContentProjections(args: {
   updatedAt: Date
   projectionScope: ProjectionScope
   trustedOrigin?: string
+  additionalAssetIds?: string[]
   statements?: DbStatement[]
 }) {
   await syncContentRefs(args)
@@ -49,7 +50,7 @@ export async function syncContentProjections(args: {
     documentId: args.contentId,
     projectionScope: args.projectionScope,
     content: args.content,
-    additionalAssetIds: contentAssetFieldIds(args.registry, args.content),
+    additionalAssetIds: [...contentAssetFieldIds(args.registry, args.content), ...(args.additionalAssetIds ?? [])],
     trustedOrigin: args.trustedOrigin,
     statements: args.statements
   })

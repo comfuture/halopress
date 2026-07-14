@@ -49,20 +49,35 @@ const breadcrumbItems = computed<BreadcrumbItem[]>(() => ([
 ]))
 
 const state = reactive({
-  content: {} as Record<string, any>
+  content: {} as Record<string, any>,
+  seoTitle: '',
+  seoDescription: '',
+  seoImageAssetId: '',
+  structuredDataType: ''
 })
+
+function seoPayload() {
+  return {
+    title: state.seoTitle || undefined,
+    description: state.seoDescription || undefined,
+    imageAssetId: state.seoImageAssetId || undefined,
+    structuredDataType: state.structuredDataType || undefined
+  }
+}
 
 const contentFormRef = ref<any>(null)
 
 function buildContentSnapshot() {
   return {
-    content: state.content
+    content: state.content,
+    seo: seoPayload()
   }
 }
 
 function buildContentSnapshotFromDoc(source: any) {
   return {
-    content: source?.content || source?.extra || {}
+    content: source?.content || source?.extra || {},
+    seo: source?.seo || {}
   }
 }
 
@@ -128,6 +143,10 @@ watch(
   (next) => {
     if (!next) return
     state.content = { ...(next.content || next.extra || {}) }
+    state.seoTitle = next.seo?.title || ''
+    state.seoDescription = next.seo?.description || ''
+    state.seoImageAssetId = next.seo?.imageAssetId || ''
+    state.structuredDataType = next.seo?.structuredDataType || ''
     lastSavedContentJson.value = stableStringify(buildContentSnapshotFromDoc(next))
   },
   { immediate: true }
@@ -143,7 +162,7 @@ async function saveDraft() {
   try {
     await $fetch(`/api/content/${schemaKey.value}/${id.value}`, {
       method: 'PUT',
-      body: { revision: currentRevision.value, content: state.content }
+      body: { revision: currentRevision.value, content: state.content, seo: seoPayload() }
     })
     toast.add({ title: 'Saved draft' })
     await refreshDoc()
@@ -166,7 +185,7 @@ async function publish() {
       method: 'POST',
       body: {
         revision: currentRevision.value,
-        ...(canWrite.value ? { content: state.content } : {})
+        ...(canWrite.value ? { content: state.content, seo: seoPayload() } : {})
       }
     })
     toast.add({ title: 'Published' })
@@ -283,6 +302,15 @@ const actionMenuItems = computed<DropdownMenuItem[][]>(() => {
     return groups
   }
 
+  if (doc.value?.publishedPublicPath) {
+    groups.push([{
+      label: 'View published',
+      icon: 'i-lucide-external-link',
+      to: doc.value.publishedPublicPath,
+      target: '_blank'
+    }])
+  }
+
   if (canDiscard.value) {
     groups.push([{
       label: 'Discard draft',
@@ -377,6 +405,15 @@ const actionMenuItems = computed<DropdownMenuItem[][]>(() => {
         :model="state.content"
         :disabled="isDeleted || !canWrite"
         class="shrink-0"
+      />
+
+      <CmsPublicMetadataFields
+        v-model:title="state.seoTitle"
+        v-model:description="state.seoDescription"
+        v-model:image-asset-id="state.seoImageAssetId"
+        v-model:structured-data-type="state.structuredDataType"
+        :disabled="isDeleted || !canWrite"
+        class="mt-4"
       />
 
       <CmsRevisionHistorySlideover

@@ -36,14 +36,28 @@ const breadcrumbItems = computed<BreadcrumbItem[]>(() => ([
 ]))
 
 const state = reactive({
-  content: {} as Record<string, any>
+  content: {} as Record<string, any>,
+  seoTitle: '',
+  seoDescription: '',
+  seoImageAssetId: '',
+  structuredDataType: ''
 })
+
+function seoPayload() {
+  return {
+    title: state.seoTitle || undefined,
+    description: state.seoDescription || undefined,
+    imageAssetId: state.seoImageAssetId || undefined,
+    structuredDataType: state.structuredDataType || undefined
+  }
+}
 
 const contentFormRef = ref<any>(null)
 
 function buildContentSnapshot() {
   return {
-    content: state.content
+    content: state.content,
+    seo: seoPayload()
   }
 }
 
@@ -92,7 +106,7 @@ async function saveDraft() {
   try {
     const res = await $fetch<{ id: string }>(`/api/content/${schemaKey.value}`, {
       method: 'POST',
-      body: { content: state.content }
+      body: { content: state.content, seo: seoPayload() }
     })
     toast.add({ title: 'Created', description: res.id })
     await navigateTo(`/_desk/content/${schemaKey.value}/${res.id}`)
@@ -114,12 +128,12 @@ async function publish() {
   try {
     const created = await $fetch<{ id: string; revision: number }>(`/api/content/${schemaKey.value}`, {
       method: 'POST',
-      body: { content: state.content }
+      body: { content: state.content, seo: seoPayload() }
     })
     createdId = created.id
     await $fetch(`/api/content/${schemaKey.value}/${created.id}/publish`, {
       method: 'POST',
-      body: { revision: created.revision, content: state.content }
+      body: { revision: created.revision, content: state.content, seo: seoPayload() }
     })
     toast.add({ title: 'Published' })
     await navigateTo(`/_desk/content/${schemaKey.value}/${created.id}`)
@@ -167,6 +181,15 @@ async function publish() {
         :schema="schema"
         :model="state.content"
         class="shrink-0"
+      />
+
+      <CmsPublicMetadataFields
+        v-model:title="state.seoTitle"
+        v-model:description="state.seoDescription"
+        v-model:image-asset-id="state.seoImageAssetId"
+        v-model:structured-data-type="state.structuredDataType"
+        :disabled="!canWrite"
+        class="mt-4"
       />
     </template>
   </UDashboardPanel>

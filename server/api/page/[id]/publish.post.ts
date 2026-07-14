@@ -6,14 +6,16 @@ import { publishPageWorking } from '../../../cms/page-publication'
 import { getDb } from '../../../db/db'
 import { page as pageTable } from '../../../db/schema'
 import { requireAdmin } from '../../../utils/auth'
-import { notFound } from '../../../utils/http'
+import { badRequest, notFound } from '../../../utils/http'
 import { requireExpectedRevision } from '../../../cms/document-revisions'
+import { normalizePublicPath } from '../../../../shared/public-routing'
+import { normalizePublicSeoOverrides, parsePublicSeoJson } from '../../../../shared/public-seo'
 
 export default defineEventHandler(async (event) => {
   const session = await requireAdmin(event)
   const id = event.context.params?.id as string
   if (!id) throw notFound('Page not found')
-  const body = await readBody<{ revision?: number, title?: string, content?: unknown }>(event)
+  const body = await readBody<{ revision?: number, title?: string, content?: unknown, publicPath?: string | null, seo?: unknown }>(event)
   const expectedRevision = requireExpectedRevision(body?.revision)
   const db = await getDb(event)
   const existing = await db.select().from(pageTable).where(eq(pageTable.id, id)).get()
@@ -22,6 +24,14 @@ export default defineEventHandler(async (event) => {
   const content = body?.content !== undefined
     ? normalizePageContent(body.content, { mode: 'publish' })
     : normalizePageContent(existing.contentJson, { mode: 'publish' })
+  let publicPath = existing.publicPath
+  let seo = parsePublicSeoJson(existing.seoJson)
+  try {
+    if (body?.publicPath !== undefined) publicPath = body.publicPath?.trim() ? normalizePublicPath(body.publicPath) : null
+    if (body?.seo !== undefined) seo = normalizePublicSeoOverrides(body.seo)
+  } catch (error) {
+    throw badRequest(error instanceof Error ? error.message : 'Invalid public metadata')
+  }
   return {
     ok: true,
     ...(await publishPageWorking({
@@ -30,6 +40,8 @@ export default defineEventHandler(async (event) => {
       existing,
       title,
       content,
+      publicPath,
+      seo,
         actorId: (session.user as any)?.id ?? null,
         expectedRevision
     }))
