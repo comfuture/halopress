@@ -18,10 +18,12 @@ const [
     pending: presentationPending,
     error: presentationError,
     refresh: refreshPresentation
-  }
+  },
+  { data: membership, pending: membershipPending, error: membershipError, refresh: refreshMembership }
 ] = await Promise.all([
   useFetch<AuthenticationSummary>('/api/settings/authentication'),
-  useFetch<{ configured: boolean, malformedStoredValue: boolean }>('/api/settings/site-presentation')
+  useFetch<{ configured: boolean, malformedStoredValue: boolean }>('/api/settings/site-presentation'),
+  useFetch<{ mode: 'disabled' | 'open' | 'invite' | 'approval' }>('/api/settings/membership')
 ])
 
 const sections = computed(() => SETTINGS_SECTIONS.filter(section => section.id !== 'overview'))
@@ -33,6 +35,12 @@ function statusFor(sectionId: string) {
     if (presentation.value?.configured) return { label: 'Configured', color: 'success' as const }
     return { label: 'Defaults active', color: 'info' as const }
   }
+  if (sectionId === 'membership') {
+    if (membership.value?.mode === 'open') return { label: 'Open', color: 'warning' as const }
+    if (membership.value?.mode === 'invite') return { label: 'Invitation only', color: 'info' as const }
+    if (membership.value?.mode === 'approval') return { label: 'Approval required', color: 'info' as const }
+    return { label: 'Disabled', color: 'neutral' as const }
+  }
   if (sectionId !== 'authentication') return { label: 'Ready to extend', color: 'neutral' as const }
   if (authentication.value?.enabled) return { label: 'Enabled', color: 'success' as const }
   if (authentication.value?.configured) return { label: 'Ready to enable', color: 'info' as const }
@@ -40,7 +48,7 @@ function statusFor(sectionId: string) {
 }
 
 async function refreshAll() {
-  await Promise.all([refresh(), refreshPresentation()])
+  await Promise.all([refresh(), refreshPresentation(), refreshMembership()])
 }
 </script>
 
@@ -49,14 +57,14 @@ async function refreshAll() {
     section="overview"
     title="Settings"
     description="Manage deployment-owned configuration through typed, purpose-built sections."
-    :pending="pending || presentationPending"
+    :pending="pending || presentationPending || membershipPending"
     @refresh="refreshAll"
   >
     <div class="space-y-6">
       <UAlert
-        v-if="error || presentationError"
+        v-if="error || presentationError || membershipError"
         title="Some settings status is unavailable"
-        :description="error?.statusMessage || presentationError?.statusMessage || 'Refresh the page and try again.'"
+        :description="error?.statusMessage || presentationError?.statusMessage || membershipError?.statusMessage || 'Refresh the page and try again.'"
         color="warning"
         variant="subtle"
         icon="i-lucide-triangle-alert"

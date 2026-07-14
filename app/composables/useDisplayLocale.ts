@@ -20,10 +20,19 @@ export function useDisplayLocale() {
   })
 }
 
-export function formatDate(value: string | number | Date, locale: string) {
+export function formatDate(
+  value: string | number | Date,
+  locale: string,
+  options?: Intl.DateTimeFormatOptions
+) {
   const date = value instanceof Date ? value : new Date(value)
   if (Number.isNaN(date.getTime())) return ''
-  return new Intl.DateTimeFormat(locale, { year: 'numeric', month: 'numeric', day: 'numeric' }).format(date)
+  return new Intl.DateTimeFormat(locale, {
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    ...options
+  }).format(date)
 }
 
 export function formatDateTime(value: string | number | Date, locale: string, options?: Intl.DateTimeFormatOptions) {

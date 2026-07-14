@@ -71,10 +71,10 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   {
     id: 'membership',
     label: 'Membership',
-    description: 'Reserved for public accounts and member access.',
+    description: 'Public registration, invitations, approval, and member roles.',
     icon: 'i-lucide-users-round',
     to: '/_desk/settings/membership',
-    availability: 'extension'
+    availability: 'available'
   },
   {
     id: 'publishing',

@@ -43,6 +43,13 @@
       "when": 1784006346142,
       "tag": "0005_add_schema_lifecycle_status",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1784009883415,
+      "tag": "0006_add_public_member_identities",
+      "breakpoints": true
     }
   ]
 }

@@ -130,7 +130,7 @@ function discardChanges() {
   <SettingsShell
     section="authentication"
     title="Authentication"
-    description="Let administrators sign in with Google while keeping password access."
+    description="Configure Google sign-in while keeping password access and explicit account linking."
     :pending="pending"
     @refresh="refresh()"
   >
@@ -151,7 +151,7 @@ function discardChanges() {
                 Google sign-in
               </h1>
               <p class="text-sm text-muted">
-                Allow existing administrators to sign in with the Google account that uses their HaloPress email.
+                Allow active users to sign in through a stable Google account identity. New accounts follow the Membership admission policy.
               </p>
             </div>
             <UBadge :color="statusColor" variant="soft">
@@ -289,7 +289,7 @@ function discardChanges() {
               <USwitch
                 v-model="state.enabled"
                 label="Enable Google sign-in"
-                description="Only an active Google account whose email exactly matches an existing administrator can sign in. Halopress never creates a new user from Google automatically."
+              description="Verified new Google accounts follow Membership settings. Existing password accounts are never linked by email alone; users must sign in and explicitly reauthenticate before connecting Google."
                 :disabled="!data.canToggle"
                 class="w-full"
               />

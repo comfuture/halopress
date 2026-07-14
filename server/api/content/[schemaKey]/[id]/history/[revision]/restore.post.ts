@@ -6,7 +6,7 @@ import { getDocumentRevision, requireExpectedRevision } from '../../../../../../
 import { getSchemaVersion } from '../../../../../../cms/repo'
 import { getDb } from '../../../../../../db/db'
 import { content as contentTable } from '../../../../../../db/schema'
-import { getAuthSession } from '../../../../../../utils/auth'
+import { getAuthSession, requireStaff } from '../../../../../../utils/auth'
 import { badRequest, conflict, notFound } from '../../../../../../utils/http'
 import { requireSchemaPermission } from '../../../../../../utils/schema-permission'
 import { queueWidgetCacheInvalidation } from '../../../../../../utils/widget-cache'
@@ -15,6 +15,7 @@ export default defineEventHandler(async (event) => {
   const schemaKey = event.context.params?.schemaKey as string
   const id = event.context.params?.id as string
   const targetRevision = requireExpectedRevision(Number(event.context.params?.revision))
+  await requireStaff(event)
   await requireSchemaPermission(event, schemaKey, 'write')
   const session = await getAuthSession(event)
   const actorId = (session?.user as any)?.id ?? null

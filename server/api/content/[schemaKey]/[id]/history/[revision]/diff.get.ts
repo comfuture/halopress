@@ -4,6 +4,7 @@ import { getQuery } from 'h3'
 import { diffDocumentSnapshots, getDocumentRevision, requireExpectedRevision } from '../../../../../../cms/document-revisions'
 import { getDb } from '../../../../../../db/db'
 import { content as contentTable } from '../../../../../../db/schema'
+import { requireStaff } from '../../../../../../utils/auth'
 import { notFound } from '../../../../../../utils/http'
 import { requireSchemaPermission } from '../../../../../../utils/schema-permission'
 
@@ -15,6 +16,7 @@ export default defineEventHandler(async (event) => {
   const against = query.against === undefined
     ? revision - 1
     : requireExpectedRevision(Number(query.against))
+  await requireStaff(event)
   await requireSchemaPermission(event, schemaKey, 'read')
   const db = await getDb(event)
   const existing = await db.select({ id: contentTable.id }).from(contentTable).where(and(

@@ -5,7 +5,7 @@ import { publicationMetadata } from '../../../../cms/publication'
 import { getActiveSchema } from '../../../../cms/repo'
 import { getDb } from '../../../../db/db'
 import { content as contentTable } from '../../../../db/schema'
-import { getAuthSession } from '../../../../utils/auth'
+import { getAuthSession, requireStaff } from '../../../../utils/auth'
 import { applyPreviewDeliveryHeaders } from '../../../../utils/delivery-policy'
 import { notFound, sendH3Error } from '../../../../utils/http'
 import { requireSchemaPermission } from '../../../../utils/schema-permission'
@@ -16,6 +16,11 @@ export default defineEventHandler(async (event) => {
   const id = event.context.params?.id as string
   const session = await getAuthSession(event)
   if (!session?.user) return sendH3Error(event, notFound('Content not found'))
+  try {
+    await requireStaff(event)
+  } catch {
+    return sendH3Error(event, notFound('Content not found'))
+  }
   await requireSchemaPermission(event, schemaKey, 'read')
   const db = await getDb(event)
   if (!await getActiveSchema(db, schemaKey)) return sendH3Error(event, notFound('Content not found'))

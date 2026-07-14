@@ -1,6 +1,10 @@
 <script setup lang="ts">
+import type { DropdownMenuItem } from '@nuxt/ui'
+
 const route = useRoute()
 const { presentation } = await useSitePresentation()
+const { data: membership } = await useFetch<{ registrationEnabled: boolean }>('/api/membership')
+const { data: session, status, signOut } = useAuth()
 
 const navigationItems = computed(() => siteNavigationItems(presentation.value, route.path))
 const footerLinks = computed(() => siteFooterLinks(presentation.value, route.path))
@@ -11,6 +15,24 @@ const headerUi = computed(() => {
   if (presentation.value.shell.headerVariant === 'minimal') return { root: 'border-b-0' }
   if (presentation.value.shell.headerVariant === 'centered') return { left: 'md:flex-1', center: 'md:flex-none', right: 'md:flex-1 md:justify-end' }
   return {}
+})
+
+const isAdmin = computed(() => session.value?.user?.role === 'admin' && session.value.user.accountType === 'staff')
+function logout() {
+  void signOut({ callbackUrl: '/' })
+}
+const accountItems = computed<DropdownMenuItem[][]>(() => {
+  const user = session.value?.user
+  if (!user) return []
+  const actions: DropdownMenuItem[] = [
+    { label: 'Sign-in methods', icon: 'i-lucide-shield-keyhole', to: '/account/security' }
+  ]
+  if (isAdmin.value) actions.unshift({ label: 'Open Desk', icon: 'i-lucide-layout-dashboard', to: '/_desk' })
+  return [
+    [{ label: user.name || user.email || 'Account', description: user.email || undefined, type: 'label' }],
+    actions,
+    [{ label: 'Log out', icon: 'i-lucide-log-out', color: 'error', onSelect: logout }]
+  ]
 })
 </script>
 
@@ -24,7 +46,7 @@ const headerUi = computed(() => {
     <UHeader
       :title="presentation.general.siteName"
       mode="drawer"
-      :toggle="navigationItems.length > 0"
+      :toggle="true"
       :ui="headerUi"
     >
       <template #left>
@@ -44,20 +66,50 @@ const headerUi = computed(() => {
       />
 
       <template #right>
-        <UButton
-          v-if="presentation.shell.showDeskLink"
-          to="/_desk"
-          icon="i-lucide-layout-dashboard"
-          color="neutral"
-          variant="ghost"
-        >
-          Desk
-        </UButton>
+        <ClientOnly>
+          <div v-if="status === 'authenticated' && session?.user" class="flex items-center gap-2">
+            <UDropdownMenu :items="accountItems" :content="{ align: 'end' }">
+              <UButton color="neutral" variant="ghost" trailing-icon="i-lucide-chevron-down">
+                {{ session.user.name || session.user.email || 'Account' }}
+              </UButton>
+            </UDropdownMenu>
+          </div>
+          <div v-else-if="status !== 'loading'" class="flex items-center gap-1">
+            <UButton to="/login" color="neutral" variant="ghost">Log in</UButton>
+            <UButton v-if="membership?.registrationEnabled" to="/signup" variant="soft">Sign up</UButton>
+            <UButton
+              v-if="presentation.shell.showDeskLink"
+              to="/_desk"
+              icon="i-lucide-layout-dashboard"
+              color="neutral"
+              variant="ghost"
+            >
+              Desk
+            </UButton>
+          </div>
+          <template #fallback>
+            <USkeleton class="h-8 w-24" />
+          </template>
+        </ClientOnly>
         <UColorModeButton v-if="presentation.shell.showColorMode" />
       </template>
 
       <template #body>
-        <UNavigationMenu :items="navigationItems" orientation="vertical" class="-mx-2.5" />
+        <div class="space-y-4">
+          <UNavigationMenu :items="navigationItems" orientation="vertical" class="-mx-2.5" />
+          <USeparator />
+          <ClientOnly>
+            <div v-if="status === 'authenticated' && session?.user" class="space-y-2">
+              <UButton v-if="isAdmin" to="/_desk" block color="neutral" variant="soft" icon="i-lucide-layout-dashboard">Open Desk</UButton>
+              <UButton to="/account/security" block color="neutral" variant="ghost" icon="i-lucide-shield-keyhole">Sign-in methods</UButton>
+              <UButton block color="error" variant="ghost" icon="i-lucide-log-out" @click="logout">Log out</UButton>
+            </div>
+            <div v-else class="grid grid-cols-2 gap-2">
+              <UButton to="/login" block color="neutral" variant="outline">Log in</UButton>
+              <UButton v-if="membership?.registrationEnabled" to="/signup" block>Sign up</UButton>
+            </div>
+          </ClientOnly>
+        </div>
       </template>
     </UHeader>
 

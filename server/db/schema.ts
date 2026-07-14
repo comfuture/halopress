@@ -11,7 +11,9 @@ export const userRole = sqliteTable('user_role', {
 export const user = sqliteTable('user', {
   id: text('id').notNull(),
   email: text('email').notNull(),
+  emailVerifiedAt: integer('email_verified_at', { mode: 'timestamp' }),
   name: text('name'),
+  accountType: text('account_type').notNull().default('staff'),
   roleKey: text('role_key').notNull().default('user').references(() => userRole.roleKey),
   passwordHash: text('password_hash'),
   passwordSalt: text('password_salt'),
@@ -19,7 +21,48 @@ export const user = sqliteTable('user', {
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull()
 }, t => ({
   pk: primaryKey({ columns: [t.id] }),
-  byEmail: index('idx_user_email').on(t.email)
+  emailUnique: uniqueIndex('idx_user_email_unique').on(t.email)
+}))
+
+export const externalIdentity = sqliteTable('external_identity', {
+  provider: text('provider').notNull(),
+  subject: text('subject').notNull(),
+  userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  emailAtLink: text('email_at_link'),
+  emailVerified: integer('email_verified', { mode: 'boolean' }).notNull().default(false),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  lastUsedAt: integer('last_used_at', { mode: 'timestamp' }).notNull()
+}, t => ({
+  pk: primaryKey({ columns: [t.provider, t.subject] }),
+  providerPerUser: uniqueIndex('idx_external_identity_user_provider').on(t.userId, t.provider),
+  byUser: index('idx_external_identity_user').on(t.userId)
+}))
+
+export const membershipInvitation = sqliteTable('membership_invitation', {
+  id: text('id').notNull(),
+  tokenHash: text('token_hash').notNull(),
+  email: text('email').notNull(),
+  roleKey: text('role_key').notNull().references(() => userRole.roleKey),
+  status: text('status').notNull().default('pending'),
+  expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
+  usedBy: text('used_by').references(() => user.id, { onDelete: 'set null' }),
+  usedAt: integer('used_at', { mode: 'timestamp' }),
+  createdBy: text('created_by').references(() => user.id, { onDelete: 'set null' }),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull()
+}, t => ({
+  pk: primaryKey({ columns: [t.id] }),
+  tokenUnique: uniqueIndex('idx_membership_invitation_token').on(t.tokenHash),
+  byEmailStatus: index('idx_membership_invitation_email_status').on(t.email, t.status, t.expiresAt)
+}))
+
+export const registrationRateLimit = sqliteTable('registration_rate_limit', {
+  bucketKey: text('bucket_key').notNull(),
+  attemptCount: integer('attempt_count').notNull().default(1),
+  resetAt: integer('reset_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull()
+}, t => ({
+  pk: primaryKey({ columns: [t.bucketKey] }),
+  byReset: index('idx_registration_rate_limit_reset').on(t.resetAt)
 }))
 
 export const settings = sqliteTable('settings', {

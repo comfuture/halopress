@@ -7,11 +7,13 @@ import { runMigrations } from '../server/utils/install'
 import { createTestSqliteDb } from './fixtures/sqlite'
 
 const dbState = vi.hoisted(() => ({ current: null as any }))
-const authState = vi.hoisted(() => ({ authenticated: false }))
+const authState = vi.hoisted(() => ({ accountType: null as null | 'staff' | 'member' }))
 
 vi.mock('../server/db/db', () => ({ getDb: vi.fn(async () => dbState.current) }))
 vi.mock('../server/utils/auth', () => ({
-  getAuthSession: vi.fn(async () => authState.authenticated ? { user: { id: 'admin-1' } } : null),
+  getAuthSession: vi.fn(async () => authState.accountType
+    ? { user: { id: 'user-1', accountType: authState.accountType } }
+    : null),
   requireAdmin: vi.fn(async () => ({ user: { id: 'admin-1' } }))
 }))
 vi.mock('h3', async (importOriginal) => ({
@@ -33,7 +35,7 @@ function responseEvent() {
 }
 
 beforeEach(() => {
-  authState.authenticated = false
+  authState.accountType = null
 })
 
 async function seedActiveArticle(db: any) {
@@ -77,10 +79,17 @@ describe('asset delivery retention', () => {
       await expect(requireAssetDelivery(publicRequest.event as any, 'live')).resolves.toEqual({ isPublic: true })
       expect(publicRequest.header('cache-control')).toMatch(/^public,/)
 
-      authState.authenticated = true
+      authState.accountType = 'staff'
       const privateRequest = responseEvent()
       await expect(requireAssetDelivery(privateRequest.event as any, 'draft-only')).resolves.toEqual({ isPublic: false })
       expect(privateRequest.header('cache-control')).toBe('private, no-store')
+
+      authState.accountType = 'member'
+      await expect(requireAssetDelivery(responseEvent().event as any, 'draft-only'))
+        .rejects.toMatchObject({ statusCode: 404, statusMessage: 'Asset not found' })
+      const memberPublicRequest = responseEvent()
+      await expect(requireAssetDelivery(memberPublicRequest.event as any, 'live')).resolves.toEqual({ isPublic: true })
+      expect(memberPublicRequest.header('cache-control')).toMatch(/^public,/)
     } finally {
       fixture.close()
     }

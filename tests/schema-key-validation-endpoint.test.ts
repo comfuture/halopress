@@ -6,6 +6,7 @@ const dbState = vi.hoisted(() => ({
   lookupErrorAt: 0,
   lookupCount: 0
 }))
+const requireStaff = vi.hoisted(() => vi.fn(async () => ({ user: { id: 'admin-1' } })))
 
 const fakeDb = {
   select: () => ({
@@ -27,6 +28,7 @@ vi.mock('../server/db/db', () => ({
     return fakeDb
   })
 }))
+vi.mock('../server/utils/auth', () => ({ requireStaff }))
 vi.mock('h3', async (importOriginal) => ({
   ...await importOriginal<typeof import('h3')>(),
   readBody: vi.fn(async () => ({
@@ -45,6 +47,7 @@ beforeEach(() => {
   dbState.getError = null
   dbState.lookupErrorAt = 0
   dbState.lookupCount = 0
+  requireStaff.mockClear()
 })
 
 afterAll(() => {
@@ -57,6 +60,14 @@ describe('reserved schema validation endpoint', () => {
       ok: false,
       error: { fieldErrors: { schemaKey: ['Schema key is reserved for a public route'] } }
     })
+    expect(requireStaff).toHaveBeenCalledOnce()
+  })
+
+  it('propagates staff authorization failures before reading schema input', async () => {
+    const unauthorized = Object.assign(new Error('Unauthorized'), { statusCode: 401 })
+    requireStaff.mockRejectedValueOnce(unauthorized)
+    await expect(handler({ context: { params: { schemaKey: 'p' } } })).rejects.toBe(unauthorized)
+    expect(dbState.lookupCount).toBe(0)
   })
 
   it.each([1, 2])('rethrows lookup %s storage failures', async (lookupErrorAt) => {

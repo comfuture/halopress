@@ -6,14 +6,21 @@ import { encode, getToken } from 'next-auth/jwt'
 
 import { decodeAuthToken, encodeAuthToken } from '../server/utils/auth-jwt'
 import { authSessionFromToken, hasSecureAuthSessionCookie } from '../server/utils/auth-session'
+import { isAuthTenantAllowed } from '../server/utils/auth-user'
 
 const secret = '1bccd7d3097bff829c970eb6a2c4a9232a3d65bfe74932a0c7317b1e9fef471e'
 
 describe('protected API session verification', () => {
+  it('rejects cross-tenant token refresh while permitting legacy claims to bind once', () => {
+    expect(isAuthTenantAllowed('tenant-a.example', 'tenant-b.example')).toBe(false)
+    expect(isAuthTenantAllowed('tenant-a.example', 'tenant-a.example')).toBe(true)
+    expect(isAuthTenantAllowed(undefined, 'tenant-a.example')).toBe(true)
+  })
   it('keeps session fetches in the browser instead of calling the same Worker during SSR', async () => {
+    const root = resolve(import.meta.dirname, '..')
     const [middlewareSource, configSource] = await Promise.all([
-      readFile(resolve(process.cwd(), 'app/middleware/desk-auth.global.ts'), 'utf8'),
-      readFile(resolve(process.cwd(), 'nuxt.config.ts'), 'utf8')
+      readFile(resolve(root, 'app/middleware/desk-auth.global.ts'), 'utf8'),
+      readFile(resolve(root, 'nuxt.config.ts'), 'utf8')
     ])
     const serverGuard = middlewareSource.indexOf('if (import.meta.server) return')
     const authClient = middlewareSource.indexOf('const { status, data, getSession } = useAuth()')
@@ -38,13 +45,63 @@ describe('protected API session verification', () => {
         email: 'admin@example.com',
         name: 'Admin',
         role: 'admin',
+        accountType: undefined,
         tenantKey: 'example.com'
       },
       expires: new Date(1_900_000_000 * 1000).toISOString()
     })
+  })
 
-    expect(authSessionFromToken({ id: 'user_1', role: 'owner' })).toMatchObject({
-      user: { id: 'user_1', role: undefined }
+  it.each([
+    ['publisher', 'staff'],
+    ['user', 'member']
+  ] as const)('preserves the custom %s role and %s account type', (role, accountType) => {
+    expect(authSessionFromToken({
+      id: `${accountType}_1`,
+      role,
+      accountType
+    })).toMatchObject({
+      user: {
+        id: `${accountType}_1`,
+        role,
+        accountType
+      }
+    })
+  })
+
+  it('does not reconstruct identity claims from revoked or malformed token fields', () => {
+    expect(authSessionFromToken(null)).toBeNull()
+
+    const revoked = authSessionFromToken({ exp: 1_900_000_000 })
+    expect(revoked).toEqual({
+      user: {
+        id: undefined,
+        email: undefined,
+        name: undefined,
+        role: undefined,
+        accountType: undefined,
+        tenantKey: undefined
+      },
+      expires: new Date(1_900_000_000 * 1000).toISOString()
+    })
+
+    const malformed = authSessionFromToken({
+      id: 123,
+      role: false,
+      accountType: 'external',
+      tenantKey: ['example.com'],
+      exp: 'never'
+    } as any)
+    expect(malformed).toEqual({
+      user: {
+        id: undefined,
+        email: undefined,
+        name: undefined,
+        role: undefined,
+        accountType: undefined,
+        tenantKey: undefined
+      },
+      expires: undefined
     })
   })
 
