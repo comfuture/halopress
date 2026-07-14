@@ -68,6 +68,8 @@ describe('Desk editorial safety UI', () => {
     const schemaEditor = await source('app/pages/_desk/schemas/[schemaKey]/index.vue')
 
     expect(schemaList).toContain('/api/schema/list?includeInactive=1')
+    expect(schemaList).toContain('session.value?.user?.role === \'admin\'')
+    expect(schemaList).toContain(': \'/api/schema/list\'')
     expect(schemaList).toContain('highlight-color="warning"')
     expect(schemaEditor).toContain('/definition`')
     expect(schemaEditor).toContain('This schema is inactive')

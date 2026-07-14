@@ -195,6 +195,10 @@ function cleanupGuard(schemaKey: string, guard: SchemaCleanupGuard) {
       select 1 from ${contentRefList}
       where ${contentRefList.itemKind} = 'content'
         and ${contentRefList.itemSchemaKey} = ${schemaKey}
+    ) and not exists (
+      select 1 from ${schemaActive}
+      where ${schemaActive.schemaKey} = ${schemaKey}
+        and ${schemaActive.status} <> 'inactive'
     )`
   }
   return undefined

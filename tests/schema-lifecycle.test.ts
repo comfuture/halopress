@@ -1,4 +1,4 @@
-import { eq, or, sql } from 'drizzle-orm'
+import { and, eq, or, sql } from 'drizzle-orm'
 import { describe, expect, it, vi } from 'vitest'
 
 import {
@@ -9,6 +9,7 @@ import {
   purgeSchema,
   reactivateSchema
 } from '../server/cms/schema-lifecycle'
+import { syncContentListing } from '../server/cms/content-listing'
 import { getActiveSchema, getPublishedSchema, listActiveSchemas } from '../server/cms/repo'
 import { syncContentRefs } from '../server/cms/ref-sync'
 import {
@@ -293,6 +294,63 @@ describe('schema lifecycle', () => {
         .resolves.toMatchObject({ canDelete: true, counts: { contentTotal: 0 } })
       await expect(getSchemaDependencyImpact(fixture.db, 'empty'))
         .rejects.toMatchObject({ statusCode: 404 })
+    } finally {
+      fixture.close()
+    }
+  })
+
+  it('does not delete an empty schema when its lifecycle becomes active before cleanup', async () => {
+    const fixture = await createTestSqliteDb()
+    try {
+      await runMigrations(fixture.db)
+      const now = new Date('2026-07-14T00:00:00.000Z')
+      await fixture.db.insert(schema).values({
+        schemaKey: 'empty-active',
+        version: 1,
+        title: 'Empty active',
+        astJson: JSON.stringify({ schemaKey: 'empty-active', title: 'Empty active', fields: [] }),
+        jsonSchema: JSON.stringify({ type: 'object', properties: {} }),
+        registryJson: JSON.stringify({ schemaKey: 'empty-active', version: 1, title: 'Empty active', fields: [], relations: [] }),
+        createdAt: now
+      })
+      await fixture.db.insert(schemaActive).values({ schemaKey: 'empty-active', activeVersion: 1, updatedAt: now })
+
+      await deleteSchemaResidue({ context: {} } as any, fixture.db, 'empty-active', { guard: 'empty' })
+      await expect(getSchemaDependencyImpact(fixture.db, 'empty-active')).resolves.toMatchObject({ status: 'active' })
+    } finally {
+      fixture.close()
+    }
+  })
+
+  it('rebuilds listings with the retained registry while a schema is inactive', async () => {
+    const fixture = await createTestSqliteDb()
+    try {
+      await runMigrations(fixture.db)
+      await seedSchemaLifecycle(fixture.db)
+      await fixture.db.update(schema).set({
+        registryJson: JSON.stringify({
+          schemaKey: 'article',
+          version: 1,
+          title: 'Article',
+          fields: [],
+          relations: [],
+          listing: { titleFieldKey: 'title' }
+        })
+      }).where(eq(schema.schemaKey, 'article'))
+      await fixture.db.update(contentListing).set({ title: null }).where(and(
+        eq(contentListing.schemaKey, 'article'),
+        eq(contentListing.projectionScope, 'working')
+      ))
+      await deactivateSchema(fixture.db, 'article', 'admin-1')
+
+      await syncContentListing({ db: fixture.db, schemaKey: 'article', onlyMissing: false })
+      expect((await fixture.db.select({ title: contentListing.title })
+        .from(contentListing)
+        .where(and(
+          eq(contentListing.contentId, 'article-published'),
+          eq(contentListing.projectionScope, 'working')
+        )))
+        .map(row => row.title)).toEqual(['Published'])
     } finally {
       fixture.close()
     }

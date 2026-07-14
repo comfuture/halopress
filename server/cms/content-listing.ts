@@ -4,7 +4,7 @@ import { content as contentTable, contentListing } from '../db/schema'
 import { executeDbStatement } from '../db/transaction'
 import type { DbStatement } from '../db/transaction'
 import type { SchemaRegistry } from './types'
-import { getActiveSchema } from './repo'
+import { getPublishedSchema } from './repo'
 import { parseContentJson } from './content-json'
 import { buildListingProjection } from './listing'
 
@@ -123,7 +123,7 @@ export async function syncContentListing(args: {
     const content = parseContentJson(row.contentJson)
 
     if (!registryCache.has(row.schemaKey)) {
-      const active = await getActiveSchema(db, row.schemaKey)
+      const active = await getPublishedSchema(db, row.schemaKey, { includeInactive: true })
       registryCache.set(row.schemaKey, active?.registry ?? null)
     }
 

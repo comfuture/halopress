@@ -3,9 +3,14 @@ definePageMeta({
   layout: 'desk'
 })
 
+const { data: session } = useAuth()
+const schemaListUrl = computed(() => session.value?.user?.role === 'admin'
+  ? '/api/schema/list?includeInactive=1'
+  : '/api/schema/list')
+
 const { data, status } = await useFetch<{
   items: Array<{ schemaKey: string; title?: string; activeVersion: number; status: 'active' | 'inactive' }>
-}>('/api/schema/list?includeInactive=1')
+}>(schemaListUrl)
 
 const items = computed(() => data.value?.items ?? [])
 const showEmpty = computed(() => status.value === 'success' && items.value.length === 0)
