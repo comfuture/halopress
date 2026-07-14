@@ -1,6 +1,10 @@
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
+import type { H3Event } from 'h3'
+
 import type { Db } from '../db/db'
 import { content as contentTable } from '../db/schema'
+import { executeDbStatement } from '../db/transaction'
+import { mutateWithDocumentRevision } from './document-revisions'
 import type { FieldKind, FieldNode, SchemaAst, SchemaRegistry } from './types'
 import { parseContentJson } from './content-json'
 import { syncContentProjections } from './content-projections'
@@ -173,11 +177,13 @@ function valuesEqual(a: unknown, b: unknown) {
 }
 
 export async function migrateSchemaContent(args: {
+  event: H3Event
   db: Db
   schemaKey: string
   nextVersion: number
   registry: SchemaRegistry
   changes: KindChange[]
+  actorId?: string | null
   trustedOrigin?: string
 }) {
   const { db, schemaKey, nextVersion, registry, changes } = args
@@ -188,7 +194,10 @@ export async function migrateSchemaContent(args: {
       id: contentTable.id,
       status: contentTable.status,
       publishedRevisionId: contentTable.publishedRevisionId,
+      currentRevision: contentTable.currentRevision,
       createdAt: contentTable.createdAt,
+      updatedAt: contentTable.updatedAt,
+      updatedBy: contentTable.updatedBy,
       contentJson: contentTable.contentJson
     })
     .from(contentTable)
@@ -233,34 +242,53 @@ export async function migrateSchemaContent(args: {
       }
     }
 
-    const now = new Date()
-    const updatePayload: Record<string, unknown> = {
-      schemaVersion: nextVersion,
-      updatedAt: now
-    }
     const nextStatus = row.status === 'published' && row.publishedRevisionId
       ? 'draft'
       : row.status
-    if (nextStatus !== row.status) updatePayload.status = nextStatus
-    if (mutated) updatePayload.contentJson = JSON.stringify(content)
-
-    await db
-      .update(contentTable)
-      .set(updatePayload)
-      .where(eq(contentTable.id, row.id))
-
-    await syncContentProjections({
+    await mutateWithDocumentRevision({
+      event: args.event,
       db,
-      registry,
-      content,
-      contentId: row.id,
+      identity: row,
+      expectedRevision: row.currentRevision,
+      documentKind: 'content',
+      documentId: row.id,
       schemaKey,
-      schemaVersion: nextVersion,
-      status: nextStatus,
-      createdAt: row.createdAt,
-      updatedAt: now,
-      projectionScope: 'working',
-      trustedOrigin: args.trustedOrigin
+      action: 'migrate',
+      state: { snapshot: content, status: nextStatus, schemaVersion: nextVersion },
+      actorId: args.actorId,
+      work: async (tx, statements, nextRevision, now) => {
+        const updatePayload: Record<string, unknown> = {
+          schemaVersion: nextVersion,
+          currentRevision: nextRevision,
+          updatedAt: now,
+          updatedBy: args.actorId ?? null
+        }
+        if (nextStatus !== row.status) updatePayload.status = nextStatus
+        if (mutated) updatePayload.contentJson = JSON.stringify(content)
+
+        await executeDbStatement(tx
+          .update(contentTable)
+          .set(updatePayload)
+          .where(and(
+            eq(contentTable.id, row.id),
+            eq(contentTable.currentRevision, row.currentRevision)
+          )), statements)
+
+        await syncContentProjections({
+          db: tx,
+          registry,
+          content,
+          contentId: row.id,
+          schemaKey,
+          schemaVersion: nextVersion,
+          status: nextStatus,
+          createdAt: row.createdAt,
+          updatedAt: now,
+          projectionScope: 'working',
+          trustedOrigin: args.trustedOrigin,
+          statements
+        })
+      }
     })
     updated += 1
   }

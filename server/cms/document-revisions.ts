@@ -20,6 +20,7 @@ export type DocumentRevisionAction =
   | 'delete'
   | 'recover'
   | 'restore'
+  | 'migrate'
 
 export type RevisionIdentity = {
   currentRevision: number

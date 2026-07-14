@@ -91,11 +91,13 @@ export default defineEventHandler(async (event) => {
   let migrated = 0
   if (body?.migrate && kindChanges.length) {
     const result = await migrateSchemaContent({
+      event,
       db,
       schemaKey,
       nextVersion,
       registry: compiled.registry,
       changes: kindChanges,
+      actorId,
       trustedOrigin: getTrustedRequestOrigin(event)
     })
     migrated = result.updated
