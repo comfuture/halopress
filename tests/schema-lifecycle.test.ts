@@ -299,7 +299,7 @@ describe('schema lifecycle', () => {
     }
   })
 
-  it('does not delete an empty schema when its lifecycle becomes active before cleanup', async () => {
+  it('does not delete an empty schema reactivated after the dependency precheck', async () => {
     const fixture = await createTestSqliteDb()
     try {
       await runMigrations(fixture.db)
@@ -313,8 +313,22 @@ describe('schema lifecycle', () => {
         registryJson: JSON.stringify({ schemaKey: 'empty-active', version: 1, title: 'Empty active', fields: [], relations: [] }),
         createdAt: now
       })
-      await fixture.db.insert(schemaActive).values({ schemaKey: 'empty-active', activeVersion: 1, updatedAt: now })
+      await fixture.db.insert(schemaActive).values({
+        schemaKey: 'empty-active',
+        activeVersion: 1,
+        status: 'inactive',
+        deactivatedAt: now,
+        updatedAt: now
+      })
 
+      const staleImpact = await getSchemaDependencyImpact(fixture.db, 'empty-active')
+      expect(staleImpact).toMatchObject({ status: 'inactive', canDelete: true })
+
+      await fixture.db.update(schemaActive)
+        .set({ status: 'active', reactivatedAt: new Date('2026-07-14T00:01:00.000Z') })
+        .where(eq(schemaActive.schemaKey, 'empty-active'))
+
+      // Simulate cleanup continuing from the now-stale dependency impact.
       await deleteSchemaResidue({ context: {} } as any, fixture.db, 'empty-active', { guard: 'empty' })
       await expect(getSchemaDependencyImpact(fixture.db, 'empty-active')).resolves.toMatchObject({ status: 'active' })
     } finally {
