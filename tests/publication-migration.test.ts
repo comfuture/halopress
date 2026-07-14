@@ -113,4 +113,67 @@ describe('preserve published revisions migration', () => {
     ])
     expect(sqlite.prepare(`SELECT count(*) AS count FROM document_asset_ref WHERE asset_id LIKE '%25%' OR asset_id IN ('external', 'prefix-asset')`).get()).toEqual({ count: 0 })
   })
+
+  it('backfills editorial revision one and conservative publication permissions', async () => {
+    const sqlite = await openLegacyDatabase()
+    const root = resolve(import.meta.dirname, '..')
+    for (const name of [
+      '0001_add_installation_state.sql',
+      '0002_add_browser_setup_session.sql',
+      '0003_preserve_published_revisions.sql',
+      '0004_add_editorial_safety_revisions.sql'
+    ]) {
+      const migration = await readFile(resolve(root, 'server/db/migrations', name), 'utf8')
+      sqlite.exec(migration.replaceAll('--> statement-breakpoint', ''))
+    }
+
+    sqlite.exec(`
+      INSERT INTO user_role (role_key, title, level) VALUES ('writer', 'Writer', 50);
+      INSERT INTO schema_role (schema_key, role_key, can_read, can_write, can_admin)
+      VALUES ('article', 'writer', true, true, false);
+    `)
+
+    expect(sqlite.prepare(`
+      SELECT document_kind, document_id, revision, action, status, snapshot_json
+      FROM document_revision ORDER BY document_kind, document_id
+    `).all()).toEqual([
+      {
+        document_kind: 'content',
+        document_id: 'draft-content',
+        revision: 1,
+        action: 'backfill',
+        status: 'draft',
+        snapshot_json: '{"title":"Draft"}'
+      },
+      {
+        document_kind: 'content',
+        document_id: 'published-content',
+        revision: 1,
+        action: 'backfill',
+        status: 'published',
+        snapshot_json: '{"title":"Live","cover":"/assets/live-asset/raw","query":"/assets/query-asset/raw?width=1200","encoded":"/assets/01%4BENCODED/raw","embedded":"<img src=\\"/assets/html-asset/raw\\"> ![Markdown](/assets/markdown-asset/raw#body)","nearMiss":"prefix/assets/prefix-asset/raw https://example.com/assets/external/raw"}'
+      },
+      {
+        document_kind: 'page',
+        document_id: 'draft-page',
+        revision: 1,
+        action: 'backfill',
+        status: 'draft',
+        snapshot_json: '{"type":"doc"}'
+      },
+      {
+        document_kind: 'page',
+        document_id: 'published-page',
+        revision: 1,
+        action: 'backfill',
+        status: 'published',
+        snapshot_json: '{"type":"doc","content":[{"type":"image","attrs":{"src":"/assets/page-asset/raw#hero"}}]}'
+      }
+    ])
+
+    expect(sqlite.prepare(`
+      SELECT can_write, can_publish, can_archive, can_delete
+      FROM schema_role WHERE schema_key = 'article' AND role_key = 'writer'
+    `).get()).toEqual({ can_write: 1, can_publish: 0, can_archive: 0, can_delete: 0 })
+  })
 })

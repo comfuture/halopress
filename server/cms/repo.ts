@@ -28,6 +28,9 @@ export async function listActiveSchemas(db: Db, options: { roleKey?: string } = 
         .where(or(
           eq(schemaRoleTable.canRead, true),
           eq(schemaRoleTable.canWrite, true),
+          eq(schemaRoleTable.canPublish, true),
+          eq(schemaRoleTable.canArchive, true),
+          eq(schemaRoleTable.canDelete, true),
           eq(schemaRoleTable.canAdmin, true)
         ))
         .orderBy(schemaActiveTable.schemaKey)
@@ -123,26 +126,8 @@ export async function getDraft(db: Db, schemaKey: string) {
     schemaKey,
     title: row.title ?? schemaKey,
     ast: JSON.parse(row.astJson) as SchemaAst,
-    updatedAt: row.updatedAt
+    revision: row.currentRevision,
+    updatedAt: row.updatedAt,
+    updatedBy: row.updatedBy ?? null
   }
-}
-
-export async function upsertDraft(db: Db, schemaKey: string, title: string, ast: SchemaAst) {
-  const now = new Date()
-  await db
-    .insert(schemaDraftTable)
-    .values({
-      schemaKey,
-      title,
-      astJson: JSON.stringify(ast),
-      updatedAt: now
-    })
-    .onConflictDoUpdate({
-      target: schemaDraftTable.schemaKey,
-      set: {
-        title,
-        astJson: JSON.stringify(ast),
-        updatedAt: now
-      }
-    })
 }

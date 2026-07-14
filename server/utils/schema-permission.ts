@@ -6,12 +6,15 @@ import { schemaRole as schemaRoleTable } from '../db/schema'
 import { getAuthSession, requireAdmin } from './auth'
 import { badRequest, forbidden } from './http'
 
-export type SchemaPermissionAction = 'read' | 'write' | 'admin'
+export type SchemaPermissionAction = 'read' | 'write' | 'publish' | 'archive' | 'delete' | 'admin'
 
 export type SchemaPermission = {
   roleKey: string
   canRead: boolean
   canWrite: boolean
+  canPublish: boolean
+  canArchive: boolean
+  canDelete: boolean
   canAdmin: boolean
 }
 
@@ -35,7 +38,15 @@ export async function getSchemaPermission(event: H3Event, schemaKey: string): Pr
   const roleKey = await getSchemaRoleKey(event)
 
   if (isAdminRole(roleKey)) {
-    return { roleKey, canRead: true, canWrite: true, canAdmin: true }
+    return {
+      roleKey,
+      canRead: true,
+      canWrite: true,
+      canPublish: true,
+      canArchive: true,
+      canDelete: true,
+      canAdmin: true
+    }
   }
 
   const db = await getDb(event)
@@ -43,6 +54,9 @@ export async function getSchemaPermission(event: H3Event, schemaKey: string): Pr
     .select({
       canRead: schemaRoleTable.canRead,
       canWrite: schemaRoleTable.canWrite,
+      canPublish: schemaRoleTable.canPublish,
+      canArchive: schemaRoleTable.canArchive,
+      canDelete: schemaRoleTable.canDelete,
       canAdmin: schemaRoleTable.canAdmin
     })
     .from(schemaRoleTable)
@@ -56,13 +70,22 @@ export async function getSchemaPermission(event: H3Event, schemaKey: string): Pr
     roleKey,
     canRead: !!row?.canRead,
     canWrite: !!row?.canWrite,
+    canPublish: !!row?.canPublish,
+    canArchive: !!row?.canArchive,
+    canDelete: !!row?.canDelete,
     canAdmin: !!row?.canAdmin
   }
 }
 
 export function hasSchemaPermission(permission: SchemaPermission, action: SchemaPermissionAction) {
-  if (action === 'read') return permission.canRead || permission.canWrite || permission.canAdmin
+  if (action === 'read') {
+    return permission.canRead || permission.canWrite || permission.canPublish ||
+      permission.canArchive || permission.canDelete || permission.canAdmin
+  }
   if (action === 'write') return permission.canWrite || permission.canAdmin
+  if (action === 'publish') return permission.canPublish || permission.canAdmin
+  if (action === 'archive') return permission.canArchive || permission.canAdmin
+  if (action === 'delete') return permission.canDelete || permission.canAdmin
   return permission.canAdmin
 }
 

@@ -4,8 +4,20 @@ definePageMeta({
 })
 
 const locale = useDisplayLocale()
+const status = ref<'all' | 'draft' | 'published' | 'archived' | 'deleted'>('all')
+const query = computed(() => ({
+  limit: 100,
+  status: status.value === 'all' ? undefined : status.value
+}))
+const statusOptions = [
+  { label: 'Active pages', value: 'all' },
+  { label: 'Draft', value: 'draft' },
+  { label: 'Published', value: 'published' },
+  { label: 'Archived', value: 'archived' },
+  { label: 'Deleted', value: 'deleted' }
+]
 const { data, pending, refresh } = await useFetch<{ items: Array<{ id: string; title: string | null; status: string; createdAt: string; updatedAt: string }> }>('/api/page', {
-  query: { limit: 100 }
+  query
 })
 
 const formatUpdatedAt = (value: string) => formatDateTime(value, locale.value)
@@ -21,6 +33,23 @@ const formatUpdatedAt = (value: string) => formatDateTime(value, locale.value)
           </UButton>
         </template>
       </DeskNavbar>
+
+      <UDashboardToolbar>
+        <template #left>
+          <USelect v-model="status" :items="statusOptions" class="w-44" />
+        </template>
+        <template #right>
+          <UButton
+            color="neutral"
+            variant="outline"
+            icon="i-lucide-rotate-cw"
+            :loading="pending"
+            @click="refresh()"
+          >
+            Refresh
+          </UButton>
+        </template>
+      </UDashboardToolbar>
     </template>
 
     <template #body>

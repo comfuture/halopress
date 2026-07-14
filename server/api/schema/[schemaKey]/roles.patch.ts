@@ -15,6 +15,9 @@ export default defineEventHandler(async (event) => {
     roleKey?: string
     canRead?: boolean
     canWrite?: boolean
+    canPublish?: boolean
+    canArchive?: boolean
+    canDelete?: boolean
     canAdmin?: boolean
   }>(event)
 
@@ -33,6 +36,9 @@ export default defineEventHandler(async (event) => {
 
   const canRead = !!body?.canRead
   const canWrite = !!body?.canWrite
+  const canPublish = !!body?.canPublish
+  const canArchive = !!body?.canArchive
+  const canDelete = !!body?.canDelete
   const canAdmin = !!body?.canAdmin
 
   await db
@@ -42,11 +48,14 @@ export default defineEventHandler(async (event) => {
       roleKey,
       canRead,
       canWrite,
+      canPublish,
+      canArchive,
+      canDelete,
       canAdmin
     })
     .onConflictDoUpdate({
       target: [schemaRoleTable.schemaKey, schemaRoleTable.roleKey],
-      set: { canRead, canWrite, canAdmin }
+      set: { canRead, canWrite, canPublish, canArchive, canDelete, canAdmin }
     })
 
   return { ok: true }

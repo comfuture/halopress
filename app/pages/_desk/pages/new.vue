@@ -56,7 +56,7 @@ async function saveDraft() {
   try {
     const res = await $fetch<{ id: string }>('/api/page', {
       method: 'POST',
-      body: { title: state.title, status: 'draft', content: state.content }
+      body: { title: state.title, content: state.content }
     })
     toast.add({ title: 'Created', description: res.id })
     await navigateTo(`/_desk/pages/${res.id}`)
@@ -70,15 +70,22 @@ async function saveDraft() {
 async function publish() {
   if (!isDirty.value) return
   publishing.value = true
+  let createdId: string | null = null
   try {
-    const res = await $fetch<{ id: string }>('/api/page', {
+    const created = await $fetch<{ id: string; revision: number }>('/api/page', {
       method: 'POST',
-      body: { title: state.title, status: 'published', content: state.content }
+      body: { title: state.title, content: state.content }
     })
-    toast.add({ title: 'Published', description: res.id })
-    await navigateTo(`/_desk/pages/${res.id}`)
+    createdId = created.id
+    await $fetch(`/api/page/${created.id}/publish`, {
+      method: 'POST',
+      body: { revision: created.revision, title: state.title, content: state.content }
+    })
+    toast.add({ title: 'Published', description: created.id })
+    await navigateTo(`/_desk/pages/${created.id}`)
   } catch (e: any) {
-    toast.add({ title: 'Publish failed', description: e?.statusMessage || 'Error', color: 'error' })
+    toast.add({ title: 'Publish failed', description: e?.statusMessage || 'The draft was saved, but could not be published.', color: 'error' })
+    if (createdId) await navigateTo(`/_desk/pages/${createdId}`)
   } finally {
     publishing.value = false
   }

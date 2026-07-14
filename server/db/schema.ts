@@ -1,4 +1,4 @@
-import { foreignKey, index, integer, primaryKey, real, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { foreignKey, index, integer, primaryKey, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 
 export const userRole = sqliteTable('user_role', {
   roleKey: text('role_key').notNull(),
@@ -83,6 +83,9 @@ export const schemaRole = sqliteTable('schema_role', {
   roleKey: text('role_key').notNull().references(() => userRole.roleKey),
   canRead: integer('can_read', { mode: 'boolean' }).notNull().default(false),
   canWrite: integer('can_write', { mode: 'boolean' }).notNull().default(false),
+  canPublish: integer('can_publish', { mode: 'boolean' }).notNull().default(false),
+  canArchive: integer('can_archive', { mode: 'boolean' }).notNull().default(false),
+  canDelete: integer('can_delete', { mode: 'boolean' }).notNull().default(false),
   canAdmin: integer('can_admin', { mode: 'boolean' }).notNull().default(false)
 }, t => ({
   pk: primaryKey({ columns: [t.schemaKey, t.roleKey] }),
@@ -94,6 +97,8 @@ export const schemaDraft = sqliteTable('schema_draft', {
   schemaKey: text('schema_key').notNull(),
   title: text('title'),
   astJson: text('ast_json').notNull(),
+  currentRevision: integer('current_revision').notNull().default(1),
+  updatedBy: text('updated_by'),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
   lockedBy: text('locked_by'),
   lockExpiresAt: integer('lock_expires_at', { mode: 'timestamp' })
@@ -107,10 +112,17 @@ export const content = sqliteTable('content', {
   schemaVersion: integer('schema_version').notNull(),
   status: text('status').notNull(),
   contentJson: text('content_json').notNull(),
+  currentRevision: integer('current_revision').notNull().default(1),
   publishedRevisionId: text('published_revision_id'),
   firstPublishedAt: integer('first_published_at', { mode: 'timestamp' }),
   publishedAt: integer('published_at', { mode: 'timestamp' }),
+  publishedBy: text('published_by'),
+  transitionAt: integer('transition_at', { mode: 'timestamp' }),
+  transitionBy: text('transition_by'),
+  deletedAt: integer('deleted_at', { mode: 'timestamp' }),
+  deletedBy: text('deleted_by'),
   createdBy: text('created_by'),
+  updatedBy: text('updated_by'),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull()
 }, t => ({
@@ -124,10 +136,17 @@ export const page = sqliteTable('page', {
   title: text('title'),
   status: text('status').notNull().default('draft'),
   contentJson: text('content_json').notNull(),
+  currentRevision: integer('current_revision').notNull().default(1),
   publishedRevisionId: text('published_revision_id'),
   firstPublishedAt: integer('first_published_at', { mode: 'timestamp' }),
   publishedAt: integer('published_at', { mode: 'timestamp' }),
+  publishedBy: text('published_by'),
+  transitionAt: integer('transition_at', { mode: 'timestamp' }),
+  transitionBy: text('transition_by'),
+  deletedAt: integer('deleted_at', { mode: 'timestamp' }),
+  deletedBy: text('deleted_by'),
   createdBy: text('created_by'),
+  updatedBy: text('updated_by'),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull()
 }, t => ({
@@ -149,6 +168,26 @@ export const publicationRevision = sqliteTable('publication_revision', {
 }, t => ({
   pk: primaryKey({ columns: [t.id] }),
   byDocument: index('idx_publication_revision_document').on(t.documentKind, t.documentId, t.createdAt)
+}))
+
+export const documentRevision = sqliteTable('document_revision', {
+  id: text('id').notNull(),
+  documentKind: text('document_kind').notNull(), // content|page|schema-draft
+  documentId: text('document_id').notNull(),
+  schemaKey: text('schema_key'),
+  revision: integer('revision').notNull(),
+  action: text('action').notNull(),
+  status: text('status'),
+  title: text('title'),
+  schemaVersion: integer('schema_version'),
+  snapshotJson: text('snapshot_json').notNull(),
+  createdBy: text('created_by'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull()
+}, t => ({
+  pk: primaryKey({ columns: [t.id] }),
+  revisionUnique: uniqueIndex('idx_document_revision_unique').on(t.documentKind, t.documentId, t.revision),
+  byDocument: index('idx_document_revision_document').on(t.documentKind, t.documentId, t.revision),
+  byCreatedAt: index('idx_document_revision_created_at').on(t.createdAt)
 }))
 
 export const contentListing = sqliteTable('content_listing', {

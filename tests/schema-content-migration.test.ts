@@ -9,6 +9,7 @@ import {
   content,
   contentListing,
   contentSearchData,
+  documentRevision,
   publicationRevision,
   schema
 } from '../server/db/schema'
@@ -147,11 +148,13 @@ describe('schema content migration publication state', () => {
       ))
 
       expect(await migrateSchemaContent({
+        event: { context: {} } as any,
         db,
         schemaKey: 'article',
         nextVersion: 2,
         registry: v2Registry,
-        changes: getKindChanges(v1Ast, v2Ast)
+        changes: getKindChanges(v1Ast, v2Ast),
+        actorId: 'admin-1'
       })).toEqual({ updated: 3 })
 
       const migrated = await db.select().from(content)
@@ -159,6 +162,8 @@ describe('schema content migration publication state', () => {
       expect(migrated).toMatchObject({
         schemaVersion: 2,
         status: 'draft',
+        currentRevision: 2,
+        updatedBy: 'admin-1',
         publishedRevisionId: 'published-revision'
       })
       expect(JSON.parse(migrated!.contentJson)).toEqual({ title: 'Published title', score: 42 })
@@ -187,6 +192,35 @@ describe('schema content migration publication state', () => {
         id: 'published-with-draft',
         status: 'draft'
       })
+      expect(await db.select({
+        documentId: documentRevision.documentId,
+        revision: documentRevision.revision,
+        action: documentRevision.action,
+        schemaVersion: documentRevision.schemaVersion,
+        createdBy: documentRevision.createdBy
+      }).from(documentRevision).orderBy(documentRevision.documentId)).toEqual([
+        {
+          documentId: 'never-published',
+          revision: 2,
+          action: 'migrate',
+          schemaVersion: 2,
+          createdBy: 'admin-1'
+        },
+        {
+          documentId: 'published-content',
+          revision: 2,
+          action: 'migrate',
+          schemaVersion: 2,
+          createdBy: 'admin-1'
+        },
+        {
+          documentId: 'published-with-draft',
+          revision: 2,
+          action: 'migrate',
+          schemaVersion: 2,
+          createdBy: 'admin-1'
+        }
+      ])
       expect(await db.select({ id: content.id, status: content.status }).from(content)
         .where(eq(content.id, 'never-published')).get()).toEqual({
         id: 'never-published',

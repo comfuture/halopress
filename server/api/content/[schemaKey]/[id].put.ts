@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm'
 import { readBody } from 'h3'
 
-import { publishContentWorking, saveContentWorking } from '../../../cms/content-publication'
+import { saveContentWorking } from '../../../cms/content-publication'
 import { parseContentJson } from '../../../cms/content-json'
 import { validateContentJson } from '../../../cms/content-validation'
 import { getActiveSchema } from '../../../cms/repo'
@@ -10,7 +10,8 @@ import { content as contentTable } from '../../../db/schema'
 import { getAuthSession } from '../../../utils/auth'
 import { badRequest, notFound } from '../../../utils/http'
 import { requireSchemaPermission } from '../../../utils/schema-permission'
-import { queueWidgetCacheInvalidation } from '../../../utils/widget-cache'
+import { requireExpectedRevision } from '../../../cms/document-revisions'
+import { assertDraftWriteStatus } from '../../../cms/publication-transitions'
 
 export default defineEventHandler(async (event) => {
   const schemaKey = event.context.params?.schemaKey as string
@@ -18,8 +19,9 @@ export default defineEventHandler(async (event) => {
   await requireSchemaPermission(event, schemaKey, 'write')
   const session = await getAuthSession(event)
   const actorId = (session?.user as any)?.id ?? null
-  const body = await readBody<{ status?: string, content?: Record<string, unknown> }>(event)
-  if (body?.status === 'deleted') throw badRequest('Use the delete endpoint to delete content')
+  const body = await readBody<{ revision?: number, status?: string, content?: Record<string, unknown> }>(event)
+  assertDraftWriteStatus(body?.status)
+  const expectedRevision = requireExpectedRevision(body?.revision)
 
   const db = await getDb(event)
   const active = await getActiveSchema(db, schemaKey)
@@ -33,20 +35,15 @@ export default defineEventHandler(async (event) => {
   const input = body?.content ?? parseContentJson(existing.contentJson)
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw badRequest('Invalid content')
   const content = validateContentJson(active.jsonSchema, input)
-  const workingStatus = body?.status ?? (existing.status === 'published' ? 'draft' : existing.status)
-  const publication = body?.status === 'published'
-    ? await publishContentWorking({ event, db, existing, schemaKey, active: active as any, content, actorId })
-    : await saveContentWorking({
-        event,
-        db,
-        existing,
-        schemaKey,
-        active: active as any,
-        content,
-        actorId,
-        status: workingStatus
-      })
-
-  if (body?.status === 'published') queueWidgetCacheInvalidation(event, 'schema:' + schemaKey)
+  const publication = await saveContentWorking({
+    event,
+    db,
+    existing,
+    schemaKey,
+    active: active as any,
+    content,
+    actorId,
+    expectedRevision
+  })
   return { ok: true, ...publication }
 })

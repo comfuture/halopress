@@ -18,6 +18,7 @@ export default defineEventHandler(async (event) => {
       id: pageTable.id,
       title: pageTable.title,
       status: pageTable.status,
+      currentRevision: pageTable.currentRevision,
       publishedRevisionId: pageTable.publishedRevisionId,
       firstPublishedAt: pageTable.firstPublishedAt,
       publishedAt: pageTable.publishedAt,
@@ -36,8 +37,13 @@ export default defineEventHandler(async (event) => {
 
   const rows = await query
   const items = rows.map((row: any) => {
-    const { publishedRevisionId: _publishedRevisionId, firstPublishedAt: _firstPublishedAt, ...safeRow } = row
-    return { ...safeRow, ...publicationMetadata(row) }
+    const {
+      publishedRevisionId: _publishedRevisionId,
+      firstPublishedAt: _firstPublishedAt,
+      currentRevision,
+      ...safeRow
+    } = row
+    return { ...safeRow, revision: currentRevision, ...publicationMetadata(row) }
   })
   return { items }
 })

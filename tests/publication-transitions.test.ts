@@ -2,7 +2,15 @@ import { and, asc, eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 
 import { discardContentWorking, publishContentWorking, saveContentWorking, unpublishContent } from '../server/cms/content-publication'
-import { discardPageWorking, publishPageWorking, savePageWorking, unpublishPage } from '../server/cms/page-publication'
+import {
+  deletePage,
+  discardPageWorking,
+  publishPageWorking,
+  recoverPage,
+  restorePageRevision,
+  savePageWorking,
+  unpublishPage
+} from '../server/cms/page-publication'
 import type { SchemaRegistry } from '../server/cms/types'
 import {
   content,
@@ -78,7 +86,8 @@ describe('publication transitions', () => {
         schemaKey: 'article',
         active: { version: 1, registry },
         content: { title: 'Live', cover: 'asset-live' },
-        actorId: 'admin-1'
+        actorId: 'admin-1',
+        expectedRevision: row.currentRevision
       })
       expect(first).toMatchObject({ publicationState: 'published', hasPublishedRevision: true })
       row = await getContent(db, 'article-1')
@@ -91,7 +100,8 @@ describe('publication transitions', () => {
         schemaKey: 'article',
         active: { version: 1, registry },
         content: { title: 'Draft edit', cover: 'asset-draft' },
-        actorId: 'admin-1'
+        actorId: 'admin-1',
+        expectedRevision: row.currentRevision
       })
       row = await getContent(db, 'article-1')
       expect(row).toMatchObject({ status: 'draft', publishedRevisionId: firstRevisionId })
@@ -111,7 +121,14 @@ describe('publication transitions', () => {
         ['working', 'asset-draft']
       ])
 
-      await discardContentWorking({ event, db, existing: row, schemaKey: 'article' })
+      await discardContentWorking({
+        event,
+        db,
+        existing: row,
+        schemaKey: 'article',
+        actorId: 'admin-1',
+        expectedRevision: row.currentRevision
+      })
       row = await getContent(db, 'article-1')
       expect(row.status).toBe('published')
       expect(JSON.parse(row.contentJson)).toEqual({ title: 'Live', cover: 'asset-live' })
@@ -123,7 +140,8 @@ describe('publication transitions', () => {
         schemaKey: 'article',
         active: { version: 1, registry },
         content: { title: 'Live v2', cover: 'asset-v2' },
-        actorId: 'admin-1'
+        actorId: 'admin-1',
+        expectedRevision: row.currentRevision
       })
       row = await getContent(db, 'article-1')
       await publishContentWorking({
@@ -133,7 +151,8 @@ describe('publication transitions', () => {
         schemaKey: 'article',
         active: { version: 1, registry },
         content: { title: 'Live v2', cover: 'asset-v2' },
-        actorId: 'admin-1'
+        actorId: 'admin-1',
+        expectedRevision: row.currentRevision
       })
       row = await getContent(db, 'article-1')
       expect(row.publishedRevisionId).not.toBe(firstRevisionId)
@@ -142,10 +161,16 @@ describe('publication transitions', () => {
       expect(revisions).toHaveLength(2)
       expect(revisions.some((revision: any) => revision.id === firstRevisionId && JSON.parse(revision.contentJson).title === 'Live')).toBe(true)
 
-      const unpublished = await unpublishContent({ event, db, existing: row })
+      const unpublished = await unpublishContent({
+        event,
+        db,
+        existing: row,
+        actorId: 'admin-1',
+        expectedRevision: row.currentRevision
+      })
       expect(unpublished).toMatchObject({ publicationState: 'unpublished', hasPublishedRevision: false })
       row = await getContent(db, 'article-1')
-      expect(row).toMatchObject({ status: 'draft', publishedRevisionId: null, publishedAt: null })
+      expect(row).toMatchObject({ status: 'archived', publishedRevisionId: null, publishedAt: null })
       expect(await db.select().from(contentListing).where(and(
         eq(contentListing.contentId, 'article-1'),
         eq(contentListing.projectionScope, 'published')
@@ -159,7 +184,7 @@ describe('publication transitions', () => {
         eq(contentListing.projectionScope, 'working')
       ))).toEqual([{
         projectionScope: 'working',
-        status: 'draft',
+        status: 'archived',
         title: 'Live v2'
       }])
       expect(await db.select().from(publicationRevision).where(and(
@@ -186,25 +211,31 @@ describe('publication transitions', () => {
         updatedAt: createdAt
       })
       let row = await getPage(db, 'page-1')
-      await publishPageWorking({
+      const published = await publishPageWorking({
         event,
         db,
         existing: row,
         title: 'Public page',
         content: { type: 'doc', content: [{ type: 'image', attrs: { src: '/assets/page-live/raw' } }] },
-        actorId: 'admin-1'
+        actorId: 'admin-1',
+        expectedRevision: row.currentRevision
       })
       row = await getPage(db, 'page-1')
+      expect(published.updatedAt).toEqual(row.updatedAt)
+      expect(published.transitionAt).toEqual(row.transitionAt)
       const revisionId = row.publishedRevisionId
 
-      await savePageWorking({
+      const saved = await savePageWorking({
         event,
         db,
         existing: row,
         title: 'Draft page',
-        content: { type: 'doc', content: [{ type: 'image', attrs: { src: '/assets/page-draft/raw' } }] }
+        content: { type: 'doc', content: [{ type: 'image', attrs: { src: '/assets/page-draft/raw' } }] },
+        actorId: 'admin-1',
+        expectedRevision: row.currentRevision
       })
       row = await getPage(db, 'page-1')
+      expect(saved.updatedAt).toEqual(row.updatedAt)
       expect(row).toMatchObject({ title: 'Draft page', status: 'draft', publishedRevisionId: revisionId })
       expect((await db.select().from(documentAssetRef).where(and(
         eq(documentAssetRef.documentKind, 'page'),
@@ -214,16 +245,70 @@ describe('publication transitions', () => {
         'working:page-draft'
       ])
 
-      await discardPageWorking({ event, db, existing: row })
+      const discarded = await discardPageWorking({
+        event,
+        db,
+        existing: row,
+        actorId: 'admin-1',
+        expectedRevision: row.currentRevision
+      })
       row = await getPage(db, 'page-1')
+      expect(discarded.updatedAt).toEqual(row.updatedAt)
+      expect(discarded.transitionAt).toEqual(row.transitionAt)
       expect(row).toMatchObject({ title: 'Public page', status: 'published', publishedRevisionId: revisionId })
-      const unpublished = await unpublishPage({ event, db, existing: row })
+      const unpublished = await unpublishPage({
+        event,
+        db,
+        existing: row,
+        actorId: 'admin-1',
+        expectedRevision: row.currentRevision
+      })
       expect(unpublished.publicationState).toBe('unpublished')
+      row = await getPage(db, 'page-1')
+      expect(unpublished.updatedAt).toEqual(row.updatedAt)
+      expect(unpublished.transitionAt).toEqual(row.transitionAt)
       expect(await db.select().from(documentAssetRef).where(and(
         eq(documentAssetRef.documentKind, 'page'),
         eq(documentAssetRef.documentId, 'page-1'),
         eq(documentAssetRef.projectionScope, 'published')
       ))).toHaveLength(0)
+
+      const deleted = await deletePage({
+        event,
+        db,
+        existing: row,
+        actorId: 'admin-1',
+        expectedRevision: row.currentRevision
+      })
+      row = await getPage(db, 'page-1')
+      expect(deleted.updatedAt).toEqual(row.updatedAt)
+      expect(deleted.transitionAt).toEqual(row.transitionAt)
+      expect(deleted.deletedAt).toEqual(row.deletedAt)
+
+      const recovered = await recoverPage({
+        event,
+        db,
+        existing: row,
+        actorId: 'admin-1',
+        expectedRevision: row.currentRevision
+      })
+      row = await getPage(db, 'page-1')
+      expect(recovered.updatedAt).toEqual(row.updatedAt)
+      expect(recovered.transitionAt).toEqual(row.transitionAt)
+      expect(recovered.deletedAt).toBeNull()
+
+      const restored = await restorePageRevision({
+        event,
+        db,
+        existing: row,
+        title: 'Restored page',
+        content: { type: 'doc', content: [] },
+        actorId: 'admin-1',
+        expectedRevision: row.currentRevision
+      })
+      row = await getPage(db, 'page-1')
+      expect(restored.updatedAt).toEqual(row.updatedAt)
+      expect(restored.transitionAt).toEqual(row.transitionAt)
     } finally {
       fixture.close()
     }

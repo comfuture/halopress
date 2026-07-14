@@ -23,7 +23,12 @@ const route = useRoute()
 const toast = useToast()
 const schemaKey = computed(() => String(route.params.schemaKey))
 
-const { data: schema } = await useFetch<any>(() => `/api/schema/${schemaKey.value}/active`)
+const [schemaResult, permissionResult] = await Promise.all([
+  useFetch<any>(() => `/api/schema/${schemaKey.value}/active`),
+  useFetch<any>(() => `/api/schema/${schemaKey.value}/permission`)
+])
+const { data: schema } = schemaResult
+const { data: permission } = permissionResult
 
 const breadcrumbItems = computed<BreadcrumbItem[]>(() => ([
   { label: schema.value?.title || schemaKey.value, icon: 'i-lucide-files', to: `/_desk/content/${schemaKey.value}` },
@@ -69,8 +74,10 @@ watchEffect(() => {
 })
 
 const isDirty = computed(() => baselineReady.value && currentContentJson.value !== lastSavedContentJson.value)
-const canSaveDraft = computed(() => isDirty.value && !savingDraft.value)
-const canPublish = computed(() => isDirty.value && !publishing.value)
+const canWrite = computed(() => !!permission.value && (permission.value.canWrite || permission.value.canAdmin))
+const canPublishPermission = computed(() => !!permission.value && (permission.value.canPublish || permission.value.canAdmin))
+const canSaveDraft = computed(() => canWrite.value && isDirty.value && !savingDraft.value)
+const canPublish = computed(() => canWrite.value && canPublishPermission.value && isDirty.value && !publishing.value)
 
 async function saveDraft() {
   if (!isDirty.value) return
@@ -82,7 +89,7 @@ async function saveDraft() {
   try {
     const res = await $fetch<{ id: string }>(`/api/content/${schemaKey.value}`, {
       method: 'POST',
-      body: { status: 'draft', content: state.content }
+      body: { content: state.content }
     })
     toast.add({ title: 'Created', description: res.id })
     await navigateTo(`/_desk/content/${schemaKey.value}/${res.id}`)
@@ -100,15 +107,22 @@ async function publish() {
     return
   }
   publishing.value = true
+  let createdId: string | null = null
   try {
-    await $fetch<{ id: string }>(`/api/content/${schemaKey.value}`, {
+    const created = await $fetch<{ id: string; revision: number }>(`/api/content/${schemaKey.value}`, {
       method: 'POST',
-      body: { status: 'published', content: state.content }
+      body: { content: state.content }
+    })
+    createdId = created.id
+    await $fetch(`/api/content/${schemaKey.value}/${created.id}/publish`, {
+      method: 'POST',
+      body: { revision: created.revision, content: state.content }
     })
     toast.add({ title: 'Published' })
-    await navigateTo(`/_desk/content/${schemaKey.value}`)
+    await navigateTo(`/_desk/content/${schemaKey.value}/${created.id}`)
   } catch (e: any) {
-    toast.add({ title: 'Publish failed', description: e?.statusMessage || 'Error', color: 'error' })
+    toast.add({ title: 'Publish failed', description: e?.statusMessage || 'The draft was saved, but could not be published.', color: 'error' })
+    if (createdId) await navigateTo(`/_desk/content/${schemaKey.value}/${createdId}`)
   } finally {
     publishing.value = false
   }
@@ -130,8 +144,10 @@ async function publish() {
 
         <template #actions>
           <CmsEditorActions
+            :show-save-draft="canWrite"
             :can-save-draft="canSaveDraft"
             :saving-draft="savingDraft"
+            :show-publish="canPublishPermission"
             :can-publish="canPublish"
             :publishing="publishing"
             @save-draft="saveDraft"

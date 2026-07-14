@@ -1,30 +1,30 @@
-import { and, eq } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
+import { readBody } from 'h3'
 
+import { deletePage } from '../../cms/page-publication'
+import { requireExpectedRevision } from '../../cms/document-revisions'
 import { getDb } from '../../db/db'
-import { documentAssetRef, page as pageTable } from '../../db/schema'
-import { executeDbStatement, withDbTransaction } from '../../db/transaction'
+import { page as pageTable } from '../../db/schema'
 import { requireAdmin } from '../../utils/auth'
 import { notFound } from '../../utils/http'
 
 export default defineEventHandler(async (event) => {
-  await requireAdmin(event)
+  const session = await requireAdmin(event)
   const id = event.context.params?.id as string
   if (!id) throw notFound('Page not found')
+  const body = await readBody<{ revision?: number }>(event)
+  const expectedRevision = requireExpectedRevision(body?.revision)
   const db = await getDb(event)
-  const existing = await db.select({ id: pageTable.id }).from(pageTable).where(eq(pageTable.id, id)).get()
+  const existing = await db.select().from(pageTable).where(eq(pageTable.id, id)).get()
   if (!existing) throw notFound('Page not found')
-  await withDbTransaction(event, db, async (tx: any, statements) => {
-    await executeDbStatement(tx.update(pageTable).set({
-      status: 'deleted',
-      publishedRevisionId: null,
-      publishedAt: null,
-      updatedAt: new Date()
-    }).where(eq(pageTable.id, id)), statements)
-    await executeDbStatement(tx.delete(documentAssetRef).where(and(
-      eq(documentAssetRef.documentKind, 'page'),
-      eq(documentAssetRef.documentId, id),
-      eq(documentAssetRef.projectionScope, 'published')
-    )), statements)
-  })
-  return { ok: true }
+  return {
+    ok: true,
+    ...(await deletePage({
+      event,
+      db,
+      existing,
+      actorId: (session.user as any)?.id ?? null,
+      expectedRevision
+    }))
+  }
 })

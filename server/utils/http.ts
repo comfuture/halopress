@@ -16,8 +16,8 @@ export function notFound(message = 'Not found') {
   return createError({ statusCode: 404, statusMessage: message })
 }
 
-export function conflict(message = 'Conflict') {
-  return createError({ statusCode: 409, statusMessage: message })
+export function conflict(message = 'Conflict', data?: unknown) {
+  return createError({ statusCode: 409, statusMessage: message, data })
 }
 
 export function sendH3Error(event: H3Event, err: unknown) {

@@ -12,6 +12,7 @@ import { requireAdmin } from '../../../utils/auth'
 import { badRequest, notFound } from '../../../utils/http'
 import { schemaAstSchema } from '../../../cms/zod'
 import { assertSchemaKeyCanBePersisted } from '../../../cms/schema-key'
+import { assertExpectedRevision, requireExpectedRevision } from '../../../cms/document-revisions'
 import { ensureAnonymousSchemaRole } from '../../../utils/install'
 import { getTrustedRequestOrigin } from '../../../utils/request-origin'
 import { queueWidgetCacheInvalidation } from '../../../utils/widget-cache'
@@ -20,8 +21,16 @@ export default defineEventHandler(async (event) => {
   const session = await requireAdmin(event)
   const actorId = (session.user as any)?.id ?? null
   const schemaKey = event.context.params?.schemaKey as string
-  const body = await readBody<{ ast?: unknown; note?: string; migrate?: boolean }>(event)
+  const body = await readBody<{ ast?: unknown; note?: string; migrate?: boolean; revision?: number }>(event)
   const db = await getDb(event)
+
+  const draft = await getDraft(db, schemaKey)
+  if (!draft) throw notFound('Draft not found')
+  assertExpectedRevision({
+    currentRevision: draft.revision,
+    updatedAt: draft.updatedAt,
+    updatedBy: draft.updatedBy
+  }, requireExpectedRevision(body?.revision))
 
   let ast: any = null
   if (body?.ast) {
@@ -29,8 +38,6 @@ export default defineEventHandler(async (event) => {
     if (!parsed.success) throw badRequest('Invalid AST', parsed.error.flatten())
     ast = parsed.data
   } else {
-    const draft = await getDraft(db, schemaKey)
-    if (!draft) throw notFound('Draft not found')
     ast = draft.ast
   }
   if (ast.schemaKey !== schemaKey) throw badRequest('schemaKey mismatch')
@@ -85,11 +92,13 @@ export default defineEventHandler(async (event) => {
   let migrated = 0
   if (body?.migrate && kindChanges.length) {
     const result = await migrateSchemaContent({
+      event,
       db,
       schemaKey,
       nextVersion,
       registry: compiled.registry,
       changes: kindChanges,
+      actorId,
       trustedOrigin: getTrustedRequestOrigin(event)
     })
     migrated = result.updated

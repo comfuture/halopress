@@ -193,7 +193,16 @@ export default defineEventHandler(async (event) => {
           hasDraftChanges: false,
           publishedAt: row.publishedAt
         }
-      : publicationMetadata(row))
+      : {
+          ...publicationMetadata(row),
+          revision: row.currentRevision,
+          updatedBy: row.updatedBy ?? null,
+          transitionAt: row.transitionAt ?? null,
+          transitionBy: row.transitionBy ?? null,
+          deletedAt: row.deletedAt ?? null,
+          deletedBy: row.deletedBy ?? null,
+          publishedBy: row.publishedBy ?? null
+        })
   }
   return includeSurroundings ? { ...response, surroundings } : response
 })

@@ -11,6 +11,9 @@ type RolePermission = {
   level: number
   canRead: boolean
   canWrite: boolean
+  canPublish: boolean
+  canArchive: boolean
+  canDelete: boolean
   canAdmin: boolean
   locked?: boolean
 }
@@ -65,7 +68,7 @@ watch(schemaKey, async (value, prev) => {
 
 const saving = reactive<Record<string, boolean>>({})
 
-async function updatePermission(role: RolePermission, key: 'canRead' | 'canWrite' | 'canAdmin', value: boolean) {
+async function updatePermission(role: RolePermission, key: 'canRead' | 'canWrite' | 'canPublish' | 'canArchive' | 'canDelete' | 'canAdmin', value: boolean) {
   if (role.locked) return
   if (saving[role.roleKey]) return
   const previous = role[key]
@@ -78,6 +81,9 @@ async function updatePermission(role: RolePermission, key: 'canRead' | 'canWrite
         roleKey: role.roleKey,
         canRead: role.canRead,
         canWrite: role.canWrite,
+        canPublish: role.canPublish,
+        canArchive: role.canArchive,
+        canDelete: role.canDelete,
         canAdmin: role.canAdmin
       }
     })
@@ -132,7 +138,7 @@ async function updatePermission(role: RolePermission, key: 'canRead' | 'canWrite
             Permissions
           </legend>
           <p class="text-xs text-muted">
-            Choose what each role can view, edit, or manage.
+            Keep editing, publishing, archiving, deleting, and schema administration separate for each role.
           </p>
 
           <div v-if="pending" class="space-y-2">
@@ -141,17 +147,21 @@ async function updatePermission(role: RolePermission, key: 'canRead' | 'canWrite
             <USkeleton class="h-10 w-full" />
           </div>
 
-          <div v-else class="rounded-lg border border-default">
-            <div class="grid grid-cols-[minmax(0,1fr)_repeat(3,80px)] items-center gap-2 px-4 py-2 text-xs uppercase tracking-wide text-muted border-b">
+          <div v-else class="overflow-x-auto rounded-lg border border-default">
+            <div class="min-w-[52rem]">
+            <div class="grid grid-cols-[minmax(10rem,1fr)_repeat(6,72px)] items-center gap-2 px-4 py-2 text-xs uppercase tracking-wide text-muted border-b">
               <span>Role</span>
               <span class="text-center">Read</span>
               <span class="text-center">Write</span>
+              <span class="text-center">Publish</span>
+              <span class="text-center">Archive</span>
+              <span class="text-center">Delete</span>
               <span class="text-center">Admin</span>
             </div>
             <div
               v-for="role in roles"
               :key="role.roleKey"
-              class="grid grid-cols-[minmax(0,1fr)_repeat(3,80px)] items-center gap-2 px-4 py-3 border-b last:border-b-0"
+              class="grid grid-cols-[minmax(10rem,1fr)_repeat(6,72px)] items-center gap-2 px-4 py-3 border-b last:border-b-0"
             >
               <div class="min-w-0">
                 <div class="text-sm font-medium truncate">{{ role.title || role.roleKey }}</div>
@@ -177,6 +187,33 @@ async function updatePermission(role: RolePermission, key: 'canRead' | 'canWrite
               </div>
               <div class="flex justify-center">
                 <USwitch
+                  :model-value="role.canPublish"
+                  :loading="saving[role.roleKey]"
+                  :disabled="saving[role.roleKey] || role.locked"
+                  :aria-label="`Publish permission for ${role.title || role.roleKey}`"
+                  @update:model-value="value => updatePermission(role, 'canPublish', value)"
+                />
+              </div>
+              <div class="flex justify-center">
+                <USwitch
+                  :model-value="role.canArchive"
+                  :loading="saving[role.roleKey]"
+                  :disabled="saving[role.roleKey] || role.locked"
+                  :aria-label="`Archive permission for ${role.title || role.roleKey}`"
+                  @update:model-value="value => updatePermission(role, 'canArchive', value)"
+                />
+              </div>
+              <div class="flex justify-center">
+                <USwitch
+                  :model-value="role.canDelete"
+                  :loading="saving[role.roleKey]"
+                  :disabled="saving[role.roleKey] || role.locked"
+                  :aria-label="`Delete permission for ${role.title || role.roleKey}`"
+                  @update:model-value="value => updatePermission(role, 'canDelete', value)"
+                />
+              </div>
+              <div class="flex justify-center">
+                <USwitch
                   :model-value="role.canAdmin"
                   :loading="saving[role.roleKey]"
                   :disabled="saving[role.roleKey] || role.locked"
@@ -184,6 +221,7 @@ async function updatePermission(role: RolePermission, key: 'canRead' | 'canWrite
                   @update:model-value="value => updatePermission(role, 'canAdmin', value)"
                 />
               </div>
+            </div>
             </div>
           </div>
         </fieldset>

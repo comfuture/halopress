@@ -8,17 +8,22 @@ import { getActiveSchema } from '../../../../cms/repo'
 import { getDb } from '../../../../db/db'
 import { content as contentTable } from '../../../../db/schema'
 import { getAuthSession } from '../../../../utils/auth'
-import { badRequest, notFound } from '../../../../utils/http'
+import { badRequest, forbidden, notFound } from '../../../../utils/http'
 import { requireSchemaPermission } from '../../../../utils/schema-permission'
 import { queueWidgetCacheInvalidation } from '../../../../utils/widget-cache'
+import { requireExpectedRevision } from '../../../../cms/document-revisions'
 
 export default defineEventHandler(async (event) => {
   const schemaKey = event.context.params?.schemaKey as string
   const id = event.context.params?.id as string
-  await requireSchemaPermission(event, schemaKey, 'write')
+  const permission = await requireSchemaPermission(event, schemaKey, 'publish')
   const session = await getAuthSession(event)
   const actorId = (session?.user as any)?.id ?? null
-  const body = await readBody<{ content?: Record<string, unknown> }>(event)
+  const body = await readBody<{ revision?: number, content?: Record<string, unknown> }>(event)
+  if (body?.content !== undefined && !permission.canWrite && !permission.canAdmin) {
+    throw forbidden('Write permission is required to change content while publishing')
+  }
+  const expectedRevision = requireExpectedRevision(body?.revision)
   const db = await getDb(event)
   const active = await getActiveSchema(db, schemaKey)
   if (!active?.registry) throw notFound('Active schema not found')
@@ -37,7 +42,8 @@ export default defineEventHandler(async (event) => {
     schemaKey,
     active: active as any,
     content,
-    actorId
+    actorId,
+    expectedRevision
   })
   queueWidgetCacheInvalidation(event, 'schema:' + schemaKey)
   return { ok: true, ...publication }

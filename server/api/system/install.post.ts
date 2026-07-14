@@ -102,7 +102,7 @@ export default defineEventHandler(async (event) => {
     }, event)
 
     if (sampleData) {
-      const schemaKey = await ensureBootstrapSchema(db, sub)
+      const schemaKey = await ensureBootstrapSchema(db, sub, event)
       if (!schemaKey) throw new Error('Starter schema could not be created safely')
     }
 
