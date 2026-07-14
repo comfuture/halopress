@@ -175,5 +175,19 @@ export async function upsertSetting(input: SettingInput, event?: H3Event) {
 }
 
 function isMissingSettingsTableError(error: unknown) {
-  return error instanceof Error && error.message.includes('no such table: settings')
+  const seen = new Set<unknown>()
+  let current: unknown = error
+  while (current && !seen.has(current)) {
+    seen.add(current)
+    const message = current instanceof Error
+      ? current.message
+      : typeof current === 'object' && 'message' in current
+        ? String((current as { message?: unknown }).message || '')
+        : String(current)
+    if (message.includes('no such table: settings')) return true
+    current = typeof current === 'object' && 'cause' in current
+      ? (current as { cause?: unknown }).cause
+      : null
+  }
+  return false
 }

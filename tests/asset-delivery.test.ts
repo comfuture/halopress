@@ -59,6 +59,29 @@ describe('asset delivery retention', () => {
     }
   })
 
+  it('publishes and retains branding assets referenced by site settings', async () => {
+    const fixture = await createTestSqliteDb()
+    dbState.current = fixture.db
+    try {
+      await runMigrations(fixture.db)
+      await fixture.db.insert(documentAssetRef).values({
+        documentKind: 'settings',
+        documentId: 'site.presentation',
+        projectionScope: 'published',
+        assetId: 'brand-logo'
+      })
+
+      const publicRequest = responseEvent()
+      await expect(requireAssetDelivery(publicRequest.event as any, 'brand-logo')).resolves.toEqual({ isPublic: true })
+      expect(publicRequest.header('cache-control')).toMatch(/^public,/)
+      await expect(assertAssetIsNotRetained(fixture.db as any, 'brand-logo'))
+        .rejects.toMatchObject({ statusCode: 409 })
+    } finally {
+      fixture.close()
+      dbState.current = null
+    }
+  })
+
   it('rejects deletion while either working or published scope retains an asset', async () => {
     const fixture = await createTestSqliteDb()
     try {

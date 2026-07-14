@@ -2,6 +2,7 @@
 import type { ButtonProps } from '@nuxt/ui'
 
 const { data } = await useFetch<{ items: Array<{ schemaKey: string; title?: string; activeVersion: number }> }>('/api/schema/list')
+const { presentation } = await useSitePresentation()
 const schemas = computed(() => data.value?.items ?? [])
 
 const schemaLinks = computed(() =>
@@ -55,7 +56,7 @@ const showCuration = computed(() => Boolean(curationSchema.value))
       <template #right />
 
       <UPageBody>
-        <UPageHero title="HaloPress" headline="Schema-driven publishing"
+        <UPageHero :title="presentation.general.siteName" headline="Schema-driven publishing"
           description="Design schemas once, publish structured content everywhere, and keep teams aligned with clear versions."
           :links="heroLinks" />
 
