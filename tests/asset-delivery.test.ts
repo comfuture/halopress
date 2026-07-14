@@ -14,6 +14,10 @@ vi.mock('../server/utils/auth', () => ({
   getAuthSession: vi.fn(async () => authState.authenticated ? { user: { id: 'admin-1' } } : null),
   requireAdmin: vi.fn(async () => ({ user: { id: 'admin-1' } }))
 }))
+vi.mock('h3', async (importOriginal) => ({
+  ...await importOriginal<typeof import('h3')>(),
+  readBody: vi.fn(async () => ({ revision: 1 }))
+}))
 vi.stubGlobal('defineEventHandler', (handler: (event: any) => Promise<any>) => handler)
 
 afterAll(() => {
@@ -98,7 +102,11 @@ describe('asset delivery retention', () => {
       ])
 
       const handler = (await import('../server/api/page/[id].delete')).default as (event: any) => Promise<any>
-      await expect(handler({ context: { params: { id: 'recoverable-page' } } })).resolves.toEqual({ ok: true })
+      await expect(handler({ context: { params: { id: 'recoverable-page' } } })).resolves.toMatchObject({
+        ok: true,
+        publicationState: 'deleted',
+        revision: 2
+      })
 
       const storedPage = await fixture.db.select().from(page).where(eq(page.id, 'recoverable-page')).get()
       expect(storedPage).toMatchObject({ status: 'deleted', publishedRevisionId: null })

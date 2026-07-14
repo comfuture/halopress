@@ -12,6 +12,7 @@ import { requireAdmin } from '../../../utils/auth'
 import { badRequest, notFound } from '../../../utils/http'
 import { schemaAstSchema } from '../../../cms/zod'
 import { assertSchemaKeyCanBePersisted } from '../../../cms/schema-key'
+import { assertExpectedRevision, requireExpectedRevision } from '../../../cms/document-revisions'
 import { ensureAnonymousSchemaRole } from '../../../utils/install'
 import { getTrustedRequestOrigin } from '../../../utils/request-origin'
 import { queueWidgetCacheInvalidation } from '../../../utils/widget-cache'
@@ -20,7 +21,7 @@ export default defineEventHandler(async (event) => {
   const session = await requireAdmin(event)
   const actorId = (session.user as any)?.id ?? null
   const schemaKey = event.context.params?.schemaKey as string
-  const body = await readBody<{ ast?: unknown; note?: string; migrate?: boolean }>(event)
+  const body = await readBody<{ ast?: unknown; note?: string; migrate?: boolean; revision?: number }>(event)
   const db = await getDb(event)
 
   let ast: any = null
@@ -31,6 +32,11 @@ export default defineEventHandler(async (event) => {
   } else {
     const draft = await getDraft(db, schemaKey)
     if (!draft) throw notFound('Draft not found')
+    assertExpectedRevision({
+      currentRevision: draft.revision,
+      updatedAt: draft.updatedAt,
+      updatedBy: draft.updatedBy
+    }, requireExpectedRevision(body?.revision))
     ast = draft.ast
   }
   if (ast.schemaKey !== schemaKey) throw badRequest('schemaKey mismatch')

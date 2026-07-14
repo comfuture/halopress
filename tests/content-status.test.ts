@@ -14,7 +14,7 @@ import { createTestSqliteDb } from './fixtures/sqlite'
 type EndpointHandler = (event: any) => Promise<any>
 
 const dbState = vi.hoisted(() => ({ current: null as any }))
-const bodyState = vi.hoisted(() => ({ current: {} as { status?: string, content?: Record<string, unknown> } }))
+const bodyState = vi.hoisted(() => ({ current: {} as { revision?: number, status?: string, content?: Record<string, unknown> } }))
 
 vi.mock('../server/db/db', () => ({ getDb: vi.fn(async () => dbState.current) }))
 vi.mock('../server/utils/auth', () => ({
@@ -33,6 +33,7 @@ vi.stubGlobal('defineEventHandler', (handler: EndpointHandler) => handler)
 let fixture: Awaited<ReturnType<typeof createTestSqliteDb>>
 let createHandler: EndpointHandler
 let updateHandler: EndpointHandler
+let publishHandler: EndpointHandler
 
 function event(id?: string) {
   return { context: { params: { schemaKey: 'article', ...(id ? { id } : {}) } } }
@@ -68,6 +69,7 @@ beforeAll(async () => {
 
   createHandler = (await import('../server/api/content/[schemaKey]/index.post')).default as EndpointHandler
   updateHandler = (await import('../server/api/content/[schemaKey]/[id].put')).default as EndpointHandler
+  publishHandler = (await import('../server/api/content/[schemaKey]/[id]/publish.post')).default as EndpointHandler
 })
 
 beforeEach(() => {
@@ -80,43 +82,45 @@ afterAll(() => {
 })
 
 describe('content working statuses', () => {
-  it('preserves archived status across create and status-omitted updates', async () => {
-    bodyState.current = { status: 'archived', content: { title: 'Archived original' } }
+  it('keeps generic creates and updates draft-only', async () => {
+    bodyState.current = { content: { title: 'Draft original' } }
     const created = await createHandler(event())
 
     await expect(fixture.db.select().from(content).where(eq(content.id, created.id)).get())
-      .resolves.toMatchObject({ status: 'archived', publishedRevisionId: null })
+      .resolves.toMatchObject({ status: 'draft', publishedRevisionId: null })
     await expect(fixture.db.select().from(contentListing).where(and(
       eq(contentListing.contentId, created.id),
       eq(contentListing.projectionScope, 'working')
-    )).get()).resolves.toMatchObject({ status: 'archived', title: 'Archived original' })
+    )).get()).resolves.toMatchObject({ status: 'draft', title: 'Draft original' })
 
-    bodyState.current = { content: { title: 'Archived updated' } }
+    bodyState.current = { revision: created.revision, content: { title: 'Draft updated' } }
     await expect(updateHandler(event(created.id))).resolves.toMatchObject({
       ok: true,
       publicationState: 'never-published'
     })
     await expect(fixture.db.select().from(content).where(eq(content.id, created.id)).get())
-      .resolves.toMatchObject({ status: 'archived' })
+      .resolves.toMatchObject({ status: 'draft' })
     await expect(fixture.db.select().from(contentListing).where(and(
       eq(contentListing.contentId, created.id),
       eq(contentListing.projectionScope, 'working')
-    )).get()).resolves.toMatchObject({ status: 'archived', title: 'Archived updated' })
+    )).get()).resolves.toMatchObject({ status: 'draft', title: 'Draft updated' })
 
-    bodyState.current = { status: 'deleted', content: { title: 'Bypass delete' } }
+    bodyState.current = { revision: created.revision + 1, status: 'archived', content: { title: 'Bypass archive' } }
     await expect(updateHandler(event(created.id))).rejects.toMatchObject({
       statusCode: 400,
-      statusMessage: 'Use the delete endpoint to delete content'
+      statusMessage: 'Use an explicit publication transition endpoint'
     })
   })
 
-  it('keeps the published revision immutable when working content becomes archived', async () => {
-    bodyState.current = { status: 'published', content: { title: 'Published title' } }
+  it('keeps the published revision immutable when working content becomes a draft', async () => {
+    bodyState.current = { content: { title: 'Published title' } }
     const created = await createHandler(event())
+    bodyState.current = { revision: created.revision, content: { title: 'Published title' } }
+    await publishHandler(event(created.id))
     const publishedRow = await fixture.db.select().from(content).where(eq(content.id, created.id)).get()
     const publishedRevisionId = publishedRow!.publishedRevisionId
 
-    bodyState.current = { status: 'archived', content: { title: 'Archived draft' } }
+    bodyState.current = { revision: created.revision + 1, content: { title: 'Edited draft' } }
     await expect(updateHandler(event(created.id))).resolves.toMatchObject({
       ok: true,
       publicationState: 'published-with-draft',
@@ -124,11 +128,11 @@ describe('content working statuses', () => {
     })
 
     await expect(fixture.db.select().from(content).where(eq(content.id, created.id)).get())
-      .resolves.toMatchObject({ status: 'archived', publishedRevisionId })
+      .resolves.toMatchObject({ status: 'draft', publishedRevisionId })
     const listings = await fixture.db.select().from(contentListing)
       .where(eq(contentListing.contentId, created.id))
     expect(listings).toEqual(expect.arrayContaining([
-      expect.objectContaining({ projectionScope: 'working', status: 'archived', title: 'Archived draft' }),
+      expect.objectContaining({ projectionScope: 'working', status: 'draft', title: 'Edited draft' }),
       expect.objectContaining({ projectionScope: 'published', status: 'published', title: 'Published title' })
     ]))
     const revision = await fixture.db.select().from(publicationRevision)
@@ -141,7 +145,7 @@ describe('content working statuses', () => {
     bodyState.current = { status: 'deleted', content: { title: 'Deleted' } }
     await expect(createHandler(event())).rejects.toMatchObject({
       statusCode: 400,
-      statusMessage: 'Cannot create deleted content'
+      statusMessage: 'Use an explicit publication transition endpoint'
     })
   })
 })

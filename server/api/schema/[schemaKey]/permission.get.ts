@@ -11,6 +11,9 @@ export default defineEventHandler(async (event) => {
     roleKey: permission.roleKey,
     canRead: permission.canRead,
     canWrite: permission.canWrite,
+    canPublish: permission.canPublish,
+    canArchive: permission.canArchive,
+    canDelete: permission.canDelete,
     canAdmin: permission.canAdmin
   }
 })

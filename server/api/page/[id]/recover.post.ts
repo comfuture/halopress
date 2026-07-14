@@ -1,12 +1,12 @@
 import { eq } from 'drizzle-orm'
 import { readBody } from 'h3'
 
-import { unpublishPage } from '../../../cms/page-publication'
+import { recoverPage } from '../../../cms/page-publication'
+import { requireExpectedRevision } from '../../../cms/document-revisions'
 import { getDb } from '../../../db/db'
 import { page as pageTable } from '../../../db/schema'
 import { requireAdmin } from '../../../utils/auth'
 import { notFound } from '../../../utils/http'
-import { requireExpectedRevision } from '../../../cms/document-revisions'
 
 export default defineEventHandler(async (event) => {
   const session = await requireAdmin(event)
@@ -19,7 +19,7 @@ export default defineEventHandler(async (event) => {
   if (!existing) throw notFound('Page not found')
   return {
     ok: true,
-    ...(await unpublishPage({
+    ...(await recoverPage({
       event,
       db,
       existing,

@@ -18,6 +18,9 @@ export default defineEventHandler(async (event) => {
     level: number
     canRead: boolean | number | null
     canWrite: boolean | number | null
+    canPublish: boolean | number | null
+    canArchive: boolean | number | null
+    canDelete: boolean | number | null
     canAdmin: boolean | number | null
   }
 
@@ -28,6 +31,9 @@ export default defineEventHandler(async (event) => {
       level: userRoleTable.level,
       canRead: schemaRoleTable.canRead,
       canWrite: schemaRoleTable.canWrite,
+      canPublish: schemaRoleTable.canPublish,
+      canArchive: schemaRoleTable.canArchive,
+      canDelete: schemaRoleTable.canDelete,
       canAdmin: schemaRoleTable.canAdmin
     })
     .from(userRoleTable)
@@ -43,6 +49,9 @@ export default defineEventHandler(async (event) => {
     level: number
     canRead: boolean
     canWrite: boolean
+    canPublish: boolean
+    canArchive: boolean
+    canDelete: boolean
     canAdmin: boolean
     locked: boolean
   }
@@ -53,6 +62,9 @@ export default defineEventHandler(async (event) => {
     level: row.level,
     canRead: !!row.canRead,
     canWrite: !!row.canWrite,
+    canPublish: !!row.canPublish,
+    canArchive: !!row.canArchive,
+    canDelete: !!row.canDelete,
     canAdmin: !!row.canAdmin,
     locked: false
   }))
@@ -61,6 +73,9 @@ export default defineEventHandler(async (event) => {
   if (adminItem) {
     adminItem.canRead = true
     adminItem.canWrite = true
+    adminItem.canPublish = true
+    adminItem.canArchive = true
+    adminItem.canDelete = true
     adminItem.canAdmin = true
     adminItem.locked = true
     adminItem.title = adminItem.title ?? 'Admin'
@@ -71,6 +86,9 @@ export default defineEventHandler(async (event) => {
       level: 100,
       canRead: true,
       canWrite: true,
+      canPublish: true,
+      canArchive: true,
+      canDelete: true,
       canAdmin: true,
       locked: true
     })

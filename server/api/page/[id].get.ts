@@ -20,9 +20,16 @@ export default defineEventHandler(async (event) => {
       title: pageTable.title,
       status: pageTable.status,
       contentJson: pageTable.contentJson,
+      currentRevision: pageTable.currentRevision,
       publishedRevisionId: pageTable.publishedRevisionId,
       firstPublishedAt: pageTable.firstPublishedAt,
       publishedAt: pageTable.publishedAt,
+      publishedBy: pageTable.publishedBy,
+      transitionAt: pageTable.transitionAt,
+      transitionBy: pageTable.transitionBy,
+      deletedAt: pageTable.deletedAt,
+      deletedBy: pageTable.deletedBy,
+      updatedBy: pageTable.updatedBy,
       createdAt: pageTable.createdAt,
       updatedAt: pageTable.updatedAt
     })
@@ -41,5 +48,6 @@ export default defineEventHandler(async (event) => {
   }
 
   const { publishedRevisionId: _publishedRevisionId, firstPublishedAt: _firstPublishedAt, ...safeRow } = row
-  return { ...safeRow, content, ...publicationMetadata(row) }
+  const { currentRevision, ...rest } = safeRow
+  return { ...rest, revision: currentRevision, content, ...publicationMetadata(row) }
 })
