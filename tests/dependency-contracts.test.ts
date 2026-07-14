@@ -74,6 +74,15 @@ describe('dependency security contracts', () => {
     expect(lockfile).not.toMatch(/^ {2}(markdown-it|linkify-it)@/m)
   })
 
+  it('keeps the validated Nuxt UI and Nuxt release contracts', async () => {
+    const { packageJson, lockfile } = await readProjectFiles()
+
+    expect(packageJson.dependencies['@nuxt/ui']).toBe('^4.9.0')
+    expect(packageJson.dependencies.nuxt).toBe('^4.4.8')
+    expect(lockfile).toContain('\'@nuxt/ui\':\n        specifier: ^4.9.0\n        version: 4.9.0')
+    expect(lockfile).toContain('nuxt:\n        specifier: ^4.4.8\n        version: 4.4.8')
+  })
+
   it('pre-bundles the Nuxt UI ProseMirror graph as a single instance', async () => {
     const { nuxtConfig } = await readProjectFiles()
     const optimizedDependencies = [

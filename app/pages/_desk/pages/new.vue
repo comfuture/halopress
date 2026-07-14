@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { BreadcrumbItem } from '@nuxt/ui'
 import type { JSONContent } from '@tiptap/vue-3'
+import { validatePageDocumentBlocks } from '~~/shared/page-blocks'
 import PageEditor from '~/components/PageEditor.vue'
 
 definePageMeta({
@@ -47,8 +48,11 @@ const publishing = ref(false)
 const lastSavedJson = ref(stableStringify(buildSnapshot()))
 const currentJson = computed(() => stableStringify(buildSnapshot()))
 const isDirty = computed(() => currentJson.value !== lastSavedJson.value)
-const canSaveDraft = computed(() => isDirty.value && !savingDraft.value)
-const canPublish = computed(() => isDirty.value && !publishing.value)
+const draftValidationIssues = computed(() => validatePageDocumentBlocks(state.content, { allowUnknown: true }))
+const publishValidationIssues = computed(() => validatePageDocumentBlocks(state.content))
+const canSaveDraft = computed(() => isDirty.value && !draftValidationIssues.value.length && !savingDraft.value)
+const canPublish = computed(() => isDirty.value && !publishValidationIssues.value.length && !publishing.value)
+const { allowNextNavigation } = useUnsavedNavigationGuard(isDirty)
 
 async function saveDraft() {
   if (!isDirty.value) return
@@ -59,6 +63,7 @@ async function saveDraft() {
       body: { title: state.title, content: state.content }
     })
     toast.add({ title: 'Created', description: res.id })
+    allowNextNavigation()
     await navigateTo(`/_desk/pages/${res.id}`)
   } catch (e: any) {
     toast.add({ title: 'Create failed', description: e?.statusMessage || 'Error', color: 'error' })
@@ -82,10 +87,14 @@ async function publish() {
       body: { revision: created.revision, title: state.title, content: state.content }
     })
     toast.add({ title: 'Published', description: created.id })
+    allowNextNavigation()
     await navigateTo(`/_desk/pages/${created.id}`)
   } catch (e: any) {
     toast.add({ title: 'Publish failed', description: e?.statusMessage || 'The draft was saved, but could not be published.', color: 'error' })
-    if (createdId) await navigateTo(`/_desk/pages/${createdId}`)
+    if (createdId) {
+      allowNextNavigation()
+      await navigateTo(`/_desk/pages/${createdId}`)
+    }
   } finally {
     publishing.value = false
   }
@@ -93,13 +102,19 @@ async function publish() {
 </script>
 
 <template>
-  <UDashboardPanel id="desk-pages-new">
+  <UDashboardPanel
+    id="desk-pages-new"
+    :ui="{ root: 'min-h-0 overflow-hidden', body: 'min-h-0 overflow-hidden p-0 sm:p-0' }"
+  >
     <template #header>
       <DeskNavbar title="New Page">
         <template #title>
           <div class="flex min-w-0 flex-col">
             <UBreadcrumb :items="breadcrumbItems" />
-            <span class="truncate text-xs text-muted">Build the page, then save a draft or publish.</span>
+            <div class="flex items-center gap-2">
+              <UBadge label="Draft" color="neutral" variant="subtle" size="sm" />
+              <UBadge v-if="isDirty" label="Unsaved" color="warning" variant="subtle" size="sm" />
+            </div>
           </div>
         </template>
 
@@ -117,12 +132,18 @@ async function publish() {
     </template>
 
     <template #body>
-      <div class="space-y-4">
-        <UFormField label="Title">
-          <UInput v-model="state.title" placeholder="Page title" class="w-full" />
-        </UFormField>
+      <div class="flex h-full min-h-0 flex-col">
+        <div class="border-b border-muted bg-default px-4 py-3">
+          <UFormField label="Title">
+            <UInput v-model="state.title" placeholder="Page title" class="w-full" />
+          </UFormField>
+          <p class="mt-1 text-xs text-muted">Build the page, then save a draft or publish.</p>
+          <p v-if="publishValidationIssues[0]" class="mt-2 text-sm text-error">
+            {{ publishValidationIssues[0].message }}
+          </p>
+        </div>
 
-        <PageEditor v-model="state.content" />
+        <PageEditor v-model="state.content" class="min-h-0 flex-1" />
       </div>
     </template>
   </UDashboardPanel>

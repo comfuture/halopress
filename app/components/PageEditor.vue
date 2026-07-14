@@ -1,21 +1,19 @@
 <script setup lang="ts">
+import type { EditorToolbarItem } from '@nuxt/ui'
 import type { Editor, JSONContent } from '@tiptap/vue-3'
 import { VueNodeViewRenderer } from '@tiptap/vue-3'
-import { markRaw, nextTick } from 'vue'
+import { markRaw } from 'vue'
 
+import PageBlockPalette from '~/components/page-editor/PageBlockPalette.vue'
+import PageBlockInspector from '~/components/page-editor/PageBlockInspector.vue'
 import PageBlock from '~/editor/page/PageBlock'
 import PageBlockNodeView from '~/editor/page/PageBlockNodeView.vue'
-import ImageUpload from '~/editor/RichEditorImageUpload'
-import RichEditorImageUploadNode from '~/editor/RichEditorImageUploadNode.vue'
-import { pageBlockRegistry, getPageBlockComponent } from '~/editor/page/registry'
-import {
-  commitPageBlockLink,
-  createPageBlockLinkDrafts,
-  type PageBlockLinkDraft
-} from '~/editor/page/links'
-import type { PageBlockAttrs, PageBlockComponentKey, PageBlockField } from '~/editor/page/types'
+import { getPageBlockComponent, pageBlockRegistry } from '~/editor/page/registry'
+import type { PageBlockAttrs, PageBlockComponentKey } from '~/editor/page/types'
 import { createPageProfile } from '~/editor/profiles'
 import type { EditorProfileCustomization } from '~/editor/profiles'
+import ImageUpload from '~/editor/RichEditorImageUpload'
+import RichEditorImageUploadNode from '~/editor/RichEditorImageUploadNode.vue'
 
 defineOptions({ inheritAttrs: false })
 
@@ -55,309 +53,292 @@ const editorProfile = createPageProfile(props.profile, {
 const extensions = markRaw(editorProfile.extensions.map(extension => markRaw(extension)))
 
 const editorRef = ref<any>(null)
+const canvasRef = ref<HTMLElement | null>(null)
+const selectedBlock = ref<PageBlockAttrs | null>(null)
+const mode = ref<'edit' | 'preview'>('edit')
+const viewport = ref<'desktop' | 'tablet' | 'mobile'>('desktop')
+const paletteCollapsed = ref(false)
+const inspectorCollapsed = ref(false)
+const mobilePaletteOpen = ref(false)
+const mobileInspectorOpen = ref(false)
+const dropPosition = ref<number | null>(null)
+const dropIndicatorTop = ref<number | null>(null)
 
-const selectedBlock = ref<{ pos: number; attrs: PageBlockAttrs } | null>(null)
-const editing = reactive<{
-  component: string
-  props: Record<string, any>
-  advanced: Record<string, unknown>
-  media: PageBlockAttrs['media']
-}>({
-  component: 'pageHero',
-  props: {},
-  advanced: {},
-  media: { url: '', alt: '' }
-})
+const isEditing = computed(() => props.editable && mode.value === 'edit')
+const activeComponent = computed(() => getPageBlockComponent(selectedBlock.value?.component))
+const activeFields = computed(() => activeComponent.value?.fields ?? [])
 
-const syncing = ref(false)
-
-const activeComponent = computed(() => getPageBlockComponent(selectedBlock.value?.attrs.component))
-const activeFields = computed<PageBlockField[]>(() => activeComponent.value?.fields ?? [])
-const linkDrafts = ref<PageBlockLinkDraft[]>([])
-const linkTargetOptions = [
-  { label: 'Same tab', value: '_self' },
-  { label: 'New tab', value: '_blank' }
+const viewportItems = [
+  { label: 'Desktop', value: 'desktop', icon: 'i-lucide-monitor' },
+  { label: 'Tablet', value: 'tablet', icon: 'i-lucide-tablet' },
+  { label: 'Mobile', value: 'mobile', icon: 'i-lucide-smartphone' }
 ]
-
-function setEditingFromSelection(next: PageBlockAttrs) {
-  syncing.value = true
-  editing.component = next.component
-  editing.props = { ...next.props }
-  editing.advanced = { ...next.advanced }
-  editing.media = { ...next.media }
-  linkDrafts.value = createPageBlockLinkDrafts(editing.props.links)
-
-  nextTick(() => {
-    syncing.value = false
-  })
-}
-
-function addLink() {
-  if (linkDrafts.value.length >= 12) return
-  linkDrafts.value.push({
-    label: '',
-    to: '',
-    target: '_self',
-    original: {}
-  })
-}
-
-function commitLink(index: number) {
-  const draft = linkDrafts.value[index]
-  if (!draft) return
-  const result = commitPageBlockLink(editing.props.links, index, draft)
-  draft.error = result.error
-  if (result.links) {
-    editing.props.links = result.links
-    draft.original = { ...result.links[index] }
-  }
-}
-
-function updateLinkText(index: number, field: 'label' | 'to', value: unknown) {
-  const draft = linkDrafts.value[index]
-  if (!draft || typeof value !== 'string') return
-  draft[field] = value
-  commitLink(index)
-}
-
-function updateLinkTarget(index: number, value: unknown) {
-  const draft = linkDrafts.value[index]
-  if (!draft || (value !== '_self' && value !== '_blank')) return
-  draft.target = value
-  commitLink(index)
-}
-
-function removeLink(index: number) {
-  linkDrafts.value.splice(index, 1)
-  const current = Array.isArray(editing.props.links) ? editing.props.links : []
-  editing.props.links = current.filter((_item, itemIndex) => itemIndex !== index)
-}
-
-function syncSelection(editor: Editor) {
-  const selection: any = editor.state.selection
-  const node = selection?.node
-
-  if (node?.type?.name === 'pageBlock') {
-    selectedBlock.value = {
-      pos: selection.from,
-      attrs: node.attrs as PageBlockAttrs
-    }
-    setEditingFromSelection(node.attrs as PageBlockAttrs)
-    return
-  }
-
-  selectedBlock.value = null
-}
-
-function insertBlock(editor: Editor, key: PageBlockComponentKey) {
-  const entry = pageBlockRegistry.byKey[key]
-  if (!entry) return
-
-  const attrs: PageBlockAttrs & { component: PageBlockComponentKey } = {
-    component: entry.key,
-    props: { ...entry.defaultProps },
-    advanced: {},
-    media: { ...entry.defaultMedia }
-  }
-
-  editor
-    .chain()
-    .focus()
-    .insertPageBlock(attrs)
-    .run()
-}
+const canvasStyle = computed(() => ({
+  width: '100%',
+  maxWidth: viewport.value === 'desktop' ? '80rem' : viewport.value === 'tablet' ? '48rem' : '24rem'
+}))
+const workspaceColumns = computed(() => {
+  if (paletteCollapsed.value && inspectorCollapsed.value) return 'xl:grid-cols-[3rem_minmax(0,1fr)_3rem]'
+  if (paletteCollapsed.value) return 'xl:grid-cols-[3rem_minmax(0,1fr)_20rem]'
+  if (inspectorCollapsed.value) return 'xl:grid-cols-[18rem_minmax(0,1fr)_3rem]'
+  return 'xl:grid-cols-[18rem_minmax(0,1fr)_20rem]'
+})
 
 function getEditor() {
   return (editorRef.value?.editor ?? null) as Editor | null
 }
 
-function handleInsertBlock(key: PageBlockComponentKey) {
-  const editor = getEditor()
-  if (!editor) return
-  insertBlock(editor, key)
+function syncSelection(editor: Editor) {
+  const selection: any = editor.state.selection
+  const node = selection.node
+  selectedBlock.value = node?.type?.name === 'pageBlock'
+    ? structuredClone(node.attrs as PageBlockAttrs)
+    : null
 }
 
-watch(editing, () => {
-  if (syncing.value || !selectedBlock.value) return
-  const editor = getEditor()
-  if (!editor) return
-
-  const nextAttrs: PageBlockAttrs = {
-    component: editing.component,
-    props: { ...editing.props },
-    advanced: { ...editing.advanced },
-    media: { ...editing.media }
-  }
-
-  editor
-    .chain()
-    .setNodeSelection(selectedBlock.value.pos)
-    .updateAttributes('pageBlock', nextAttrs)
-    .run()
-}, { deep: true })
-
-watch(getEditor, (editor, _prev, onCleanup) => {
+watch(getEditor, (editor, _previous, onCleanup) => {
   if (!editor) return
   const handler = () => syncSelection(editor)
   editor.on('selectionUpdate', handler)
   editor.on('update', handler)
+  handler()
   onCleanup(() => {
     editor.off('selectionUpdate', handler)
     editor.off('update', handler)
   })
 }, { immediate: true })
+
+function blockAttrs(key: PageBlockComponentKey): PageBlockAttrs & { component: PageBlockComponentKey } {
+  const entry = pageBlockRegistry.byKey[key]
+  return {
+    component: entry.key,
+    props: structuredClone(entry.defaultProps),
+    advanced: {},
+    media: structuredClone(entry.defaultMedia)
+  }
+}
+
+function selectionInsertionPosition(editor: Editor) {
+  const selection: any = editor.state.selection
+  if (selection.node?.type.name === 'pageBlock') {
+    return selection.from + selection.node.nodeSize
+  }
+  if (selection.$from.depth > 0) return selection.$from.after(1)
+  return editor.state.doc.content.size
+}
+
+function insertBlock(key: PageBlockComponentKey, position?: number) {
+  const editor = getEditor()
+  if (!editor || !isEditing.value || !pageBlockRegistry.byKey[key]) return false
+  const destination = position ?? selectionInsertionPosition(editor)
+  const inserted = editor.commands.insertPageBlockAt(destination, blockAttrs(key))
+  if (inserted) mobilePaletteOpen.value = false
+  return inserted
+}
+
+function runBlockCommand(command: 'duplicatePageBlock' | 'deletePageBlock' | 'movePageBlockUp' | 'movePageBlockDown') {
+  const editor = getEditor()
+  if (!editor || !isEditing.value) return
+  editor.commands[command]()
+}
+
+function updateSelectedBlock(attrs: PageBlockAttrs) {
+  const editor = getEditor()
+  if (!editor || !isEditing.value) return
+  editor.commands.updatePageBlockAttributes(attrs)
+}
+
+const toolbarItems = computed<EditorToolbarItem[][]>(() => [
+  [
+    { kind: 'undo', icon: 'i-lucide-undo', tooltip: { text: 'Undo' } },
+    { kind: 'redo', icon: 'i-lucide-redo', tooltip: { text: 'Redo' } }
+  ],
+  [
+    { label: 'Duplicate block', icon: 'i-lucide-copy', disabled: !selectedBlock.value, onClick: () => runBlockCommand('duplicatePageBlock') },
+    { label: 'Move block up', icon: 'i-lucide-arrow-up', disabled: !selectedBlock.value, onClick: () => runBlockCommand('movePageBlockUp') },
+    { label: 'Move block down', icon: 'i-lucide-arrow-down', disabled: !selectedBlock.value, onClick: () => runBlockCommand('movePageBlockDown') },
+    { label: 'Delete block', icon: 'i-lucide-trash', color: 'error', disabled: !selectedBlock.value, onClick: () => runBlockCommand('deletePageBlock') }
+  ]
+])
+
+function startPaletteDrag(event: DragEvent, key: PageBlockComponentKey) {
+  if (!isEditing.value || !event.dataTransfer) return
+  event.dataTransfer.effectAllowed = 'copy'
+  event.dataTransfer.setData('application/x-halopress-page-block', key)
+  event.dataTransfer.setData('text/plain', key)
+}
+
+function dropTargetAt(editor: Editor, clientX: number, clientY: number) {
+  const coordinates = editor.view.posAtCoords({ left: clientX, top: clientY })
+  if (!coordinates) return null
+  const children: Array<{ position: number; end: number; element: HTMLElement }> = []
+  editor.state.doc.forEach((node, position) => {
+    const dom = editor.view.nodeDOM(position)
+    if (dom instanceof HTMLElement) children.push({ position, end: position + node.nodeSize, element: dom })
+  })
+  if (!children.length) return { position: 0, top: 0 }
+  const canvasRect = canvasRef.value?.getBoundingClientRect()
+  for (const child of children) {
+    const rect = child.element.getBoundingClientRect()
+    if (clientY <= rect.top + rect.height / 2) {
+      return { position: child.position, top: canvasRect ? rect.top - canvasRect.top : 0 }
+    }
+  }
+  const last = children.at(-1)!
+  const rect = last.element.getBoundingClientRect()
+  return { position: last.end, top: canvasRect ? rect.bottom - canvasRect.top : rect.bottom }
+}
+
+function handleCanvasDragOver(event: DragEvent) {
+  if (!isEditing.value || !event.dataTransfer?.types.includes('application/x-halopress-page-block')) return
+  const editor = getEditor()
+  if (!editor) return
+  const target = dropTargetAt(editor, event.clientX, event.clientY)
+  if (!target) return
+  event.preventDefault()
+  event.dataTransfer.dropEffect = 'copy'
+  dropPosition.value = target.position
+  dropIndicatorTop.value = target.top
+}
+
+function clearDropTarget() {
+  dropPosition.value = null
+  dropIndicatorTop.value = null
+}
+
+function handleCanvasDrop(event: DragEvent) {
+  const rawKey = event.dataTransfer?.getData('application/x-halopress-page-block')
+  const key = rawKey as PageBlockComponentKey
+  const position = dropPosition.value
+  if (!rawKey || position === null || !pageBlockRegistry.byKey[key]) {
+    clearDropTarget()
+    return
+  }
+  event.preventDefault()
+  insertBlock(key, position)
+  clearDropTarget()
+}
+
+defineShortcuts({
+  meta_shift_p: () => { mode.value = mode.value === 'edit' ? 'preview' : 'edit' },
+  meta_shift_b: () => { mobilePaletteOpen.value = !mobilePaletteOpen.value },
+  meta_shift_i: () => { mobileInspectorOpen.value = !mobileInspectorOpen.value }
+})
 </script>
 
 <template>
-  <div class="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-    <div class="min-w-0">
-      <UEditor
-        ref="editorRef"
-        v-model="value"
-        content-type="json"
-        :extensions="extensions"
-        :editable="editable"
-        class="w-full min-h-[60vh] rounded-md border border-muted bg-default"
-        :style="{ borderRadius: 'var(--ui-radius)' }"
-        :ui="{ base: 'px-4 py-3' }"
-      >
-        <div class="text-xs text-muted px-2 py-1">Select a block to edit its properties.</div>
-      </UEditor>
+  <div class="flex h-full min-h-0 flex-col bg-muted/30" data-page-editor-workspace>
+    <div class="flex flex-wrap items-center justify-between gap-2 border-b border-muted bg-default px-3 py-2">
+      <div class="flex items-center gap-1">
+        <UButton class="xl:hidden" label="Blocks" icon="i-lucide-blocks" color="neutral" variant="ghost" size="sm" @click="mobilePaletteOpen = true;" />
+        <UButton class="xl:hidden" label="Inspector" icon="i-lucide-panel-right" color="neutral" variant="ghost" size="sm" :disabled="!selectedBlock" @click="mobileInspectorOpen = true;" />
+        <UButton
+          :label="mode === 'edit' ? 'Preview' : 'Edit'"
+          :icon="mode === 'edit' ? 'i-lucide-eye' : 'i-lucide-pencil'"
+          color="neutral"
+          variant="ghost"
+          size="sm"
+          :disabled="!editable"
+          @click="mode = mode === 'edit' ? 'preview' : 'edit';"
+        />
+      </div>
+      <div class="inline-flex items-center gap-1" role="group" aria-label="Canvas viewport">
+        <UButton
+          v-for="item in viewportItems"
+          :key="item.value"
+          :label="item.label"
+          :icon="item.icon"
+          color="neutral"
+          :variant="viewport === item.value ? 'soft' : 'ghost'"
+          @click="viewport = item.value as typeof viewport;"
+        />
+      </div>
     </div>
 
-    <div class="flex flex-col gap-6">
-      <section aria-labelledby="page-editor-insert-blocks" class="space-y-3">
-        <h2 id="page-editor-insert-blocks" class="text-sm font-semibold">
-          Insert Blocks
-        </h2>
-        <div class="flex flex-col gap-2">
-          <UButton
-            v-for="item in pageBlockRegistry.components"
-            :key="item.key"
-            color="neutral"
-            variant="soft"
-            @click="handleInsertBlock(item.key)"
-          >
-            {{ item.label }}
-          </UButton>
-        </div>
-      </section>
-
-      <section aria-labelledby="page-editor-properties" class="space-y-4">
-        <h2 id="page-editor-properties" class="text-sm font-semibold">
-          Properties
-        </h2>
-
-        <div v-if="!selectedBlock" class="text-sm text-muted">
-          Select a block to edit its properties.
-        </div>
-
-        <template v-else>
-          <fieldset class="m-0 min-w-0 space-y-3 border-0 p-0">
-            <legend class="mb-3 text-xs font-medium text-muted">
-              Media
-            </legend>
-            <UFormField label="Image URL">
-              <UInput v-model="editing.media.url" placeholder="https://" class="w-full" />
-            </UFormField>
-            <UFormField label="Image Alt">
-              <UInput v-model="editing.media.alt" placeholder="Alt text" class="w-full" />
-            </UFormField>
-          </fieldset>
-
-          <fieldset class="m-0 min-w-0 space-y-3 border-0 p-0">
-            <legend class="mb-3 text-xs font-medium text-muted">
-              {{ activeComponent?.label || 'Component' }}
-            </legend>
-            <div v-for="field in activeFields" :key="field.key">
-              <UFormField :label="field.label" :help="field.help">
-                <UInput
-                  v-if="field.type === 'text'"
-                  v-model="editing.props[field.key]"
-                  :placeholder="field.placeholder"
-                  class="w-full"
-                />
-                <UInput
-                  v-else-if="field.type === 'url'"
-                  v-model="editing.props[field.key]"
-                  type="url"
-                  :placeholder="field.placeholder || 'https://'"
-                  class="w-full"
-                />
-                <UTextarea
-                  v-else-if="field.type === 'textarea'"
-                  v-model="editing.props[field.key]"
-                  :placeholder="field.placeholder"
-                  class="w-full"
-                />
-                <USelect
-                  v-else-if="field.type === 'select'"
-                  v-model="editing.props[field.key]"
-                  :items="field.options || []"
-                  class="w-full"
-                />
-                <USwitch
-                  v-else-if="field.type === 'boolean'"
-                  v-model="editing.props[field.key]"
-                />
-                <div v-else-if="field.type === 'link-list'" class="space-y-3">
-                  <fieldset
-                    v-for="(link, index) in linkDrafts"
-                    :key="index"
-                    class="m-0 space-y-3 rounded-md border border-muted p-3"
-                  >
-                    <legend class="px-1 text-xs font-medium text-muted">
-                      Link {{ index + 1 }}
-                    </legend>
-                    <UFormField label="Label">
-                      <UInput
-                        :model-value="link.label"
-                        class="w-full"
-                        @update:model-value="updateLinkText(index, 'label', $event)"
-                      />
-                    </UFormField>
-                    <UFormField label="Destination" :error="link.error">
-                      <UInput
-                        :model-value="link.to"
-                        placeholder="/path, #section, or https://"
-                        class="w-full"
-                        @update:model-value="updateLinkText(index, 'to', $event)"
-                      />
-                    </UFormField>
-                    <UFormField label="Target">
-                      <USelect
-                        :model-value="link.target"
-                        :items="linkTargetOptions"
-                        class="w-full"
-                        @update:model-value="updateLinkTarget(index, $event)"
-                      />
-                    </UFormField>
-                    <UButton
-                      type="button"
-                      label="Remove link"
-                      icon="i-lucide-trash"
-                      color="neutral"
-                      variant="ghost"
-                      size="sm"
-                      @click="removeLink(index)"
-                    />
-                  </fieldset>
-                  <UButton
-                    type="button"
-                    label="Add link"
-                    icon="i-lucide-plus"
-                    color="neutral"
-                    variant="soft"
-                    size="sm"
-                    :disabled="linkDrafts.length >= 12"
-                    @click="addLink"
-                  />
-                </div>
-              </UFormField>
-            </div>
-          </fieldset>
+    <div class="grid min-h-0 flex-1 grid-cols-1" :class="workspaceColumns">
+      <aside class="hidden min-h-0 border-r border-muted bg-default xl:flex xl:flex-col" aria-label="Block library">
+        <template v-if="paletteCollapsed">
+          <UButton aria-label="Expand block library" icon="i-lucide-panel-left-open" color="neutral" variant="ghost" class="m-2" @click="paletteCollapsed = false;" />
         </template>
-      </section>
+        <template v-else>
+          <div class="flex justify-end border-b border-muted p-1">
+            <UButton aria-label="Collapse block library" icon="i-lucide-panel-left-close" color="neutral" variant="ghost" size="xs" @click="paletteCollapsed = true;" />
+          </div>
+          <PageBlockPalette class="min-h-0 flex-1" :editable="isEditing" @insert="insertBlock" @dragstart="startPaletteDrag" />
+        </template>
+      </aside>
+
+      <main class="min-h-0 min-w-0 overflow-auto p-3 sm:p-5" aria-label="Page canvas">
+        <div
+          ref="canvasRef"
+          class="relative mx-auto min-h-full transition-[max-width] duration-200"
+          :style="canvasStyle"
+          data-page-editor-canvas
+          @dragover="handleCanvasDragOver"
+          @dragleave.self="clearDropTarget"
+          @drop="handleCanvasDrop"
+        >
+          <div v-if="dropIndicatorTop !== null" class="pointer-events-none absolute inset-x-0 z-20 h-0.5 bg-primary" :style="{ top: `${dropIndicatorTop}px` }" data-page-block-drop-indicator />
+          <div :class="mode === 'preview' ? 'invisible absolute inset-0 pointer-events-none' : ''" :aria-hidden="mode === 'preview'">
+            <UEditor
+              ref="editorRef"
+              v-slot="{ editor }"
+              v-model="value"
+              content-type="json"
+              :extensions="extensions"
+              :handlers="editorProfile.handlers"
+              :editable="isEditing"
+              class="min-h-full w-full rounded-md border border-muted bg-default shadow-sm"
+              :ui="{ base: 'min-h-[calc(100dvh-12rem)] px-4 py-4 sm:px-6' }"
+            >
+              <UEditorToolbar v-if="isEditing" :editor="editor" :items="toolbarItems" class="sticky top-0 z-10 border-b border-muted bg-default/95 backdrop-blur" />
+              <UEditorDragHandle v-if="isEditing" :editor="editor" class="hidden sm:inline-flex" />
+            </UEditor>
+          </div>
+          <PageDocumentRenderer
+            v-if="mode === 'preview'"
+            :document="value"
+            class="min-h-[calc(100dvh-12rem)] rounded-md border border-muted bg-default px-4 py-4 shadow-sm sm:px-6"
+          />
+        </div>
+      </main>
+
+      <aside class="hidden min-h-0 border-l border-muted bg-default xl:flex xl:flex-col" aria-label="Block inspector">
+        <template v-if="inspectorCollapsed">
+          <UButton aria-label="Expand inspector" icon="i-lucide-panel-right-open" color="neutral" variant="ghost" class="m-2" @click="inspectorCollapsed = false;" />
+        </template>
+        <template v-else>
+          <div class="flex justify-start border-b border-muted p-1">
+            <UButton aria-label="Collapse inspector" icon="i-lucide-panel-right-close" color="neutral" variant="ghost" size="xs" @click="inspectorCollapsed = true;" />
+          </div>
+          <PageBlockInspector
+            class="min-h-0 flex-1"
+            :attrs="selectedBlock"
+            :fields="activeFields"
+            :label="activeComponent?.label"
+            :editable="isEditing"
+            @update="updateSelectedBlock"
+          />
+        </template>
+      </aside>
     </div>
+
+    <USlideover v-model:open="mobilePaletteOpen" title="Block library" side="left" :ui="{ body: 'p-0 sm:p-0 min-h-0' }">
+      <template #body>
+        <PageBlockPalette class="h-full min-h-0" :editable="isEditing" @insert="insertBlock" @dragstart="startPaletteDrag" />
+      </template>
+    </USlideover>
+    <USlideover v-model:open="mobileInspectorOpen" title="Block inspector" side="right" :ui="{ body: 'p-0 sm:p-0 min-h-0' }">
+      <template #body>
+        <PageBlockInspector
+          class="h-full min-h-0"
+          :attrs="selectedBlock"
+          :fields="activeFields"
+          :label="activeComponent?.label"
+          :editable="isEditing"
+          @update="updateSelectedBlock"
+        />
+      </template>
+    </USlideover>
   </div>
 </template>

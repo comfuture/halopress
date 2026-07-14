@@ -44,13 +44,16 @@ describe('page block registry', () => {
     })).toHaveProperty('error')
   })
 
-  it('updates link document attributes as editors type without stealing inspector focus', async () => {
-    const editor = await readFile(resolve(import.meta.dirname, '../app/components/PageEditor.vue'), 'utf8')
+  it('updates inspector attributes without forcing editor focus or cached node positions', async () => {
+    const root = resolve(import.meta.dirname, '..')
+    const editor = await readFile(resolve(root, 'app/components/PageEditor.vue'), 'utf8')
+    const inspector = await readFile(resolve(root, 'app/components/page-editor/PageBlockInspector.vue'), 'utf8')
 
-    expect(editor).toContain('@update:model-value="updateLinkText(index, \'label\', $event)"')
-    expect(editor).toContain('@update:model-value="updateLinkText(index, \'to\', $event)"')
-    expect(editor).not.toContain('@blur="commitLink(index)"')
-    expect(editor).toContain('editor\n    .chain()\n    .setNodeSelection(selectedBlock.value.pos)')
+    expect(inspector).toContain('@update:model-value="updateLink(index, \'label\', $event)"')
+    expect(inspector).toContain('@update:model-value="updateLink(index, \'to\', $event)"')
+    expect(editor).toContain('editor.commands.updatePageBlockAttributes(attrs)')
+    expect(editor).not.toContain('.focus()')
+    expect(editor).not.toContain('selectedBlock.value.pos')
   })
 
   it('resolves only code-owned components and strips unchecked properties', () => {

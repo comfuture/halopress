@@ -16,7 +16,16 @@ export type PageBlockAttrs = {
   media: PageBlockMedia
 }
 
-export type PageBlockFieldType = 'text' | 'textarea' | 'select' | 'boolean' | 'url' | 'link-list'
+export type PageBlockFieldType =
+  | 'text'
+  | 'textarea'
+  | 'select'
+  | 'boolean'
+  | 'url'
+  | 'link-list'
+  | 'icon'
+  | 'color-token'
+  | 'spacing'
 
 export type PageBlockField = {
   key: string
@@ -34,6 +43,13 @@ export type PageBlockComponent = {
   defaultProps: Record<string, unknown>
   defaultMedia: PageBlockMedia
   fields: PageBlockField[]
+  category: 'Hero' | 'Content' | 'Conversion'
+  icon: string
+  summary: string
+  keywords: string[]
+  compatibility: 'page'
+  preview: { title: string; description: string }
+  insertion: 'block'
 }
 
 export type PageBlockRegistry = {

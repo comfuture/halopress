@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { BreadcrumbItem, DropdownMenuItem } from '@nuxt/ui'
 import type { JSONContent } from '@tiptap/vue-3'
+import { validatePageDocumentBlocks } from '~~/shared/page-blocks'
 import { PUBLIC_PAGE_ROUTE_PREFIX } from '~~/shared/public-routing'
 import PageEditor from '~/components/PageEditor.vue'
 
@@ -59,12 +60,15 @@ const isDeleted = computed(() => doc.value?.status === 'deleted')
 const lastSavedJson = ref('')
 const currentJson = computed(() => stableStringify(buildSnapshot()))
 const isDirty = computed(() => !!doc.value && currentJson.value !== lastSavedJson.value)
-const canSaveDraft = computed(() => !!doc.value && !isDeleted.value && isDirty.value && !savingDraft.value)
+const draftValidationIssues = computed(() => validatePageDocumentBlocks(state.content, { allowUnknown: true }))
+const publishValidationIssues = computed(() => validatePageDocumentBlocks(state.content))
+const canSaveDraft = computed(() => !!doc.value && !isDeleted.value && isDirty.value && !draftValidationIssues.value.length && !savingDraft.value)
 const canPublish = computed(() => !!doc.value && !isDeleted.value && (
   isDirty.value || ['never-published', 'unpublished', 'published-with-draft'].includes(doc.value?.publicationState)
-) && !publishing.value)
+) && !publishValidationIssues.value.length && !publishing.value)
 const canDiscard = computed(() => !isDeleted.value && !!doc.value?.hasPublishedRevision && doc.value?.hasDraftChanges)
 const canArchive = computed(() => !isDeleted.value && doc.value?.status !== 'archived')
+const { allowNextNavigation } = useUnsavedNavigationGuard(isDirty)
 
 function isConflict(error: any) {
   return error?.statusCode === 409 || error?.status === 409 || error?.response?.status === 409
@@ -208,6 +212,7 @@ async function remove() {
       body: { revision: currentRevision.value }
     })
     toast.add({ title: 'Deleted (soft)' })
+    allowNextNavigation()
     await navigateTo('/_desk/pages')
   } catch (e: any) {
     handleMutationError('Delete', e)
@@ -293,13 +298,19 @@ const actionMenuItems = computed<DropdownMenuItem[][]>(() => {
 </script>
 
 <template>
-  <UDashboardPanel id="desk-pages-edit">
+  <UDashboardPanel
+    id="desk-pages-edit"
+    :ui="{ root: 'min-h-0 overflow-hidden', body: 'min-h-0 overflow-hidden p-0 sm:p-0' }"
+  >
     <template #header>
       <DeskNavbar :title="doc?.title || 'Page'">
         <template #title>
           <div class="flex min-w-0 flex-col">
             <UBreadcrumb :items="breadcrumbItems" />
-            <span class="truncate text-xs text-muted">Update the page, then save a draft or publish.</span>
+            <div class="flex items-center gap-2">
+              <UBadge :label="isDeleted ? 'Deleted' : (doc?.publicationState || state.status)" color="neutral" variant="subtle" size="sm" />
+              <UBadge v-if="isDirty" label="Unsaved" color="warning" variant="subtle" size="sm" />
+            </div>
           </div>
         </template>
 
@@ -322,35 +333,41 @@ const actionMenuItems = computed<DropdownMenuItem[][]>(() => {
     </template>
 
     <template #body>
-      <UAlert
-        v-if="conflictDetails"
-        title="A newer revision is available"
-        :description="conflictDetails.message || `Revision ${conflictDetails.currentRevision || 'newer'} was saved${conflictDetails.updatedBy ? ` by ${conflictDetails.updatedBy}` : ''}. Your local edits are still here.`"
-        icon="i-lucide-triangle-alert"
-        color="warning"
-        variant="subtle"
-      >
-        <template #actions>
-          <UButton label="Review history" color="neutral" variant="outline" size="xs" @click="historyOpen = true;" />
-          <UButton label="Reload latest" color="warning" variant="soft" size="xs" @click="reloadLatest" />
-        </template>
-      </UAlert>
+      <div class="flex h-full min-h-0 flex-col">
+        <div class="space-y-2 border-b border-muted bg-default px-4 py-3">
+          <UAlert
+            v-if="conflictDetails"
+            title="A newer revision is available"
+            :description="conflictDetails.message || `Revision ${conflictDetails.currentRevision || 'newer'} was saved${conflictDetails.updatedBy ? ` by ${conflictDetails.updatedBy}` : ''}. Your local edits are still here.`"
+            icon="i-lucide-triangle-alert"
+            color="warning"
+            variant="subtle"
+          >
+            <template #actions>
+              <UButton label="Review history" color="neutral" variant="outline" size="xs" @click="historyOpen = true;" />
+              <UButton label="Reload latest" color="warning" variant="soft" size="xs" @click="reloadLatest" />
+            </template>
+          </UAlert>
 
-      <UAlert
-        v-if="isDeleted"
-        title="This page is deleted"
-        description="It is read-only until it is recovered. Revision history remains available."
-        icon="i-lucide-trash-2"
-        color="error"
-        variant="subtle"
-      />
+          <UAlert
+            v-if="isDeleted"
+            title="This page is deleted"
+            description="It is read-only until it is recovered. Revision history remains available."
+            icon="i-lucide-trash-2"
+            color="error"
+            variant="subtle"
+          />
 
-      <div class="space-y-4">
-        <UFormField label="Title">
-          <UInput v-model="state.title" placeholder="Page title" class="w-full" :disabled="isDeleted" />
-        </UFormField>
+          <UFormField label="Title">
+            <UInput v-model="state.title" placeholder="Page title" class="w-full" :disabled="isDeleted" />
+          </UFormField>
+          <p class="text-xs text-muted">Update the page, then save a draft or publish.</p>
+          <p v-if="publishValidationIssues[0]" class="text-sm text-error">
+            {{ publishValidationIssues[0].message }}
+          </p>
+        </div>
 
-        <PageEditor v-model="state.content" :editable="!isDeleted" />
+        <PageEditor v-model="state.content" :editable="!isDeleted" class="min-h-0 flex-1" />
       </div>
 
       <CmsRevisionHistorySlideover
