@@ -20,7 +20,7 @@ import {
   createMembershipInvitation,
   registerPasswordMember
 } from '../server/utils/member-registration'
-import { getMembershipSettings, updateMembershipSettings } from '../server/utils/membership'
+import { getMembershipSettings, toPublicMembershipSettings, updateMembershipSettings } from '../server/utils/membership'
 import { getActiveAuthUser } from '../server/utils/auth-user'
 import { hashPassword } from '../server/utils/password'
 import { createTestSqliteDb } from './fixtures/sqlite'
@@ -75,6 +75,9 @@ describe('public membership policy and password registration', () => {
 
     await updateMembershipSettings(event, { mode: 'open', defaultRole: 'user' }, 'admin-1')
     await expect(getMembershipSettings(event)).resolves.toEqual({ mode: 'open', defaultRole: 'user' })
+    expect(toPublicMembershipSettings('open', true).passwordRegistrationEnabled).toBe(true)
+    expect(toPublicMembershipSettings('open', false).passwordRegistrationEnabled).toBe(false)
+    expect(toPublicMembershipSettings('disabled', true).passwordRegistrationEnabled).toBe(false)
   })
 
   it('normalizes canonical email, rejects case duplicates, and creates public member accounts', async () => {

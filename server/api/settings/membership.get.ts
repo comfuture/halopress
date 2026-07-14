@@ -1,5 +1,5 @@
 import { requireAdmin } from '../../utils/auth'
-import { getMembershipSettings, listEligibleMemberRoles, toPublicMembershipSettings } from '../../utils/membership'
+import { getMembershipSettings, listEligibleMemberRoles } from '../../utils/membership'
 
 export default defineEventHandler(async (event) => {
   await requireAdmin(event)
@@ -7,5 +7,5 @@ export default defineEventHandler(async (event) => {
     getMembershipSettings(event),
     listEligibleMemberRoles(event)
   ])
-  return { ...settings, public: toPublicMembershipSettings(settings.mode), roles }
+  return { ...settings, roles }
 })

@@ -31,6 +31,8 @@ describe('public membership UI contracts', () => {
     expect(signup.match(/autocomplete="new-password"/g)).toHaveLength(2)
     expect(signup).toContain('name="confirmPassword"')
     expect(signup).toContain('autocomplete="one-time-code"')
+    expect(signup).toContain(`v-if="membership?.passwordRegistrationEnabled"`)
+    expect(signup).toContain('Password registration is not available')
     expect(signup).toContain('Recovery and verification email are not configured')
     expect(signup).toContain('password reset and verification email delivery are not yet available')
   })

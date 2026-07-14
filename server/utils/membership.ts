@@ -11,6 +11,7 @@ import {
 } from '../../shared/membership'
 import { getDb } from '../db/db'
 import { userRole } from '../db/schema'
+import { resolveCredentialsEnabled } from './oauth'
 import { getSettingValue, upsertSetting } from './settings'
 
 const SETTINGS_SCOPE = 'global'
@@ -48,10 +49,15 @@ export async function getMembershipSettings(event?: H3Event) {
   }
 }
 
-export function toPublicMembershipSettings(mode: MembershipMode): MembershipPublicSettings {
+export function toPublicMembershipSettings(
+  mode: MembershipMode,
+  credentialsEnabled: boolean
+): MembershipPublicSettings {
+  const registrationEnabled = mode !== 'disabled'
   return {
     mode,
-    registrationEnabled: mode !== 'disabled',
+    registrationEnabled,
+    passwordRegistrationEnabled: registrationEnabled && credentialsEnabled,
     inviteRequired: mode === 'invite',
     approvalRequired: mode === 'approval',
     passwordRecoveryAvailable: false,
@@ -60,8 +66,11 @@ export function toPublicMembershipSettings(mode: MembershipMode): MembershipPubl
 }
 
 export async function getPublicMembershipSettings(event?: H3Event) {
-  const settings = await getMembershipSettings(event)
-  return toPublicMembershipSettings(settings.mode)
+  const [settings, credentialsEnabled] = await Promise.all([
+    getMembershipSettings(event),
+    resolveCredentialsEnabled(event)
+  ])
+  return toPublicMembershipSettings(settings.mode, credentialsEnabled)
 }
 
 export async function listEligibleMemberRoles(event?: H3Event) {
@@ -100,8 +109,5 @@ export async function updateMembershipSettings(event: H3Event, input: unknown, a
     note: 'Public membership admission policy and safe default role'
   }, event)
 
-  return {
-    ...parsed,
-    public: toPublicMembershipSettings(parsed.mode)
-  }
+  return parsed
 }

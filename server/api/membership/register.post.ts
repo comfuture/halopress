@@ -10,12 +10,16 @@ import {
   RegistrationError
 } from '../../utils/member-registration'
 import { getTenantKey } from '../../utils/tenant'
+import { resolveCredentialsEnabled } from '../../utils/oauth'
 
 export default defineEventHandler(async (event) => {
   const origin = String(getHeader(event, 'origin') || '').trim()
   const fetchSite = String(getHeader(event, 'sec-fetch-site') || '').trim().toLowerCase()
   if ((origin && origin !== getRequestURL(event).origin) || fetchSite === 'cross-site') {
     throw createError({ statusCode: 403, statusMessage: 'Cross-site registration is not allowed' })
+  }
+  if (!(await resolveCredentialsEnabled(event))) {
+    throw createError({ statusCode: 403, statusMessage: 'Password registration is not available' })
   }
   const body = await readBody(event)
   const parsed = registrationInputSchema.safeParse(body)

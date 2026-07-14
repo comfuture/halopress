@@ -6,6 +6,7 @@ definePageMeta({ layout: 'default' })
 type MembershipStatus = {
   mode: 'disabled' | 'open' | 'invite' | 'approval'
   registrationEnabled: boolean
+  passwordRegistrationEnabled: boolean
   inviteRequired: boolean
   approvalRequired: boolean
 }
@@ -89,7 +90,7 @@ async function submit() {
       />
       <div v-else class="space-y-5">
         <PublicAuthProviders callback-url="/" action="signup" />
-        <UForm :schema="schema" :state="state" class="space-y-4" @submit="submit">
+        <UForm v-if="membership?.passwordRegistrationEnabled" :schema="schema" :state="state" class="space-y-4" @submit="submit">
           <UFormField label="Name" name="name">
             <UInput v-model="state.name" autocomplete="name" class="w-full" />
           </UFormField>
@@ -110,6 +111,15 @@ async function submit() {
           </UButton>
         </UForm>
         <UAlert
+          v-else
+          title="Password registration is not available"
+          description="Use an enabled sign-in provider above, or ask the site administrator which sign-in methods are available."
+          color="neutral"
+          variant="subtle"
+          icon="i-lucide-key-round"
+        />
+        <UAlert
+          v-if="membership?.passwordRegistrationEnabled"
           title="Recovery and verification email are not configured"
           description="Use a unique password you can retain. Open registration is disabled by default because password reset and verification email delivery are not yet available."
           color="warning"

@@ -5,6 +5,7 @@ export type MembershipMode = typeof MEMBERSHIP_MODES[number]
 export type MembershipPublicSettings = {
   mode: MembershipMode
   registrationEnabled: boolean
+  passwordRegistrationEnabled: boolean
   inviteRequired: boolean
   approvalRequired: boolean
   passwordRecoveryAvailable: false
