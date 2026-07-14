@@ -65,3 +65,25 @@ export function commitPageBlockLink(
   links[index] = next
   return { links }
 }
+
+export function movePageBlockLink(
+  drafts: PageBlockLinkDraft[],
+  current: unknown,
+  index: number,
+  direction: -1 | 1
+): { drafts: PageBlockLinkDraft[], links: Record<string, unknown>[] } | undefined {
+  const destination = index + direction
+  if (index < 0 || destination < 0 || destination >= drafts.length) return undefined
+
+  const nextDrafts = [...drafts]
+  const [draft] = nextDrafts.splice(index, 1)
+  nextDrafts.splice(destination, 0, draft!)
+
+  const links = Array.isArray(current)
+    ? current.slice(0, 12).map(curatedLinkProperties)
+    : []
+  const [link] = links.splice(index, 1)
+  links.splice(destination, 0, link ?? {})
+
+  return { drafts: nextDrafts, links }
+}

@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import { buildPageDocumentSegments, sanitizePageDocument } from '../app/editor/page/render-document'
-import { commitPageBlockLink, createPageBlockLinkDrafts } from '../app/editor/page/links'
+import { commitPageBlockLink, createPageBlockLinkDrafts, movePageBlockLink } from '../app/editor/page/links'
 import { pageBlockRegistry } from '../app/editor/page/registry'
 import { normalizePageContent } from '../server/cms/page-content'
 import { resolvePageBlock } from '../shared/page-blocks'
@@ -44,6 +44,25 @@ describe('page block registry', () => {
     })).toHaveProperty('error')
   })
 
+  it('moves link drafts without revalidating or discarding incomplete input', () => {
+    const drafts = createPageBlockLinkDrafts([
+      { label: 'First', to: '/first' },
+      { label: 'Second', to: '/second' }
+    ])
+    drafts[0]!.to = 'javascript:in-progress'
+
+    const moved = movePageBlockLink(drafts, [
+      { label: 'First', to: '/first' },
+      { label: 'Second', to: '/second' }
+    ], 0, 1)
+
+    expect(moved?.drafts.map(draft => draft.to)).toEqual(['/second', 'javascript:in-progress'])
+    expect(moved?.links).toEqual([
+      { label: 'Second', to: '/second' },
+      { label: 'First', to: '/first' }
+    ])
+  })
+
   it('updates inspector attributes without forcing editor focus or cached node positions', async () => {
     const root = resolve(import.meta.dirname, '..')
     const editor = await readFile(resolve(root, 'app/components/PageEditor.vue'), 'utf8')
@@ -51,6 +70,7 @@ describe('page block registry', () => {
 
     expect(inspector).toContain('@update:model-value="updateLink(index, \'label\', $event)"')
     expect(inspector).toContain('@update:model-value="updateLink(index, \'to\', $event)"')
+    expect(inspector).toContain('if (samePageBlockAttrs(attrs)) return')
     expect(editor).toContain('editor.commands.updatePageBlockAttributes(attrs)')
     expect(editor).not.toContain('.focus()')
     expect(editor).not.toContain('selectedBlock.value.pos')

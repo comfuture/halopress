@@ -4,6 +4,7 @@ import { resolvePageBlock } from '~~/shared/page-blocks'
 import {
   commitPageBlockLink,
   createPageBlockLinkDrafts,
+  movePageBlockLink,
   type PageBlockLinkDraft
 } from '~/editor/page/links'
 import type { PageBlockAttrs, PageBlockField } from '~/editor/page/types'
@@ -59,8 +60,20 @@ function cloneAttrs(attrs: PageBlockAttrs): PageBlockAttrs {
   return structuredClone(attrs)
 }
 
+function samePageBlockAttrs(attrs: PageBlockAttrs) {
+  return editing.component === attrs.component
+    && JSON.stringify(editing.props) === JSON.stringify(attrs.props)
+    && JSON.stringify(editing.advanced) === JSON.stringify(attrs.advanced)
+    && JSON.stringify(editing.media) === JSON.stringify(attrs.media)
+}
+
 function resetFromAttrs(attrs: PageBlockAttrs | null) {
   if (!attrs) return
+  if (samePageBlockAttrs(attrs)) return
+  if (commitTimer) {
+    clearTimeout(commitTimer)
+    commitTimer = undefined
+  }
   syncing.value = true
   const next = cloneAttrs(attrs)
   editing.component = next.component
@@ -137,11 +150,10 @@ function removeLink(index: number) {
 }
 
 function moveLink(index: number, direction: -1 | 1) {
-  const destination = index + direction
-  if (destination < 0 || destination >= linkDrafts.value.length) return
-  const [draft] = linkDrafts.value.splice(index, 1)
-  linkDrafts.value.splice(destination, 0, draft!)
-  editing.props.links = linkDrafts.value.map(item => commitPageBlockLink([], 0, item).links?.[0] ?? {})
+  const result = movePageBlockLink(linkDrafts.value, editing.props.links, index, direction)
+  if (!result) return
+  linkDrafts.value = result.drafts
+  editing.props.links = result.links
 }
 
 const selectedAssetId = computed<string | null>({
