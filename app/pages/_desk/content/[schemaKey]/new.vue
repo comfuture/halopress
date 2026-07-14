@@ -129,25 +129,14 @@ async function publish() {
         </template>
 
         <template #actions>
-          <UButton
-            icon="i-lucide-save"
-            :loading="savingDraft"
-            :disabled="!canSaveDraft"
-            aria-label="Save Draft"
-            @click="saveDraft"
-          >
-            <span class="hidden sm:inline">Save Draft</span>
-          </UButton>
-          <UButton
-            color="primary"
-            icon="i-lucide-upload"
-            :loading="publishing"
-            :disabled="!canPublish"
-            aria-label="Publish"
-            @click="publish"
-          >
-            <span class="hidden sm:inline">Publish</span>
-          </UButton>
+          <CmsEditorActions
+            :can-save-draft="canSaveDraft"
+            :saving-draft="savingDraft"
+            :can-publish="canPublish"
+            :publishing="publishing"
+            @save-draft="saveDraft"
+            @publish="publish"
+          />
         </template>
       </DeskNavbar>
     </template>

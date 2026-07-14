@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { BreadcrumbItem } from '@nuxt/ui'
+import type { BreadcrumbItem, DropdownMenuItem } from '@nuxt/ui'
 
 definePageMeta({
   layout: 'desk'
@@ -171,6 +171,38 @@ async function remove() {
     removing.value = false
   }
 }
+
+const actionMenuItems = computed<DropdownMenuItem[][]>(() => {
+  const groups: DropdownMenuItem[][] = []
+
+  if (canDiscard.value) {
+    groups.push([{
+      label: 'Discard draft',
+      icon: 'i-lucide-rotate-ccw',
+      disabled: discarding.value,
+      onSelect: discardDraft
+    }])
+  }
+
+  if (canUnpublish.value) {
+    groups.push([{
+      label: 'Unpublish',
+      icon: 'i-lucide-eye-off',
+      disabled: unpublishing.value,
+      onSelect: unpublish
+    }])
+  }
+
+  groups.push([{
+    label: 'Delete',
+    icon: 'i-lucide-trash-2',
+    color: 'error',
+    disabled: removing.value,
+    onSelect: remove
+  }])
+
+  return groups
+})
 </script>
 
 <template>
@@ -187,64 +219,17 @@ async function remove() {
         </template>
 
         <template #actions>
-          <UButton
-            :to="`/_preview/content/${schemaKey}/${id}`"
-            target="_blank"
-            color="neutral"
-            variant="ghost"
-            icon="i-lucide-eye"
-          >
-            <span class="hidden sm:inline">Preview draft</span>
-          </UButton>
-          <UButton
-            v-if="canDiscard"
-            color="neutral"
-            variant="outline"
-            icon="i-lucide-rotate-ccw"
-            :loading="discarding"
-            @click="discardDraft"
-          >
-            <span class="hidden sm:inline">Discard draft</span>
-          </UButton>
-          <UButton
-            icon="i-lucide-save"
-            :loading="savingDraft"
-            :disabled="!canSaveDraft"
-            aria-label="Save Draft"
-            @click="saveDraft"
-          >
-            <span class="hidden sm:inline">Save Draft</span>
-          </UButton>
-          <UButton
-            v-if="canUnpublish"
-            color="warning"
-            variant="outline"
-            icon="i-lucide-eye-off"
-            :loading="unpublishing"
-            @click="unpublish"
-          >
-            <span class="hidden sm:inline">Unpublish</span>
-          </UButton>
-          <UButton
-            color="primary"
-            icon="i-lucide-upload"
-            :loading="publishing"
-            :disabled="!canPublish"
-            aria-label="Publish"
-            @click="publish"
-          >
-            <span class="hidden sm:inline">Publish</span>
-          </UButton>
-          <UButton
-            color="error"
-            icon="i-lucide-trash"
-            :loading="removing"
-            variant="outline"
-            aria-label="Delete"
-            @click="remove"
-          >
-            <span class="hidden sm:inline">Delete</span>
-          </UButton>
+          <CmsEditorActions
+            :preview-to="`/_preview/content/${schemaKey}/${id}`"
+            :can-save-draft="canSaveDraft"
+            :saving-draft="savingDraft"
+            :can-publish="canPublish"
+            :publishing="publishing"
+            :menu-items="actionMenuItems"
+            :menu-loading="discarding || unpublishing || removing"
+            @save-draft="saveDraft"
+            @publish="publish"
+          />
         </template>
       </DeskNavbar>
     </template>
