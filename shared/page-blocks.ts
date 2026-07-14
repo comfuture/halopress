@@ -10,6 +10,13 @@ export type StoredPageBlockAttrs = {
   media?: unknown
 }
 
+export type PageBlockValidationIssue = {
+  index: number
+  key: string
+  kind: 'unknown' | 'malformed'
+  message: string
+}
+
 export function isSafePageUrl(value: string) {
   if (!value) return true
   if (value.startsWith('/') && !value.startsWith('//')) return true
@@ -144,4 +151,35 @@ export function resolvePageBlock(attrs: StoredPageBlockAttrs): ResolvedPageBlock
     props: parsedProps.data,
     media: parsedMedia.data
   }
+}
+
+export function validatePageDocumentBlocks(
+  value: unknown,
+  options: { allowUnknown?: boolean } = {}
+): PageBlockValidationIssue[] {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return []
+  const content = (value as Record<string, unknown>).content
+  if (!Array.isArray(content)) return []
+
+  const issues: PageBlockValidationIssue[] = []
+  content.forEach((candidate, index) => {
+    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return
+    const node = candidate as Record<string, unknown>
+    if (node.type !== 'pageBlock') return
+    const attrs = node.attrs && typeof node.attrs === 'object' && !Array.isArray(node.attrs)
+      ? node.attrs as StoredPageBlockAttrs
+      : {}
+    const resolved = resolvePageBlock(attrs)
+    if (resolved.status === 'known') return
+    if (resolved.status === 'unknown' && options.allowUnknown) return
+    issues.push({
+      index,
+      key: resolved.key,
+      kind: resolved.status,
+      message: resolved.status === 'unknown'
+        ? `Block ${index + 1} uses an unsupported component${resolved.key ? ` (${resolved.key})` : ''}.`
+        : `Block ${index + 1}${resolved.key ? ` (${resolved.key})` : ''} has invalid properties.`
+    })
+  })
+  return issues
 }
