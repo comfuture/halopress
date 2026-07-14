@@ -10,6 +10,7 @@ import {
   reactivateSchema
 } from '../server/cms/schema-lifecycle'
 import { getActiveSchema, getPublishedSchema, listActiveSchemas } from '../server/cms/repo'
+import { syncContentRefs } from '../server/cms/ref-sync'
 import {
   asset,
   content,
@@ -325,6 +326,27 @@ describe('schema lifecycle', () => {
       expect(await fixture.db.select().from(contentRefList).where(eq(contentRefList.itemSchemaKey, 'article'))).toEqual([])
       expect(await fixture.db.select().from(content).where(eq(content.id, 'external-owner'))).toHaveLength(1)
       expect(await fixture.db.select().from(asset).where(eq(asset.id, 'article-asset'))).toHaveLength(1)
+
+      await syncContentRefs({
+        db: fixture.db,
+        contentId: 'external-owner',
+        registry: {
+          schemaKey: 'external',
+          version: 1,
+          title: 'External',
+          fields: [],
+          relations: [{
+            fieldId: 'external-articles',
+            fieldKey: 'articles',
+            targetKind: 'content',
+            targetSchemaKey: 'article',
+            kind: 'ref_list'
+          }]
+        },
+        content: { articles: ['article-published'] }
+      })
+      expect(await fixture.db.select().from(contentRef).where(eq(contentRef.targetSchemaKey, 'article'))).toEqual([])
+      expect(await fixture.db.select().from(contentRefList).where(eq(contentRefList.itemSchemaKey, 'article'))).toEqual([])
     } finally {
       fixture.close()
     }

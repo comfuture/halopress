@@ -1,6 +1,6 @@
-import { and, eq } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import type { Db } from '../db/db'
-import { contentRef, contentRefList } from '../db/schema'
+import { contentRef, contentRefList, schema as schemaTable } from '../db/schema'
 import { executeDbStatement } from '../db/transaction'
 import type { DbStatement } from '../db/transaction'
 import type { SchemaRegistry } from './types'
@@ -37,28 +37,51 @@ export async function syncContentRefs(args: {
 
     const pushOne = async (targetId: string, position?: number, meta?: Record<string, unknown>) => {
       if (!insertedSetIds.has(targetId)) {
-        await executeDbStatement(db.insert(contentRef).values({
-          contentId,
-          projectionScope,
-          fieldPath: rel.fieldKey,
-          targetKind,
-          targetSchemaKey,
-          targetId
-        }), statements)
+        const guardedContentTarget = targetKind === 'content' && targetSchemaKey
+        const refStatement = guardedContentTarget
+          ? db.insert(contentRef).select(sql`
+              select ${contentId}, ${projectionScope}, ${rel.fieldKey}, ${targetKind}, ${targetSchemaKey}, ${targetId}
+              where exists (
+                select 1 from ${schemaTable}
+                where ${schemaTable.schemaKey} = ${targetSchemaKey}
+              )
+            `)
+          : db.insert(contentRef).values({
+              contentId,
+              projectionScope,
+              fieldPath: rel.fieldKey,
+              targetKind,
+              targetSchemaKey,
+              targetId
+            })
+        await executeDbStatement(refStatement, statements)
         insertedSetIds.add(targetId)
       }
       if (typeof position === 'number') {
-        await executeDbStatement(db.insert(contentRefList).values({
-          ownerContentId: contentId,
-          projectionScope,
-          fieldKey: rel.fieldKey,
-          position,
-          itemKind: targetKind,
-          itemSchemaKey: targetSchemaKey,
-          itemId: targetKind === 'asset' ? null : targetId,
-          assetId: targetKind === 'asset' ? targetId : null,
-          metaJson: meta && Object.keys(meta).length ? JSON.stringify(meta) : null
-        }), statements)
+        const guardedContentTarget = targetKind === 'content' && targetSchemaKey
+        const itemId = targetKind === 'asset' ? null : targetId
+        const assetId = targetKind === 'asset' ? targetId : null
+        const metaJson = meta && Object.keys(meta).length ? JSON.stringify(meta) : null
+        const listStatement = guardedContentTarget
+          ? db.insert(contentRefList).select(sql`
+              select ${contentId}, ${projectionScope}, ${rel.fieldKey}, ${position}, ${targetKind}, ${targetSchemaKey}, ${itemId}, ${assetId}, ${metaJson}
+              where exists (
+                select 1 from ${schemaTable}
+                where ${schemaTable.schemaKey} = ${targetSchemaKey}
+              )
+            `)
+          : db.insert(contentRefList).values({
+              ownerContentId: contentId,
+              projectionScope,
+              fieldKey: rel.fieldKey,
+              position,
+              itemKind: targetKind,
+              itemSchemaKey: targetSchemaKey,
+              itemId,
+              assetId,
+              metaJson
+            })
+        await executeDbStatement(listStatement, statements)
       }
     }
 
