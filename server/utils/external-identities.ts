@@ -298,7 +298,7 @@ export async function createGoogleLinkIntent(event: H3Event, userId: string, pas
     now
   })
   try {
-    await consumeRegistrationRateLimit(db, keys, now)
+    await consumeRegistrationRateLimit(db, keys, now, 'Too many reauthentication attempts. Try again later.')
   } catch (error) {
     if (error instanceof RegistrationError) {
       throw new ExternalIdentityError(error.message, 'rate_limited', error.retryAfterSeconds)

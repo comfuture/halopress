@@ -96,7 +96,8 @@ export async function reauthenticationRateLimitKeys(input: {
 export async function consumeRegistrationRateLimit(
   db: any,
   keys: string[],
-  now = new Date()
+  now = new Date(),
+  limitMessage = 'Too many registration attempts. Try again later.'
 ) {
   const resetAt = new Date((Math.floor(now.getTime() / REGISTRATION_WINDOW_MS) + 1) * REGISTRATION_WINDOW_MS)
   await db.delete(registrationRateLimit).where(lt(registrationRateLimit.resetAt, now))
@@ -116,7 +117,7 @@ export async function consumeRegistrationRateLimit(
 
     if (Number(rows?.[0]?.attemptCount ?? 1) > REGISTRATION_ATTEMPT_LIMIT) {
       throw new RegistrationError(
-        'Too many registration attempts. Try again later.',
+        limitMessage,
         429,
         Math.max(1, Math.ceil((resetAt.getTime() - now.getTime()) / 1000))
       )
