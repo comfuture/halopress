@@ -19,18 +19,19 @@ if (routeResult.error.value || !routeResult.data.value) {
   throw createError({ statusCode: 404, statusMessage: 'Not Found' })
 }
 const resolvedRoute = routeResult.data.value
-if (resolvedRoute?.routeKind === 'alias') {
+const isAlias = resolvedRoute?.routeKind === 'alias'
+if (isAlias) {
   applyPublic()
   await navigateTo(publicPathToHref(resolvedRoute.canonicalPath), { redirectCode: 301 })
 }
-if (!['schema', 'page'].includes(resolvedRoute.documentKind)) {
+if (!isAlias && !['schema', 'page'].includes(resolvedRoute.documentKind)) {
   applyPrivateNoindex()
   throw createError({ statusCode: 404, statusMessage: 'Not Found' })
 }
 const schemaKey = computed(() => String(resolvedRoute.documentId))
 
 const standalonePage = ref<any>(null)
-if (resolvedRoute?.documentKind === 'page') {
+if (!isAlias && resolvedRoute?.documentKind === 'page') {
   const { data, error } = await useFetch<any>(() => `/api/delivery/page/${resolvedRoute.documentId}`)
   if (error.value || !data.value) {
     applyPrivateNoindex()
@@ -40,7 +41,7 @@ if (resolvedRoute?.documentKind === 'page') {
 }
 
 const schema = ref<any>(null)
-if (!standalonePage.value) {
+if (!isAlias && !standalonePage.value) {
   const result = await useFetch<any>(() => `/api/schema/${schemaKey.value}/active`)
   if (result.error.value || !result.data.value) {
     applyPrivateNoindex()
@@ -56,15 +57,19 @@ const pageSize = computed(() => {
 const order = computed(() => (route.query.order === 'asc' ? 'asc' : 'desc'))
 const cursor = computed(() => (typeof route.query.cursor === 'string' && route.query.cursor.length ? route.query.cursor : null))
 
-const { items, nextCursor, error: contentError } = standalonePage.value
-  ? { items: ref<any[]>([]), nextCursor: ref<string | null>(null), error: ref(null) }
-  : await useHalopressQuery(schemaKey, {
-  status: 'published',
-  pageSize,
-  order,
-  cursor,
-  respectStandalonePageClaims: computed(() => schemaKey.value === PUBLIC_PAGE_ROUTE_PREFIX)
-})
+let queryResult: Awaited<ReturnType<typeof useHalopressQuery>> | null = null
+if (!isAlias && !standalonePage.value) {
+  queryResult = await useHalopressQuery(schemaKey, {
+    status: 'published',
+    pageSize,
+    order,
+    cursor,
+    respectStandalonePageClaims: computed(() => schemaKey.value === PUBLIC_PAGE_ROUTE_PREFIX)
+  })
+}
+const items = computed(() => queryResult?.items.value ?? [])
+const nextCursor = computed(() => queryResult?.nextCursor.value ?? null)
+const contentError = computed(() => queryResult?.error.value ?? null)
 if (contentError.value) {
   applyPrivateNoindex()
   throw createError({ statusCode: 404, statusMessage: 'Not Found' })
@@ -86,8 +91,10 @@ const heroDescription = computed(() => {
   const count = items.value.length
   return schema.value?.ast?.description || `${count} published ${count === 1 ? 'entry' : 'entries'}`
 })
-applyPublic()
-usePublicRouteSeo(computed(() => resolvedRoute?.seo))
+if (!isAlias) {
+  applyPublic()
+  usePublicRouteSeo(computed(() => resolvedRoute?.seo))
+}
 
 const heroLinks = [
   { label: 'Back to Schemas', to: '/', variant: 'outline' },

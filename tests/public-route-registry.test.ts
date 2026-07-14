@@ -1,5 +1,5 @@
 import { and, eq } from 'drizzle-orm'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import {
   assertPublicRouteAvailable,
@@ -20,6 +20,37 @@ import { runMigrations } from '../server/utils/install'
 import { createTestSqliteDb } from './fixtures/sqlite'
 
 describe('public route registry', () => {
+  it('serializes route-claim reads for transaction-safe publication', async () => {
+    let readPending = false
+    const get = vi.fn(async () => {
+      if (readPending) throw new Error('Concurrent transaction read')
+      readPending = true
+      await Promise.resolve()
+      readPending = false
+      return undefined
+    })
+    const queuedInsert = { kind: 'insert' }
+    const db = {
+      select: vi.fn(() => ({ from: () => ({ where: () => ({ get }) }) })),
+      insert: vi.fn(() => ({ values: () => queuedInsert }))
+    }
+    const statements: any[] = []
+
+    await expect(publishCanonicalRoute({
+      db: db as any,
+      statements,
+      documentKind: 'schema',
+      documentId: 'transaction-safe',
+      schemaKey: 'transaction-safe',
+      path: '/transaction-safe',
+      legacyPath: '/transaction-safe',
+      seo: null,
+      now: new Date('2026-07-14T00:00:00.000Z')
+    })).resolves.toBe('/transaction-safe')
+    expect(get).toHaveBeenCalledTimes(2)
+    expect(statements).toEqual([queuedInsert])
+  })
+
   it('rejects content publication beneath reserved system roots', () => {
     expect(() => contentCanonicalPath({
       schemaKey: 'api',

@@ -17,22 +17,27 @@ if (error.value || !resolved.value) {
   applyPrivateNoindex()
   throw createError({ statusCode: 404, statusMessage: 'Not Found' })
 }
-if (resolved.value.routeKind === 'alias') {
+const isAlias = resolved.value.routeKind === 'alias'
+if (isAlias) {
   applyPublic()
   await navigateTo(publicPathToHref(resolved.value.canonicalPath), { redirectCode: 301 })
 }
-if (resolved.value.documentKind !== 'page') {
+if (!isAlias && resolved.value.documentKind !== 'page') {
   applyPrivateNoindex()
   throw createError({ statusCode: 404, statusMessage: 'Not Found' })
 }
 
-const { data: page, error: pageError } = await useFetch<any>(() => `/api/delivery/page/${resolved.value.documentId}`)
-if (pageError.value || !page.value) {
-  applyPrivateNoindex()
-  throw createError({ statusCode: 404, statusMessage: 'Not Found' })
+const page = ref<any>(null)
+if (!isAlias) {
+  const { data, error: pageError } = await useFetch<any>(() => `/api/delivery/page/${resolved.value.documentId}`)
+  if (pageError.value || !data.value) {
+    applyPrivateNoindex()
+    throw createError({ statusCode: 404, statusMessage: 'Not Found' })
+  }
+  page.value = data.value
+  applyPublic()
+  usePublicRouteSeo(computed(() => resolved.value?.seo))
 }
-applyPublic()
-usePublicRouteSeo(computed(() => resolved.value?.seo))
 </script>
 
 <template>

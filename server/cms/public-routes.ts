@@ -97,14 +97,12 @@ export async function publishCanonicalRoute(args: {
   }
   const path = publicPathLookupKey(args.path, { allowReserved: args.path === args.legacyPath })
   const legacyPath = publicPathLookupKey(args.legacyPath, { allowReserved: true })
-  const [current, claim] = await Promise.all([
-    args.db.select().from(publicRouteTable).where(and(
-      eq(publicRouteTable.documentKind, identity.documentKind),
-      eq(publicRouteTable.documentId, identity.documentId),
-      eq(publicRouteTable.routeKind, 'canonical')
-    )).get(),
-    args.db.select().from(publicRouteTable).where(eq(publicRouteTable.path, path)).get()
-  ])
+  const current = await args.db.select().from(publicRouteTable).where(and(
+    eq(publicRouteTable.documentKind, identity.documentKind),
+    eq(publicRouteTable.documentId, identity.documentId),
+    eq(publicRouteTable.routeKind, 'canonical')
+  )).get()
+  const claim = await args.db.select().from(publicRouteTable).where(eq(publicRouteTable.path, path)).get()
 
   if (claim && !sameDocument(claim as RouteIdentity, identity)) {
     throw conflict('Public path is already claimed')

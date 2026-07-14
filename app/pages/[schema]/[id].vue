@@ -18,11 +18,12 @@ if (routeResult.error.value || !routeResult.data.value) {
   throw createError({ statusCode: 404, statusMessage: 'Not Found' })
 }
 const resolvedRoute = routeResult.data.value
-if (resolvedRoute?.routeKind === 'alias') {
+const isAlias = resolvedRoute?.routeKind === 'alias'
+if (isAlias) {
   applyPublic()
   await navigateTo(publicPathToHref(resolvedRoute.canonicalPath), { redirectCode: 301 })
 }
-if (!['content', 'page'].includes(resolvedRoute.documentKind)) {
+if (!isAlias && !['content', 'page'].includes(resolvedRoute.documentKind)) {
   applyPrivateNoindex()
   throw createError({ statusCode: 404, statusMessage: 'Not Found' })
 }
@@ -30,7 +31,7 @@ const schemaKey = computed(() => String(resolvedRoute.schemaKey || route.params.
 const id = computed(() => String(resolvedRoute.documentId))
 
 const standalonePage = ref<any>(null)
-if (resolvedRoute.documentKind === 'page') {
+if (!isAlias && resolvedRoute.documentKind === 'page') {
   const pageId = String(resolvedRoute.documentId)
   const { data, error } = await useFetch<any>(() => `/api/delivery/page/${pageId}`)
   const statusCode = Number((error.value as any)?.statusCode ?? (error.value as any)?.status ?? 0)
@@ -46,7 +47,7 @@ if (resolvedRoute.documentKind === 'page') {
 
 const doc = ref<any>(null)
 const schema = ref<any>(null)
-if (!standalonePage.value) {
+if (!isAlias && !standalonePage.value) {
   const { data: permission, error: permissionError } = await useFetch<{ canRead: boolean }>(
     () => `/api/schema/${schemaKey.value}/permission`,
     { server: true }
@@ -70,8 +71,10 @@ if (!standalonePage.value) {
 }
 
 const content = computed<Record<string, unknown>>(() => doc.value?.content ?? doc.value?.extra ?? {})
-applyPublic()
-usePublicRouteSeo(computed(() => resolvedRoute?.seo))
+if (!isAlias) {
+  applyPublic()
+  usePublicRouteSeo(computed(() => resolvedRoute?.seo))
+}
 </script>
 
 <template>

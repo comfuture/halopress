@@ -17,6 +17,19 @@ describe('public presentation UI contracts', () => {
     expect(preview).not.toContain('<pre')
   })
 
+  it('guards public data loading after alias redirects', async () => {
+    const sources = await Promise.all([
+      readFile(resolve(root, 'app/pages/[...path].vue'), 'utf8'),
+      readFile(resolve(root, 'app/pages/[schema]/index.vue'), 'utf8'),
+      readFile(resolve(root, 'app/pages/[schema]/[id].vue'), 'utf8')
+    ])
+    for (const source of sources) {
+      expect(source).toMatch(/const isAlias = [^\n]+routeKind === 'alias'/)
+      expect(source).toMatch(/if \(isAlias\) {[\s\S]*?await navigateTo\(/)
+      expect(source).toMatch(/if \(!isAlias(?: &&|\))[\s\S]*?useFetch/)
+    }
+  })
+
   it('renders zero, one, and many galleries with keyboard, live status, SSR figures, and reduced motion', async () => {
     const gallery = await readFile(resolve(root, 'app/components/public/AssetGallery.vue'), 'utf8')
     expect(gallery).toContain('items.length === 0')
