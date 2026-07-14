@@ -21,8 +21,29 @@ export function resolveSchemaPresentation(registry: any) {
   const stored = registry?.presentation
   if (stored?.contractVersion === 1 && Array.isArray(stored.fields)) return stored
 
-  const find = (kinds: string[], keys: string[]) => fields.find(field => keys.includes(field.key) && kinds.includes(field.kind))
-    ?? fields.find(field => kinds.includes(field.kind))
+  const definitions: Array<[string, string[], string[]]> = [
+    ['title', ['title', 'name'], ['string', 'text']],
+    ['description', ['description', 'summary', 'excerpt'], ['string', 'text', 'richtext']],
+    ['image', ['image', 'cover', 'thumbnail'], ['asset', 'asset_list']],
+    ['body', ['body', 'content'], ['text', 'richtext']],
+    ['gallery', ['gallery', 'images', 'media'], ['asset_list', 'asset']],
+    ['price', ['price', 'amount'], ['number', 'integer', 'string']]
+  ]
+  const selected: Record<string, RegistryField | undefined> = {}
+  const used = new Set<string>()
+  for (const [name, keys, kinds] of definitions) {
+    const field = fields.find(field => !used.has(field.fieldId) && keys.includes(field.key) && kinds.includes(field.kind))
+    if (!field) continue
+    selected[name] = field
+    used.add(field.fieldId)
+  }
+  for (const [name, , kinds] of definitions) {
+    if (selected[name]) continue
+    const field = fields.find(field => !used.has(field.fieldId) && kinds.includes(field.kind))
+    if (!field) continue
+    selected[name] = field
+    used.add(field.fieldId)
+  }
   const slot = (field?: RegistryField) => field ? { fieldId: field.fieldId, fieldKey: field.key } : undefined
   return {
     contractVersion: 1,
@@ -31,12 +52,12 @@ export function resolveSchemaPresentation(registry: any) {
     collectionTemplate: 'list',
     detailTemplate: 'document',
     slots: {
-      title: slot(find(['string', 'text'], ['title', 'name'])),
-      description: slot(find(['string', 'text', 'richtext'], ['description', 'summary', 'excerpt'])),
-      image: slot(find(['asset', 'asset_list'], ['image', 'cover', 'thumbnail', 'gallery'])),
-      body: slot(find(['text', 'richtext'], ['body', 'content'])),
-      gallery: slot(find(['asset_list', 'asset'], ['gallery', 'images', 'media'])),
-      price: slot(find(['number', 'integer', 'string'], ['price', 'amount']))
+      title: slot(selected.title),
+      description: slot(selected.description),
+      image: slot(selected.image),
+      body: slot(selected.body),
+      gallery: slot(selected.gallery),
+      price: slot(selected.price)
     },
     fields: fields.map(field => ({
       fieldId: field.fieldId,
@@ -88,11 +109,13 @@ export function safePresentationLink(value: unknown) {
 
 export function formatPresentationDate(value: unknown, includeTime = false, locale = 'en') {
   if (typeof value !== 'string') return ''
-  const date = new Date(value)
+  const timezoneLessDateTime = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?$/.test(value)
+  const date = new Date(timezoneLessDateTime ? `${value}Z` : value)
   return Number.isNaN(date.getTime())
     ? value
     : new Intl.DateTimeFormat(locale, {
         dateStyle: 'medium',
+        timeZone: 'UTC',
         ...(includeTime ? { timeStyle: 'short' } : {})
       }).format(date)
 }
