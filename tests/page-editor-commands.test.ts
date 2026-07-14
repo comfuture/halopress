@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import PageBlock from '../app/editor/page/PageBlock'
 import type { PageBlockAttrs, PageBlockComponentKey } from '../app/editor/page/types'
+import { clonePagePatternContent } from '../shared/page-patterns'
 
 const editors: Editor[] = []
 const testStarterKit = StarterKit.configure({ trailingNode: false })
@@ -89,6 +90,47 @@ describe('page block transaction commands', () => {
     expect(editor.state.selection.from).toBe(positionAt(editor, 1))
     expect(editor.commands.undo()).toBe(true)
     expect(components(editor)).toEqual(['pageHero', 'pageCTA'])
+  })
+
+  it('inserts a deep-cloned pattern in one transaction and removes it with one undo', () => {
+    const editor = createEditor(['pageHero', 'pageCTA'])
+    const pattern = clonePagePatternContent('testimonial-social-proof')
+    const destination = positionAt(editor, 1)
+
+    expectSingleTransaction(editor, () => editor.commands.insertPagePatternAt(destination, pattern))
+
+    expect(components(editor)).toEqual(['pageHero', 'pageTestimonial', 'pageLogos', 'pageCTA'])
+    expect(editor.state.selection).toBeInstanceOf(NodeSelection)
+    expect(editor.state.selection.from).toBe(positionAt(editor, 1))
+    expect(editor.commands.undo()).toBe(true)
+    expect(components(editor)).toEqual(['pageHero', 'pageCTA'])
+    expect(pattern).toEqual(clonePagePatternContent('testimonial-social-proof'))
+  })
+
+  it('keeps every inserted pattern block independently selectable and editable', () => {
+    const editor = createEditor(['pageHero'])
+    expect(editor.commands.insertPagePatternAt(editor.state.doc.content.size, clonePagePatternContent('testimonial-social-proof'))).toBe(true)
+
+    selectAt(editor, 2)
+    expect(editor.commands.updatePageBlockAttributes({ props: { title: 'Updated proof' } })).toBe(true)
+    expect(titleAt(editor, 2)).toBe('Updated proof')
+    expect(components(editor)).toEqual(['pageHero', 'pageTestimonial', 'pageLogos'])
+  })
+
+  it('rejects malformed patterns and non-top-level pattern destinations without mutation', () => {
+    const editor = new Editor({
+      extensions: [testStarterKit, PageBlock],
+      content: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Text' }] }] }
+    })
+    editors.push(editor)
+    const before = editor.getJSON()
+    const malformed = clonePagePatternContent('centered-hero') as any
+    malformed[0].attrs.props.class = 'fixed inset-0'
+
+    expect(editor.commands.insertPagePatternAt(0, malformed)).toBe(false)
+    expect(editor.commands.insertPagePatternAt(1, clonePagePatternContent('centered-hero'))).toBe(false)
+    expect(editor.commands.insertPagePatternAt(0, [])).toBe(false)
+    expect(editor.getJSON()).toEqual(before)
   })
 
   it('rejects unknown component keys and non-top-level insertion positions', () => {

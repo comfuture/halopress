@@ -11,8 +11,9 @@ import { normalizePageContent } from '../server/cms/page-content'
 import { resolvePageBlock } from '../shared/page-blocks'
 
 describe('page block registry', () => {
-  it('exposes typed link controls only for hero and CTA blocks', () => {
+  it('exposes typed link controls for reviewed action-bearing blocks', () => {
     expect(pageBlockRegistry.byKey.pageHero.fields.some(field => field.type === 'link-list')).toBe(true)
+    expect(pageBlockRegistry.byKey.pageSection.fields.some(field => field.type === 'link-list')).toBe(true)
     expect(pageBlockRegistry.byKey.pageCTA.fields.some(field => field.type === 'link-list')).toBe(true)
     expect(pageBlockRegistry.byKey.pageCard.fields.some(field => field.type === 'link-list')).toBe(false)
   })
@@ -144,6 +145,27 @@ describe('page block registry', () => {
       reason: 'Invalid page block properties'
     })
   })
+
+  it('resolves reviewed composite blocks and strips unchecked nested properties', () => {
+    expect(resolvePageBlock({
+      component: 'pageFAQ',
+      props: {
+        title: 'Questions',
+        items: [{ question: 'Is it safe?', answer: 'Yes.', class: 'fixed' }],
+        onClick: 'alert(1)'
+      },
+      media: {}
+    })).toEqual({
+      status: 'known',
+      key: 'pageFAQ',
+      componentName: 'PageBlockFAQ',
+      props: {
+        title: 'Questions',
+        items: [{ question: 'Is it safe?', answer: 'Yes.' }]
+      },
+      media: {}
+    })
+  })
 })
 
 describe('page document renderer', () => {
@@ -232,5 +254,17 @@ describe('page document renderer', () => {
     expect(renderer).toContain('<PageBlockView')
     expect(renderer).not.toContain('PageBlockNodeView')
     expect(renderer).not.toContain('ring-2')
+  })
+
+  it('maps rich atomic blocks to code-owned renderers and visible media placeholders', async () => {
+    const root = resolve(import.meta.dirname, '..')
+    const view = await readFile(resolve(root, 'app/editor/page/PageBlockView.vue'), 'utf8')
+    const media = await readFile(resolve(root, 'app/components/page-blocks/PageBlockMedia.vue'), 'utf8')
+
+    expect(view).toContain('resolved.key === \'pageTestimonial\'')
+    expect(view).toContain('resolved.key === \'pageLogos\'')
+    expect(view).toContain('resolved.key === \'pageFAQ\'')
+    expect(media).toContain('data-page-block-media-placeholder')
+    expect(media).toContain('Media required')
   })
 })
