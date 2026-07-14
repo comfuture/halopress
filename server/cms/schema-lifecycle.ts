@@ -85,8 +85,20 @@ export async function getSchemaDependencyImpact(db: Db, schemaKey: string) {
   ] = await Promise.all([
     countWhere(db, schemaTable, eq(schemaTable.schemaKey, schemaKey)),
     countWhere(db, schemaDraft, eq(schemaDraft.schemaKey, schemaKey)),
-    countWhere(db, contentRef, and(eq(contentRef.targetKind, 'content'), eq(contentRef.targetSchemaKey, schemaKey))),
-    countWhere(db, contentRefList, and(eq(contentRefList.itemKind, 'content'), eq(contentRefList.itemSchemaKey, schemaKey))),
+    countWhere(db, contentRef, and(
+      eq(contentRef.targetKind, 'content'),
+      or(
+        eq(contentRef.targetSchemaKey, schemaKey),
+        sql`${contentRef.targetId} in (${ownedContent})`
+      )
+    )),
+    countWhere(db, contentRefList, and(
+      eq(contentRefList.itemKind, 'content'),
+      or(
+        eq(contentRefList.itemSchemaKey, schemaKey),
+        sql`${contentRefList.itemId} in (${ownedContent})`
+      )
+    )),
     countWhere(db, contentRef, sql`${contentRef.contentId} in (${ownedContent})`),
     countWhere(db, contentRefList, sql`${contentRefList.ownerContentId} in (${ownedContent})`),
     countWhere(db, contentListing, eq(contentListing.schemaKey, schemaKey)),
@@ -190,11 +202,23 @@ function cleanupGuard(schemaKey: string, guard: SchemaCleanupGuard) {
     ) and not exists (
       select 1 from ${contentRef}
       where ${contentRef.targetKind} = 'content'
-        and ${contentRef.targetSchemaKey} = ${schemaKey}
+        and (
+          ${contentRef.targetSchemaKey} = ${schemaKey}
+          or ${contentRef.targetId} in (
+            select ${contentTable.id} from ${contentTable}
+            where ${contentTable.schemaKey} = ${schemaKey}
+          )
+        )
     ) and not exists (
       select 1 from ${contentRefList}
       where ${contentRefList.itemKind} = 'content'
-        and ${contentRefList.itemSchemaKey} = ${schemaKey}
+        and (
+          ${contentRefList.itemSchemaKey} = ${schemaKey}
+          or ${contentRefList.itemId} in (
+            select ${contentTable.id} from ${contentTable}
+            where ${contentTable.schemaKey} = ${schemaKey}
+          )
+        )
     ) and not exists (
       select 1 from ${schemaActive}
       where ${schemaActive.schemaKey} = ${schemaKey}
@@ -232,12 +256,18 @@ export async function deleteSchemaResidue(
     await executeDbStatement(tx.delete(contentRef)
       .where(guardedWhere(or(
         sql`${contentRef.contentId} in (${ownedContent})`,
-        and(eq(contentRef.targetKind, 'content'), eq(contentRef.targetSchemaKey, schemaKey))
+        and(eq(contentRef.targetKind, 'content'), or(
+          eq(contentRef.targetSchemaKey, schemaKey),
+          sql`${contentRef.targetId} in (${ownedContent})`
+        ))
       ), guard)), statements)
     await executeDbStatement(tx.delete(contentRefList)
       .where(guardedWhere(or(
         sql`${contentRefList.ownerContentId} in (${ownedContent})`,
-        and(eq(contentRefList.itemKind, 'content'), eq(contentRefList.itemSchemaKey, schemaKey))
+        and(eq(contentRefList.itemKind, 'content'), or(
+          eq(contentRefList.itemSchemaKey, schemaKey),
+          sql`${contentRefList.itemId} in (${ownedContent})`
+        ))
       ), guard)), statements)
     await executeDbStatement(tx.delete(documentAssetRef)
       .where(guardedWhere(and(

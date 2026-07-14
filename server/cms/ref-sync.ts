@@ -1,7 +1,7 @@
 import { and, eq, sql } from 'drizzle-orm'
 import type { QueryBuilder } from 'drizzle-orm/sqlite-core'
 import type { Db } from '../db/db'
-import { contentRef, contentRefList, schema as schemaTable } from '../db/schema'
+import { content as contentTable, contentRef, contentRefList, schema as schemaTable } from '../db/schema'
 import { executeDbStatement } from '../db/transaction'
 import type { DbStatement } from '../db/transaction'
 import type { SchemaRegistry } from './types'
@@ -37,21 +37,22 @@ export async function syncContentRefs(args: {
     const insertedSetIds = new Set<string>()
 
     const pushOne = async (targetId: string, position?: number, meta?: Record<string, unknown>) => {
+      const guardedContentTarget = targetKind === 'content'
       if (!insertedSetIds.has(targetId)) {
-        const guardedContentTarget = targetKind === 'content' && targetSchemaKey
         const refStatement = guardedContentTarget
-          ? db.insert(contentRef).select((qb: QueryBuilder) => qb
-              .select({
+          ? db.insert(contentRef).select((qb: QueryBuilder) => {
+              const selection = qb.select({
                 contentId: sql<string>`${contentId}`.as('content_id'),
                 projectionScope: sql<string>`${projectionScope}`.as('projection_scope'),
                 fieldPath: sql<string>`${rel.fieldKey}`.as('field_path'),
                 targetKind: sql<string>`${targetKind}`.as('target_kind'),
-                targetSchemaKey: sql<string>`${targetSchemaKey}`.as('target_schema_key'),
+                targetSchemaKey: sql<string | null>`${targetSchemaKey}`.as('target_schema_key'),
                 targetId: sql<string>`${targetId}`.as('target_id')
               })
-              .from(schemaTable)
-              .where(eq(schemaTable.schemaKey, targetSchemaKey))
-              .limit(1))
+              return targetSchemaKey
+                ? selection.from(schemaTable).where(eq(schemaTable.schemaKey, targetSchemaKey)).limit(1)
+                : selection.from(contentTable).where(eq(contentTable.id, targetId)).limit(1)
+            })
           : db.insert(contentRef).values({
               contentId,
               projectionScope,
@@ -64,26 +65,26 @@ export async function syncContentRefs(args: {
         insertedSetIds.add(targetId)
       }
       if (typeof position === 'number') {
-        const guardedContentTarget = targetKind === 'content' && targetSchemaKey
         const itemId = targetKind === 'asset' ? null : targetId
         const assetId = targetKind === 'asset' ? targetId : null
         const metaJson = meta && Object.keys(meta).length ? JSON.stringify(meta) : null
         const listStatement = guardedContentTarget
-          ? db.insert(contentRefList).select((qb: QueryBuilder) => qb
-              .select({
+          ? db.insert(contentRefList).select((qb: QueryBuilder) => {
+              const selection = qb.select({
                 ownerContentId: sql<string>`${contentId}`.as('owner_content_id'),
                 projectionScope: sql<string>`${projectionScope}`.as('projection_scope'),
                 fieldKey: sql<string>`${rel.fieldKey}`.as('field_key'),
                 position: sql<number>`${position}`.as('position'),
                 itemKind: sql<string>`${targetKind}`.as('item_kind'),
-                itemSchemaKey: sql<string>`${targetSchemaKey}`.as('item_schema_key'),
+                itemSchemaKey: sql<string | null>`${targetSchemaKey}`.as('item_schema_key'),
                 itemId: sql<string | null>`${itemId}`.as('item_id'),
                 assetId: sql<string | null>`${assetId}`.as('asset_id'),
                 metaJson: sql<string | null>`${metaJson}`.as('meta_json')
               })
-              .from(schemaTable)
-              .where(eq(schemaTable.schemaKey, targetSchemaKey))
-              .limit(1))
+              return targetSchemaKey
+                ? selection.from(schemaTable).where(eq(schemaTable.schemaKey, targetSchemaKey)).limit(1)
+                : selection.from(contentTable).where(eq(contentTable.id, targetId)).limit(1)
+            })
           : db.insert(contentRefList).values({
               ownerContentId: contentId,
               projectionScope,

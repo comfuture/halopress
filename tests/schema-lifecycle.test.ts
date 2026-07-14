@@ -375,6 +375,39 @@ describe('schema lifecycle', () => {
     try {
       await runMigrations(fixture.db)
       await seedSchemaLifecycle(fixture.db)
+      await fixture.db.insert(contentRef).values([
+        {
+          contentId: 'external-owner',
+          fieldPath: 'unscopedArticle',
+          targetKind: 'content',
+          targetId: 'article-draft'
+        },
+        {
+          contentId: 'external-owner',
+          fieldPath: 'unscopedExternal',
+          targetKind: 'content',
+          targetId: 'external-owner'
+        }
+      ])
+      await fixture.db.insert(contentRefList).values([
+        {
+          ownerContentId: 'external-owner',
+          fieldKey: 'unscopedArticles',
+          position: 0,
+          itemKind: 'content',
+          itemId: 'article-draft'
+        },
+        {
+          ownerContentId: 'external-owner',
+          fieldKey: 'unscopedExternals',
+          position: 0,
+          itemKind: 'content',
+          itemId: 'external-owner'
+        }
+      ])
+      await expect(getSchemaDependencyImpact(fixture.db, 'article')).resolves.toMatchObject({
+        counts: { inboundReferences: 4 }
+      })
       await deactivateSchema(fixture.db, 'article', 'admin-1')
       await purgeSchema({ context: {} } as any, fixture.db, 'article', 'article')
 
@@ -396,6 +429,18 @@ describe('schema lifecycle', () => {
         .where(eq(documentRevision.id, 'document-page-collision'))).toHaveLength(1)
       expect(await fixture.db.select().from(contentRef).where(eq(contentRef.targetSchemaKey, 'article'))).toEqual([])
       expect(await fixture.db.select().from(contentRefList).where(eq(contentRefList.itemSchemaKey, 'article'))).toEqual([])
+      expect(await fixture.db.select().from(contentRef).where(or(
+        eq(contentRef.targetId, 'article-published'),
+        eq(contentRef.targetId, 'article-draft')
+      ))).toEqual([])
+      expect(await fixture.db.select().from(contentRefList).where(or(
+        eq(contentRefList.itemId, 'article-published'),
+        eq(contentRefList.itemId, 'article-draft')
+      ))).toEqual([])
+      expect(await fixture.db.select().from(contentRef)
+        .where(eq(contentRef.fieldPath, 'unscopedExternal'))).toHaveLength(1)
+      expect(await fixture.db.select().from(contentRefList)
+        .where(eq(contentRefList.fieldKey, 'unscopedExternals'))).toHaveLength(1)
       expect(await fixture.db.select().from(content).where(eq(content.id, 'external-owner'))).toHaveLength(1)
       expect(await fixture.db.select().from(asset).where(eq(asset.id, 'article-asset'))).toHaveLength(1)
 
@@ -407,18 +452,50 @@ describe('schema lifecycle', () => {
           version: 1,
           title: 'External',
           fields: [],
-          relations: [{
-            fieldId: 'external-articles',
-            fieldKey: 'articles',
-            targetKind: 'content',
-            targetSchemaKey: 'article',
-            kind: 'ref_list'
-          }]
+          relations: [
+            {
+              fieldId: 'external-article',
+              fieldKey: 'article',
+              targetKind: 'content',
+              kind: 'ref'
+            },
+            {
+              fieldId: 'external-articles',
+              fieldKey: 'articles',
+              targetKind: 'content',
+              kind: 'ref_list'
+            },
+            {
+              fieldId: 'external-live-article',
+              fieldKey: 'liveArticle',
+              targetKind: 'content',
+              kind: 'ref'
+            },
+            {
+              fieldId: 'external-live-articles',
+              fieldKey: 'liveArticles',
+              targetKind: 'content',
+              kind: 'ref_list'
+            }
+          ]
         },
-        content: { articles: ['article-published'] }
+        content: {
+          article: 'article-published',
+          articles: ['article-draft'],
+          liveArticle: 'external-owner',
+          liveArticles: ['external-owner']
+        }
       })
-      expect(await fixture.db.select().from(contentRef).where(eq(contentRef.targetSchemaKey, 'article'))).toEqual([])
-      expect(await fixture.db.select().from(contentRefList).where(eq(contentRefList.itemSchemaKey, 'article'))).toEqual([])
+      expect(await fixture.db.select().from(contentRef).where(or(
+        eq(contentRef.targetId, 'article-published'),
+        eq(contentRef.targetId, 'article-draft')
+      ))).toEqual([])
+      expect(await fixture.db.select().from(contentRefList)
+        .where(eq(contentRefList.itemId, 'article-draft'))).toEqual([])
+      expect(await fixture.db.select().from(contentRef)
+        .where(eq(contentRef.targetId, 'external-owner'))).toHaveLength(2)
+      expect(await fixture.db.select().from(contentRefList)
+        .where(eq(contentRefList.itemId, 'external-owner'))).toHaveLength(1)
     } finally {
       fixture.close()
     }
