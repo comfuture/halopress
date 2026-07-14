@@ -1,6 +1,15 @@
 <script setup lang="ts">
 import type { BreadcrumbItem, DropdownMenuItem } from '@nuxt/ui'
 
+type ContentPermission = {
+  canRead: boolean
+  canWrite: boolean
+  canPublish: boolean
+  canArchive: boolean
+  canDelete: boolean
+  canAdmin: boolean
+}
+
 definePageMeta({
   layout: 'desk'
 })
@@ -27,6 +36,7 @@ const id = computed(() => String(route.params.id))
 
 const { data: schema } = await useFetch<any>(() => `/api/schema/${schemaKey.value}/active`)
 const { data: doc, refresh: refreshDoc } = await useFetch<any>(() => `/api/content/${schemaKey.value}/${id.value}`)
+const { data: permission } = await useFetch<ContentPermission>(() => `/api/schema/${schemaKey.value}/permission`)
 
 const breadcrumbItems = computed<BreadcrumbItem[]>(() => ([
   { label: schema.value?.title || schemaKey.value, icon: 'i-lucide-files', to: `/_desk/content/${schemaKey.value}` },
@@ -53,16 +63,60 @@ function buildContentSnapshotFromDoc(source: any) {
 
 const savingDraft = ref(false)
 const publishing = ref(false)
+const historyOpen = ref(false)
+const conflictDetails = ref<Record<string, any> | null>(null)
+const currentRevision = computed(() => Number(doc.value?.revision ?? 0))
+const isDeleted = computed(() => doc.value?.status === 'deleted')
+const canWrite = computed(() => !!permission.value && (permission.value.canWrite || permission.value.canAdmin))
+const canPublishPermission = computed(() => !!permission.value && (permission.value.canPublish || permission.value.canAdmin))
+const canArchivePermission = computed(() => !!permission.value && (permission.value.canArchive || permission.value.canAdmin))
+const canDeletePermission = computed(() => !!permission.value && (permission.value.canDelete || permission.value.canAdmin))
 
 const lastSavedContentJson = ref('')
 const currentContentJson = computed(() => stableStringify(buildContentSnapshot()))
 const isDirty = computed(() => !!doc.value && currentContentJson.value !== lastSavedContentJson.value)
-const canSaveDraft = computed(() => !!doc.value && isDirty.value && !savingDraft.value)
-const canPublish = computed(() => !!doc.value && (
+const canSaveDraft = computed(() => !!doc.value && !isDeleted.value && canWrite.value && isDirty.value && !savingDraft.value)
+const canPublish = computed(() => !!doc.value && !isDeleted.value && canPublishPermission.value && (
   isDirty.value || ['never-published', 'unpublished', 'published-with-draft'].includes(doc.value?.publicationState)
 ) && !publishing.value)
-const canDiscard = computed(() => !!doc.value?.hasPublishedRevision && doc.value?.hasDraftChanges)
-const canUnpublish = computed(() => !!doc.value?.hasPublishedRevision)
+const canDiscard = computed(() => !isDeleted.value && canWrite.value && !!doc.value?.hasPublishedRevision && doc.value?.hasDraftChanges)
+const canArchive = computed(() => !isDeleted.value && canArchivePermission.value && doc.value?.status !== 'archived')
+
+function isConflict(error: any) {
+  return error?.statusCode === 409 || error?.status === 409 || error?.response?.status === 409
+}
+
+function recordConflict(error: any) {
+  const details = error?.data?.data ?? error?.data ?? {}
+  conflictDetails.value = typeof details === 'object' ? details : {}
+}
+
+function handleMutationError(action: string, error: any) {
+  if (isConflict(error)) {
+    recordConflict(error)
+    return
+  }
+  toast.add({ title: `${action} failed`, description: error?.statusMessage || 'Error', color: 'error' })
+}
+
+async function reloadLatest() {
+  if (isDirty.value) {
+    const ok = await confirm({
+      title: 'Reload latest revision?',
+      body: 'Your unsaved local changes will be discarded.',
+      confirmLabel: 'Reload latest',
+      confirmColor: 'warning'
+    })
+    if (!ok) return
+  }
+  await refreshDoc()
+  conflictDetails.value = null
+}
+
+async function handleHistoryRestored() {
+  await refreshDoc()
+  conflictDetails.value = null
+}
 
 watch(
   () => doc.value,
@@ -84,12 +138,12 @@ async function saveDraft() {
   try {
     await $fetch(`/api/content/${schemaKey.value}/${id.value}`, {
       method: 'PUT',
-      body: { status: 'draft', content: state.content }
+      body: { revision: currentRevision.value, content: state.content }
     })
     toast.add({ title: 'Saved draft' })
     await refreshDoc()
   } catch (e: any) {
-    toast.add({ title: 'Save failed', description: e?.statusMessage || 'Error', color: 'error' })
+    handleMutationError('Save', e)
   } finally {
     savingDraft.value = false
   }
@@ -105,12 +159,12 @@ async function publish() {
   try {
     await $fetch(`/api/content/${schemaKey.value}/${id.value}/publish`, {
       method: 'POST',
-      body: { content: state.content }
+      body: { revision: currentRevision.value, content: state.content }
     })
     toast.add({ title: 'Published' })
     await refreshDoc()
   } catch (e: any) {
-    toast.add({ title: 'Publish failed', description: e?.statusMessage || 'Error', color: 'error' })
+    handleMutationError('Publish', e)
   } finally {
     publishing.value = false
   }
@@ -120,11 +174,14 @@ const discarding = ref(false)
 async function discardDraft() {
   discarding.value = true
   try {
-    await $fetch(`/api/content/${schemaKey.value}/${id.value}/discard`, { method: 'POST' })
+    await $fetch(`/api/content/${schemaKey.value}/${id.value}/discard`, {
+      method: 'POST',
+      body: { revision: currentRevision.value }
+    })
     toast.add({ title: 'Draft discarded' })
     await refreshDoc()
   } catch (e: any) {
-    toast.add({ title: 'Discard failed', description: e?.statusMessage || 'Error', color: 'error' })
+    handleMutationError('Discard', e)
   } finally {
     discarding.value = false
   }
@@ -132,20 +189,26 @@ async function discardDraft() {
 
 const unpublishing = ref(false)
 async function unpublish() {
+  const unpublishingLiveRevision = !!doc.value?.hasPublishedRevision
   const ok = await confirm({
-    title: 'Unpublish content',
-    body: 'Anonymous delivery will stop, while the working draft is retained.',
-    confirmLabel: 'Unpublish',
+    title: unpublishingLiveRevision ? 'Unpublish content' : 'Archive content',
+    body: unpublishingLiveRevision
+      ? 'Anonymous delivery will stop, while the working draft is retained.'
+      : 'The working draft will move to the archive.',
+    confirmLabel: unpublishingLiveRevision ? 'Unpublish' : 'Archive',
     confirmColor: 'warning'
   })
   if (!ok) return
   unpublishing.value = true
   try {
-    await $fetch(`/api/content/${schemaKey.value}/${id.value}/unpublish`, { method: 'POST' })
-    toast.add({ title: 'Unpublished' })
+    await $fetch(`/api/content/${schemaKey.value}/${id.value}/unpublish`, {
+      method: 'POST',
+      body: { revision: currentRevision.value }
+    })
+    toast.add({ title: unpublishingLiveRevision ? 'Unpublished' : 'Archived' })
     await refreshDoc()
   } catch (e: any) {
-    toast.add({ title: 'Unpublish failed', description: e?.statusMessage || 'Error', color: 'error' })
+    handleMutationError('Unpublish', e)
   } finally {
     unpublishing.value = false
   }
@@ -162,18 +225,55 @@ async function remove() {
   if (!ok) return
   removing.value = true
   try {
-    await $fetch(`/api/content/${schemaKey.value}/${id.value}`, { method: 'DELETE' })
+    await $fetch(`/api/content/${schemaKey.value}/${id.value}`, {
+      method: 'DELETE',
+      body: { revision: currentRevision.value }
+    })
     toast.add({ title: 'Deleted (soft)' })
     await navigateTo(`/_desk/content/${schemaKey.value}`)
   } catch (e: any) {
-    toast.add({ title: 'Delete failed', description: e?.statusMessage || 'Error', color: 'error' })
+    handleMutationError('Delete', e)
   } finally {
     removing.value = false
   }
 }
 
+const recovering = ref(false)
+async function recover() {
+  if (!canDeletePermission.value || recovering.value) return
+  recovering.value = true
+  try {
+    await $fetch(`/api/content/${schemaKey.value}/${id.value}/recover` as any, {
+      method: 'POST' as any,
+      body: { revision: currentRevision.value }
+    })
+    toast.add({ title: 'Content recovered', color: 'success' })
+    await refreshDoc()
+  } catch (e: any) {
+    handleMutationError('Recover', e)
+  } finally {
+    recovering.value = false
+  }
+}
+
 const actionMenuItems = computed<DropdownMenuItem[][]>(() => {
   const groups: DropdownMenuItem[][] = []
+
+  groups.push([{
+    label: 'Revision history',
+    icon: 'i-lucide-history',
+    onSelect: () => { historyOpen.value = true }
+  }])
+
+  if (isDeleted.value && canDeletePermission.value) {
+    groups.push([{
+      label: 'Recover',
+      icon: 'i-lucide-rotate-ccw',
+      disabled: recovering.value,
+      onSelect: recover
+    }])
+    return groups
+  }
 
   if (canDiscard.value) {
     groups.push([{
@@ -184,22 +284,24 @@ const actionMenuItems = computed<DropdownMenuItem[][]>(() => {
     }])
   }
 
-  if (canUnpublish.value) {
+  if (canArchive.value) {
     groups.push([{
-      label: 'Unpublish',
-      icon: 'i-lucide-eye-off',
+      label: doc.value?.hasPublishedRevision ? 'Unpublish' : 'Archive',
+      icon: doc.value?.hasPublishedRevision ? 'i-lucide-eye-off' : 'i-lucide-archive',
       disabled: unpublishing.value,
       onSelect: unpublish
     }])
   }
 
-  groups.push([{
-    label: 'Delete',
-    icon: 'i-lucide-trash-2',
-    color: 'error',
-    disabled: removing.value,
-    onSelect: remove
-  }])
+  if (canDeletePermission.value) {
+    groups.push([{
+      label: 'Delete',
+      icon: 'i-lucide-trash-2',
+      color: 'error',
+      disabled: removing.value,
+      onSelect: remove
+    }])
+  }
 
   return groups
 })
@@ -220,9 +322,11 @@ const actionMenuItems = computed<DropdownMenuItem[][]>(() => {
 
         <template #actions>
           <CmsEditorActions
-            :preview-to="`/_preview/content/${schemaKey}/${id}`"
+            :preview-to="isDeleted ? undefined : `/_preview/content/${schemaKey}/${id}`"
+            :show-save-draft="!isDeleted && canWrite"
             :can-save-draft="canSaveDraft"
             :saving-draft="savingDraft"
+            :show-publish="!isDeleted && canPublishPermission"
             :can-publish="canPublish"
             :publishing="publishing"
             :menu-items="actionMenuItems"
@@ -235,12 +339,46 @@ const actionMenuItems = computed<DropdownMenuItem[][]>(() => {
     </template>
 
     <template #body>
+      <UAlert
+        v-if="conflictDetails"
+        title="A newer revision is available"
+        :description="conflictDetails.message || `Revision ${conflictDetails.currentRevision || 'newer'} was saved${conflictDetails.updatedBy ? ` by ${conflictDetails.updatedBy}` : ''}. Your local edits are still here.`"
+        icon="i-lucide-triangle-alert"
+        color="warning"
+        variant="subtle"
+      >
+        <template #actions>
+          <UButton label="Review history" color="neutral" variant="outline" size="xs" @click="historyOpen = true;" />
+          <UButton label="Reload latest" color="warning" variant="soft" size="xs" @click="reloadLatest" />
+        </template>
+      </UAlert>
+
+      <UAlert
+        v-if="isDeleted"
+        title="This content is deleted"
+        description="It is read-only until an authorized editor recovers it. Revision history remains available."
+        icon="i-lucide-trash-2"
+        color="error"
+        variant="subtle"
+      />
+
       <CmsContentForm
         v-if="schema?.registry"
         ref="contentFormRef"
         :schema="schema"
         :model="state.content"
+        :disabled="isDeleted || !canWrite"
         class="shrink-0"
+      />
+
+      <CmsRevisionHistorySlideover
+        v-model:open="historyOpen"
+        :history-url="`/api/content/${schemaKey}/${id}/history`"
+        :current-revision="currentRevision"
+        :can-restore="!isDeleted && canWrite"
+        title="Content revision history"
+        @restored="handleHistoryRestored"
+        @conflict="recordConflict"
       />
     </template>
   </UDashboardPanel>

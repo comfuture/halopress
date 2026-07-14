@@ -254,6 +254,8 @@ const editFieldModalOpen = ref(false)
 const publishConfirmOpen = ref(false)
 const publishMigrate = ref(false)
 const editingIndex = ref<number | null>(null)
+const historyOpen = ref(false)
+const conflictDetails = ref<Record<string, any> | null>(null)
 
 function buildAstFromState() {
   return {
@@ -318,6 +320,7 @@ watch([addFieldModalOpen, editFieldModalOpen], ([addOpen, editOpen]) => {
 const { data: activeSchemas } = await useFetch<{ items: Array<{ schemaKey: string; title?: string }> }>('/api/schema/list')
 
 const { data: draft, refresh: refreshDraft } = await useFetch<any>(() => `/api/schema/${routeKey.value}/draft`)
+const currentRevision = computed(() => Number(draft.value?.revision ?? 0))
 
 const activeFetch = isNew.value
   ? { data: ref<any>(null), refresh: async () => {} }
@@ -818,6 +821,43 @@ async function saveEdit() {
 }
 
 const saving = ref(false)
+
+function isConflict(error: any) {
+  return error?.statusCode === 409 || error?.status === 409 || error?.response?.status === 409
+}
+
+function recordConflict(error: any) {
+  const details = error?.data?.data ?? error?.data ?? {}
+  conflictDetails.value = typeof details === 'object' ? details : {}
+}
+
+function handleMutationError(action: string, error: any) {
+  if (isConflict(error)) {
+    recordConflict(error)
+    return
+  }
+  toast.add({ title: `${action} failed`, description: error?.statusMessage || 'Error', color: 'error' })
+}
+
+async function reloadLatest() {
+  if (isDirty.value) {
+    const ok = await confirm({
+      title: 'Reload latest schema draft?',
+      body: 'Your unsaved local changes will be discarded.',
+      confirmLabel: 'Reload latest',
+      confirmColor: 'warning'
+    })
+    if (!ok) return
+  }
+  await refreshDraft()
+  conflictDetails.value = null
+}
+
+async function handleHistoryRestored() {
+  await refreshDraft()
+  conflictDetails.value = null
+}
+
 async function saveDraft() {
   if (!(await validateForm(schemaMetaFormRef.value))) return
   if (!state.schemaKey) {
@@ -830,14 +870,14 @@ async function saveDraft() {
     const ast = buildAstFromState()
     await $fetch(`/api/schema/${state.schemaKey}/draft`, {
       method: 'POST',
-      body: { title: ast.title, ast }
+      body: { revision: currentRevision.value, title: ast.title, ast }
     })
     lastSavedAstJson.value = stableStringify(ast)
     toast.add({ title: 'Draft saved' })
     if (isNew.value) await navigateTo(`/_desk/schemas/${state.schemaKey}`)
     await refreshDraft()
   } catch (e: any) {
-    toast.add({ title: 'Save failed', description: e?.statusMessage || 'Error', color: 'error' })
+    handleMutationError('Save', e)
   } finally {
     saving.value = false
   }
@@ -854,25 +894,27 @@ async function performPublish(migrate: boolean) {
   publishing.value = true
   try {
     const ast = buildAstFromState()
+    let revision = currentRevision.value
     // If there are unsaved changes, persist them first so publish always reflects the latest editor state.
     if (isDirty.value) {
-      await $fetch(`/api/schema/${state.schemaKey}/draft`, {
+      const saved = await $fetch<{ revision?: number }>(`/api/schema/${state.schemaKey}/draft`, {
         method: 'POST',
-        body: { title: ast.title, ast }
+        body: { revision, title: ast.title, ast }
       })
+      revision = Number(saved?.revision ?? revision + 1)
       lastSavedAstJson.value = stableStringify(ast)
     }
 
     const res = await $fetch(`/api/schema/${state.schemaKey}/publish`, {
       method: 'POST',
-      body: { note: 'publish from desk', migrate }
+      body: { revision, note: 'publish from desk', migrate }
     })
     toast.add({ title: 'Published', description: `v${(res as any).version}` })
     const targetPath = `/_desk/schemas/${state.schemaKey}`
     reloadNuxtApp({ path: targetPath })
     await Promise.allSettled([refreshDraft(), refreshActive()])
   } catch (e: any) {
-    toast.add({ title: 'Publish failed', description: e?.statusMessage || 'Error', color: 'error' })
+    handleMutationError('Publish', e)
   } finally {
     publishing.value = false
   }
@@ -913,6 +955,14 @@ async function confirmPublish() {
 
         <template #actions>
           <UButton
+            v-if="!isNew"
+            color="neutral"
+            variant="ghost"
+            icon="i-lucide-history"
+            aria-label="Revision history"
+            @click="historyOpen = true;"
+          />
+          <UButton
             icon="i-lucide-save"
             :loading="saving"
             :disabled="!canSaveDraft"
@@ -950,6 +1000,20 @@ async function confirmPublish() {
     </template>
 
     <template #body>
+      <UAlert
+        v-if="conflictDetails"
+        title="A newer schema draft is available"
+        :description="conflictDetails.message || `Revision ${conflictDetails.currentRevision || 'newer'} was saved${conflictDetails.updatedBy ? ` by ${conflictDetails.updatedBy}` : ''}. Your local edits are still here.`"
+        icon="i-lucide-triangle-alert"
+        color="warning"
+        variant="subtle"
+      >
+        <template #actions>
+          <UButton label="Review history" color="neutral" variant="outline" size="xs" @click="historyOpen = true;" />
+          <UButton label="Reload latest" color="warning" variant="soft" size="xs" @click="reloadLatest" />
+        </template>
+      </UAlert>
+
       <UForm
         ref="schemaMetaFormRef"
         :schema="schemaMetaSchema"
@@ -1275,6 +1339,16 @@ async function confirmPublish() {
           </div>
         </template>
       </UModal>
+      <CmsRevisionHistorySlideover
+        v-if="!isNew"
+        v-model:open="historyOpen"
+        :history-url="`/api/schema/${routeKey}/draft/history`"
+        :current-revision="currentRevision"
+        can-restore
+        title="Schema draft history"
+        @restored="handleHistoryRestored"
+        @conflict="recordConflict"
+      />
 
       <UModal
         v-model:open="editFieldModalOpen"

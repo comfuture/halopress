@@ -6,13 +6,17 @@ withDefaults(defineProps<{
   previewLabel?: string
   canSaveDraft: boolean
   savingDraft: boolean
+  showSaveDraft?: boolean
   canPublish: boolean
   publishing: boolean
+  showPublish?: boolean
   menuItems?: DropdownMenuItem[][]
   menuLoading?: boolean
 }>(), {
   previewTo: undefined,
   previewLabel: 'Preview draft',
+  showSaveDraft: true,
+  showPublish: true,
   menuItems: () => [],
   menuLoading: false
 })
@@ -58,7 +62,7 @@ function openPreview() {
     </template>
   </UModal>
 
-  <UTooltip text="Save Draft">
+  <UTooltip v-if="showSaveDraft" text="Save Draft">
     <UButton
       color="neutral"
       variant="outline"
@@ -72,6 +76,7 @@ function openPreview() {
   </UTooltip>
 
   <UButton
+    v-if="showPublish"
     color="primary"
     icon="i-lucide-upload"
     label="Publish"

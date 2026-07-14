@@ -5,6 +5,7 @@ const props = defineProps<{
   // Server response shape is tenant/schema dependent; keep flexible for MVP.
   schema: any
   model: Record<string, any>
+  disabled?: boolean
 }>()
 
 function ensureRichtextDoc(fieldKey: string) {
@@ -191,7 +192,7 @@ defineExpose({
     :schema="formSchema"
     :state="model"
   >
-    <fieldset class="min-w-0 space-y-4">
+    <fieldset :disabled="disabled" class="min-w-0 space-y-4">
       <legend class="mb-4 text-sm font-semibold text-highlighted">
         Content
       </legend>
@@ -277,6 +278,7 @@ defineExpose({
           v-else-if="field.kind === 'richtext'"
           v-model="model[field.key]"
           :placeholder="field.ui?.placeholder || 'Write…'"
+          :editable="!disabled"
           class="w-full min-h-48"
         />
 

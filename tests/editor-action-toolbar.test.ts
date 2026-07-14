@@ -44,11 +44,12 @@ describe('editor action toolbar', () => {
     for (const source of [contentEdit, pageEdit]) {
       expect(source).toContain('const actionMenuItems = computed<DropdownMenuItem[][]>')
       expect(source).toContain(`label: 'Discard draft'`)
-      expect(source).toContain(`label: 'Unpublish'`)
+      expect(source).toContain(`? 'Unpublish' : 'Archive'`)
       expect(source).toContain(`label: 'Delete'`)
+      expect(source).toContain(`label: 'Revision history'`)
+      expect(source).toContain(`label: 'Recover'`)
       expect(source).toContain(`color: 'error'`)
       expect(source).toContain('<CmsEditorActions')
-      expect(source).not.toContain('<UButton')
     }
 
     expect(contentEdit).toContain(`title: 'Delete content'`)
