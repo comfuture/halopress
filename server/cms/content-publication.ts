@@ -33,7 +33,9 @@ function mutationMetadata(existing: any, expectedRevision: number, overrides: Re
     updatedAt: identity.updatedAt ?? null,
     updatedBy: identity.updatedBy ?? null,
     transitionAt: identity.transitionAt ?? null,
-    transitionBy: identity.transitionBy ?? null
+    transitionBy: identity.transitionBy ?? null,
+    deletedAt: identity.deletedAt ?? null,
+    deletedBy: identity.deletedBy ?? null
   }
 }
 
@@ -49,6 +51,7 @@ export async function saveContentWorking(args: {
 }) {
   assertEditorialTransition(args.existing.status, 'save')
   const status = args.existing.status === 'published' ? 'draft' : args.existing.status
+  let updatedAt = new Date()
   await mutateWithDocumentRevision({
     event: args.event,
     db: args.db,
@@ -65,6 +68,7 @@ export async function saveContentWorking(args: {
     },
     actorId: args.actorId,
     work: async (tx, statements, nextRevision, now) => {
+      updatedAt = now
       await replaceBase64ImagesInContent({
         event: args.event,
         db: tx,
@@ -102,7 +106,7 @@ export async function saveContentWorking(args: {
   return mutationMetadata(args.existing, args.expectedRevision, {
     status,
     updatedBy: args.actorId,
-    updatedAt: new Date()
+    updatedAt
   })
 }
 
@@ -199,6 +203,8 @@ export async function publishContentWorking(args: {
     publishedBy: args.actorId,
     transitionAt: publishedAt,
     transitionBy: args.actorId,
+    deletedAt: null,
+    deletedBy: null,
     updatedAt: publishedAt,
     updatedBy: args.actorId
   })
@@ -357,6 +363,7 @@ export async function deleteContent(args: {
 }) {
   assertEditorialTransition(args.existing.status, 'delete')
   const content = parseContentJson(args.existing.contentJson)
+  let updatedAt = new Date()
   await mutateWithDocumentRevision({
     event: args.event,
     db: args.db,
@@ -369,6 +376,7 @@ export async function deleteContent(args: {
     state: { snapshot: content, status: 'deleted', schemaVersion: args.existing.schemaVersion },
     actorId: args.actorId,
     work: async (tx, statements, nextRevision, now) => {
+      updatedAt = now
       await executeDbStatement(tx.update(contentTable).set({
         status: 'deleted',
         currentRevision: nextRevision,
@@ -396,6 +404,12 @@ export async function deleteContent(args: {
     status: 'deleted',
     publishedRevisionId: null,
     publishedAt: null,
+    publishedBy: null,
+    transitionAt: updatedAt,
+    transitionBy: args.actorId,
+    deletedAt: updatedAt,
+    deletedBy: args.actorId,
+    updatedAt,
     updatedBy: args.actorId
   })
 }
@@ -410,6 +424,7 @@ export async function recoverContent(args: {
 }) {
   assertEditorialTransition(args.existing.status, 'recover')
   const content = parseContentJson(args.existing.contentJson)
+  let updatedAt = new Date()
   await mutateWithDocumentRevision({
     event: args.event,
     db: args.db,
@@ -422,6 +437,7 @@ export async function recoverContent(args: {
     state: { snapshot: content, status: 'draft', schemaVersion: args.existing.schemaVersion },
     actorId: args.actorId,
     work: async (tx, statements, nextRevision, now) => {
+      updatedAt = now
       await executeDbStatement(tx.update(contentTable).set({
         status: 'draft',
         currentRevision: nextRevision,
@@ -453,8 +469,11 @@ export async function recoverContent(args: {
   })
   return mutationMetadata(args.existing, args.expectedRevision, {
     status: 'draft',
+    transitionAt: updatedAt,
+    transitionBy: args.actorId,
     deletedAt: null,
     deletedBy: null,
+    updatedAt,
     updatedBy: args.actorId
   })
 }
@@ -471,6 +490,7 @@ export async function restoreContentRevision(args: {
   expectedRevision: number
 }) {
   assertEditorialTransition(args.existing.status, 'restore')
+  let updatedAt = new Date()
   await mutateWithDocumentRevision({
     event: args.event,
     db: args.db,
@@ -483,6 +503,7 @@ export async function restoreContentRevision(args: {
     state: { snapshot: args.content, status: 'draft', schemaVersion: args.schemaVersion },
     actorId: args.actorId,
     work: async (tx, statements, nextRevision, now) => {
+      updatedAt = now
       await executeDbStatement(tx.update(contentTable).set({
         status: 'draft',
         contentJson: JSON.stringify(args.content),
@@ -516,6 +537,11 @@ export async function restoreContentRevision(args: {
   })
   return mutationMetadata(args.existing, args.expectedRevision, {
     status: 'draft',
+    transitionAt: updatedAt,
+    transitionBy: args.actorId,
+    deletedAt: null,
+    deletedBy: null,
+    updatedAt,
     updatedBy: args.actorId
   })
 }

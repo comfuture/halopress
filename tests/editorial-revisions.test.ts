@@ -28,6 +28,14 @@ describe('editorial revision safety', () => {
     ])
   })
 
+  it('treats array and object shape changes as a direct replacement', () => {
+    expect(diffDocumentSnapshots(['one'], { 0: 'one' })).toEqual([{
+      path: '$',
+      before: ['one'],
+      after: { 0: 'one' }
+    }])
+  })
+
   it('rejects arbitrary status writes and invalid recovery transitions', () => {
     expect(() => assertDraftWriteStatus('published')).toThrowError('Use an explicit publication transition endpoint')
     expect(() => assertEditorialTransition('draft', 'recover')).toThrowError('Cannot recover a draft document')

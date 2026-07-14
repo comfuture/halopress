@@ -84,7 +84,9 @@ function revisionValues(args: {
 function isRevisionRace(error: unknown) {
   const messages: string[] = []
   let current: unknown = error
-  while (current) {
+  const seen = new Set<unknown>()
+  while (current && !seen.has(current)) {
+    seen.add(current)
     messages.push(current instanceof Error ? current.message : String(current))
     current = typeof current === 'object' && current && 'cause' in current
       ? (current as { cause?: unknown }).cause
@@ -130,7 +132,7 @@ export async function mutateWithDocumentRevision<T>(args: {
 }) {
   assertExpectedRevision(args.identity, args.expectedRevision)
   const nextRevision = args.expectedRevision + 1
-  const now = new Date()
+  const now = new Date(Math.floor(Date.now() / 1000) * 1000)
 
   try {
     return await withDbTransaction(args.event, args.db, async (tx: Db, statements) => {
@@ -194,7 +196,11 @@ export function diffDocumentSnapshots(before: unknown, after: unknown, path = '$
     return changes
   }
 
-  if (left && right && typeof left === 'object' && typeof right === 'object') {
+  if (
+    left && right &&
+    typeof left === 'object' && typeof right === 'object' &&
+    !Array.isArray(left) && !Array.isArray(right)
+  ) {
     const changes: DocumentChange[] = []
     const keys = new Set([...Object.keys(left), ...Object.keys(right)])
     for (const key of [...keys].sort()) {

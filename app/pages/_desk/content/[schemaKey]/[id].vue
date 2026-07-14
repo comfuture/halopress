@@ -34,9 +34,14 @@ const { confirm } = useConfirmDialog()
 const schemaKey = computed(() => String(route.params.schemaKey))
 const id = computed(() => String(route.params.id))
 
-const { data: schema } = await useFetch<any>(() => `/api/schema/${schemaKey.value}/active`)
-const { data: doc, refresh: refreshDoc } = await useFetch<any>(() => `/api/content/${schemaKey.value}/${id.value}`)
-const { data: permission } = await useFetch<ContentPermission>(() => `/api/schema/${schemaKey.value}/permission`)
+const [schemaResult, docResult, permissionResult] = await Promise.all([
+  useFetch<any>(() => `/api/schema/${schemaKey.value}/active`),
+  useFetch<any>(() => `/api/content/${schemaKey.value}/${id.value}`),
+  useFetch<ContentPermission>(() => `/api/schema/${schemaKey.value}/permission`)
+])
+const { data: schema } = schemaResult
+const { data: doc, refresh: refreshDoc } = docResult
+const { data: permission } = permissionResult
 
 const breadcrumbItems = computed<BreadcrumbItem[]>(() => ([
   { label: schema.value?.title || schemaKey.value, icon: 'i-lucide-files', to: `/_desk/content/${schemaKey.value}` },

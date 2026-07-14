@@ -23,8 +23,12 @@ const route = useRoute()
 const toast = useToast()
 const schemaKey = computed(() => String(route.params.schemaKey))
 
-const { data: schema } = await useFetch<any>(() => `/api/schema/${schemaKey.value}/active`)
-const { data: permission } = await useFetch<any>(() => `/api/schema/${schemaKey.value}/permission`)
+const [schemaResult, permissionResult] = await Promise.all([
+  useFetch<any>(() => `/api/schema/${schemaKey.value}/active`),
+  useFetch<any>(() => `/api/schema/${schemaKey.value}/permission`)
+])
+const { data: schema } = schemaResult
+const { data: permission } = permissionResult
 
 const breadcrumbItems = computed<BreadcrumbItem[]>(() => ([
   { label: schema.value?.title || schemaKey.value, icon: 'i-lucide-files', to: `/_desk/content/${schemaKey.value}` },

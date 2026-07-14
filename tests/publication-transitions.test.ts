@@ -2,7 +2,15 @@ import { and, asc, eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 
 import { discardContentWorking, publishContentWorking, saveContentWorking, unpublishContent } from '../server/cms/content-publication'
-import { discardPageWorking, publishPageWorking, savePageWorking, unpublishPage } from '../server/cms/page-publication'
+import {
+  deletePage,
+  discardPageWorking,
+  publishPageWorking,
+  recoverPage,
+  restorePageRevision,
+  savePageWorking,
+  unpublishPage
+} from '../server/cms/page-publication'
 import type { SchemaRegistry } from '../server/cms/types'
 import {
   content,
@@ -203,7 +211,7 @@ describe('publication transitions', () => {
         updatedAt: createdAt
       })
       let row = await getPage(db, 'page-1')
-      await publishPageWorking({
+      const published = await publishPageWorking({
         event,
         db,
         existing: row,
@@ -213,9 +221,11 @@ describe('publication transitions', () => {
         expectedRevision: row.currentRevision
       })
       row = await getPage(db, 'page-1')
+      expect(published.updatedAt).toEqual(row.updatedAt)
+      expect(published.transitionAt).toEqual(row.transitionAt)
       const revisionId = row.publishedRevisionId
 
-      await savePageWorking({
+      const saved = await savePageWorking({
         event,
         db,
         existing: row,
@@ -225,6 +235,7 @@ describe('publication transitions', () => {
         expectedRevision: row.currentRevision
       })
       row = await getPage(db, 'page-1')
+      expect(saved.updatedAt).toEqual(row.updatedAt)
       expect(row).toMatchObject({ title: 'Draft page', status: 'draft', publishedRevisionId: revisionId })
       expect((await db.select().from(documentAssetRef).where(and(
         eq(documentAssetRef.documentKind, 'page'),
@@ -234,7 +245,7 @@ describe('publication transitions', () => {
         'working:page-draft'
       ])
 
-      await discardPageWorking({
+      const discarded = await discardPageWorking({
         event,
         db,
         existing: row,
@@ -242,6 +253,8 @@ describe('publication transitions', () => {
         expectedRevision: row.currentRevision
       })
       row = await getPage(db, 'page-1')
+      expect(discarded.updatedAt).toEqual(row.updatedAt)
+      expect(discarded.transitionAt).toEqual(row.transitionAt)
       expect(row).toMatchObject({ title: 'Public page', status: 'published', publishedRevisionId: revisionId })
       const unpublished = await unpublishPage({
         event,
@@ -251,11 +264,51 @@ describe('publication transitions', () => {
         expectedRevision: row.currentRevision
       })
       expect(unpublished.publicationState).toBe('unpublished')
+      row = await getPage(db, 'page-1')
+      expect(unpublished.updatedAt).toEqual(row.updatedAt)
+      expect(unpublished.transitionAt).toEqual(row.transitionAt)
       expect(await db.select().from(documentAssetRef).where(and(
         eq(documentAssetRef.documentKind, 'page'),
         eq(documentAssetRef.documentId, 'page-1'),
         eq(documentAssetRef.projectionScope, 'published')
       ))).toHaveLength(0)
+
+      const deleted = await deletePage({
+        event,
+        db,
+        existing: row,
+        actorId: 'admin-1',
+        expectedRevision: row.currentRevision
+      })
+      row = await getPage(db, 'page-1')
+      expect(deleted.updatedAt).toEqual(row.updatedAt)
+      expect(deleted.transitionAt).toEqual(row.transitionAt)
+      expect(deleted.deletedAt).toEqual(row.deletedAt)
+
+      const recovered = await recoverPage({
+        event,
+        db,
+        existing: row,
+        actorId: 'admin-1',
+        expectedRevision: row.currentRevision
+      })
+      row = await getPage(db, 'page-1')
+      expect(recovered.updatedAt).toEqual(row.updatedAt)
+      expect(recovered.transitionAt).toEqual(row.transitionAt)
+      expect(recovered.deletedAt).toBeNull()
+
+      const restored = await restorePageRevision({
+        event,
+        db,
+        existing: row,
+        title: 'Restored page',
+        content: { type: 'doc', content: [] },
+        actorId: 'admin-1',
+        expectedRevision: row.currentRevision
+      })
+      row = await getPage(db, 'page-1')
+      expect(restored.updatedAt).toEqual(row.updatedAt)
+      expect(restored.transitionAt).toEqual(row.transitionAt)
     } finally {
       fixture.close()
     }

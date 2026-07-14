@@ -21,7 +21,9 @@ function mutationMetadata(existing: any, expectedRevision: number, overrides: Re
     updatedAt: identity.updatedAt ?? null,
     updatedBy: identity.updatedBy ?? null,
     transitionAt: identity.transitionAt ?? null,
-    transitionBy: identity.transitionBy ?? null
+    transitionBy: identity.transitionBy ?? null,
+    deletedAt: identity.deletedAt ?? null,
+    deletedBy: identity.deletedBy ?? null
   }
 }
 
@@ -36,6 +38,7 @@ export async function savePageWorking(args: {
 }) {
   assertEditorialTransition(args.existing.status, 'save')
   const status = args.existing.status === 'published' ? 'draft' : args.existing.status
+  let updatedAt = new Date()
   await mutateWithDocumentRevision({
     event: args.event,
     db: args.db,
@@ -47,6 +50,7 @@ export async function savePageWorking(args: {
     state: { snapshot: args.content, status, title: args.title },
     actorId: args.actorId,
     work: async (tx, statements, nextRevision, now) => {
+      updatedAt = now
       await executeDbStatement(tx.update(pageTable).set({
         title: args.title,
         status,
@@ -71,7 +75,8 @@ export async function savePageWorking(args: {
   })
   return mutationMetadata(args.existing, args.expectedRevision, {
     status,
-    updatedBy: args.actorId
+    updatedBy: args.actorId,
+    updatedAt
   })
 }
 
@@ -148,6 +153,9 @@ export async function publishPageWorking(args: {
     publishedBy: args.actorId,
     transitionAt: publishedAt,
     transitionBy: args.actorId,
+    deletedAt: null,
+    deletedBy: null,
+    updatedAt: publishedAt,
     updatedBy: args.actorId
   })
 }
@@ -163,6 +171,7 @@ export async function discardPageWorking(args: {
   const revision = await getPublicationRevision(args.db, 'page', args.existing.id, args.existing.publishedRevisionId)
   if (!revision) throw conflict('No published revision to restore')
   const content = normalizePageContent(revision.contentJson)
+  let updatedAt = new Date()
   await mutateWithDocumentRevision({
     event: args.event,
     db: args.db,
@@ -174,6 +183,7 @@ export async function discardPageWorking(args: {
     state: { snapshot: content, status: 'published', title: revision.title },
     actorId: args.actorId,
     work: async (tx, statements, nextRevision, now) => {
+      updatedAt = now
       await executeDbStatement(tx.update(pageTable).set({
         title: revision.title,
         status: 'published',
@@ -200,6 +210,9 @@ export async function discardPageWorking(args: {
   })
   return mutationMetadata(args.existing, args.expectedRevision, {
     status: 'published',
+    transitionAt: updatedAt,
+    transitionBy: args.actorId,
+    updatedAt,
     updatedBy: args.actorId
   })
 }
@@ -213,6 +226,7 @@ export async function unpublishPage(args: {
 }) {
   assertEditorialTransition(args.existing.status, 'archive')
   const content = normalizePageContent(args.existing.contentJson)
+  let updatedAt = new Date()
   await mutateWithDocumentRevision({
     event: args.event,
     db: args.db,
@@ -224,6 +238,7 @@ export async function unpublishPage(args: {
     state: { snapshot: content, status: 'archived', title: args.existing.title },
     actorId: args.actorId,
     work: async (tx, statements, nextRevision, now) => {
+      updatedAt = now
       await executeDbStatement(tx.update(pageTable).set({
         status: 'archived',
         currentRevision: nextRevision,
@@ -250,6 +265,9 @@ export async function unpublishPage(args: {
     publishedRevisionId: null,
     publishedAt: null,
     publishedBy: null,
+    transitionAt: updatedAt,
+    transitionBy: args.actorId,
+    updatedAt,
     updatedBy: args.actorId
   })
 }
@@ -263,6 +281,7 @@ export async function deletePage(args: {
 }) {
   assertEditorialTransition(args.existing.status, 'delete')
   const content = normalizePageContent(args.existing.contentJson)
+  let updatedAt = new Date()
   await mutateWithDocumentRevision({
     event: args.event,
     db: args.db,
@@ -274,6 +293,7 @@ export async function deletePage(args: {
     state: { snapshot: content, status: 'deleted', title: args.existing.title },
     actorId: args.actorId,
     work: async (tx, statements, nextRevision, now) => {
+      updatedAt = now
       await executeDbStatement(tx.update(pageTable).set({
         status: 'deleted',
         currentRevision: nextRevision,
@@ -300,6 +320,13 @@ export async function deletePage(args: {
   return mutationMetadata(args.existing, args.expectedRevision, {
     status: 'deleted',
     publishedRevisionId: null,
+    publishedAt: null,
+    publishedBy: null,
+    transitionAt: updatedAt,
+    transitionBy: args.actorId,
+    deletedAt: updatedAt,
+    deletedBy: args.actorId,
+    updatedAt,
     updatedBy: args.actorId
   })
 }
@@ -313,6 +340,7 @@ export async function recoverPage(args: {
 }) {
   assertEditorialTransition(args.existing.status, 'recover')
   const content = normalizePageContent(args.existing.contentJson)
+  let updatedAt = new Date()
   await mutateWithDocumentRevision({
     event: args.event,
     db: args.db,
@@ -324,6 +352,7 @@ export async function recoverPage(args: {
     state: { snapshot: content, status: 'draft', title: args.existing.title },
     actorId: args.actorId,
     work: async (tx, statements, nextRevision, now) => {
+      updatedAt = now
       await executeDbStatement(tx.update(pageTable).set({
         status: 'draft',
         currentRevision: nextRevision,
@@ -348,7 +377,15 @@ export async function recoverPage(args: {
       })
     }
   })
-  return mutationMetadata(args.existing, args.expectedRevision, { status: 'draft', updatedBy: args.actorId })
+  return mutationMetadata(args.existing, args.expectedRevision, {
+    status: 'draft',
+    transitionAt: updatedAt,
+    transitionBy: args.actorId,
+    deletedAt: null,
+    deletedBy: null,
+    updatedAt,
+    updatedBy: args.actorId
+  })
 }
 
 export async function restorePageRevision(args: {
@@ -361,6 +398,7 @@ export async function restorePageRevision(args: {
   expectedRevision: number
 }) {
   assertEditorialTransition(args.existing.status, 'restore')
+  let updatedAt = new Date()
   await mutateWithDocumentRevision({
     event: args.event,
     db: args.db,
@@ -372,6 +410,7 @@ export async function restorePageRevision(args: {
     state: { snapshot: args.content, status: 'draft', title: args.title },
     actorId: args.actorId,
     work: async (tx, statements, nextRevision, now) => {
+      updatedAt = now
       await executeDbStatement(tx.update(pageTable).set({
         title: args.title,
         status: 'draft',
@@ -398,5 +437,13 @@ export async function restorePageRevision(args: {
       })
     }
   })
-  return mutationMetadata(args.existing, args.expectedRevision, { status: 'draft', updatedBy: args.actorId })
+  return mutationMetadata(args.existing, args.expectedRevision, {
+    status: 'draft',
+    transitionAt: updatedAt,
+    transitionBy: args.actorId,
+    deletedAt: null,
+    deletedBy: null,
+    updatedAt,
+    updatedBy: args.actorId
+  })
 }
