@@ -105,6 +105,8 @@ index; otherwise the bare prefix returns 404.
 Page blocks come from a curated registry. Stored unknown or retired blocks remain
 in the document and render a safe fallback, while arbitrary Vue components,
 scripts, classes, attributes, and unsafe URLs are never taken from stored data.
+The [page pattern guide](docs/page-patterns.md) documents the reviewed starter
+library, compatibility metadata, copy-on-insert upgrades, and visual fixtures.
 
 ## Project status
 

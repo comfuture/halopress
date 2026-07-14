@@ -7,6 +7,7 @@ export type PageBlockMedia = {
   alt?: string
   width?: number
   height?: number
+  requiredAction?: string
 }
 
 export type PageBlockAttrs = {
@@ -26,6 +27,7 @@ export type PageBlockFieldType =
   | 'icon'
   | 'color-token'
   | 'spacing'
+  | 'object-list'
 
 export type PageBlockField = {
   key: string
@@ -34,6 +36,9 @@ export type PageBlockField = {
   options?: Array<{ label: string; value: string }>
   placeholder?: string
   help?: string
+  itemLabel?: string
+  maxItems?: number
+  itemFields?: PageBlockField[]
 }
 
 export type PageBlockComponent = {
@@ -43,7 +48,7 @@ export type PageBlockComponent = {
   defaultProps: Record<string, unknown>
   defaultMedia: PageBlockMedia
   fields: PageBlockField[]
-  category: 'Hero' | 'Content' | 'Conversion'
+  category: 'Hero' | 'Content' | 'Trust' | 'FAQ' | 'Conversion'
   icon: string
   summary: string
   keywords: string[]

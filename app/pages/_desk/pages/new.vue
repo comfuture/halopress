@@ -2,6 +2,7 @@
 import type { BreadcrumbItem } from '@nuxt/ui'
 import type { JSONContent } from '@tiptap/vue-3'
 import { validatePageDocumentBlocks } from '~~/shared/page-blocks'
+import { buildPageDocumentFromPattern } from '~~/shared/page-patterns'
 import PageEditor from '~/components/PageEditor.vue'
 
 definePageMeta({
@@ -35,6 +36,14 @@ const state = reactive({
   title: '',
   content: emptyDoc as JSONContent
 })
+const starterChoice = ref<'blank' | 'starter' | null>(null)
+
+function chooseStarter(choice: 'blank' | 'starter') {
+  starterChoice.value = choice
+  state.content = choice === 'starter'
+    ? buildPageDocumentFromPattern('starter-page')
+    : structuredClone(emptyDoc)
+}
 
 function buildSnapshot() {
   return {
@@ -143,7 +152,41 @@ async function publish() {
           </p>
         </div>
 
-        <PageEditor v-model="state.content" class="min-h-0 flex-1" />
+        <div
+          v-if="!starterChoice"
+          class="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-muted/30 p-4 sm:p-8"
+          data-page-starter-choices
+        >
+          <div class="w-full max-w-3xl space-y-5">
+            <div class="text-center">
+              <h2 class="text-xl font-semibold text-highlighted">How would you like to start?</h2>
+              <p class="mt-1 text-sm text-muted">Choose a blank canvas or a reviewed, fully editable starter page.</p>
+            </div>
+            <div class="grid gap-4 sm:grid-cols-2">
+              <UPageCard>
+                <div class="space-y-4">
+                  <UIcon name="i-lucide-file-plus-2" class="size-7 text-primary" />
+                  <div>
+                    <h3 class="font-semibold text-highlighted">Blank page</h3>
+                    <p class="mt-1 text-sm text-muted">Start with an empty paragraph and add only what you need.</p>
+                  </div>
+                  <UButton label="Start blank" icon="i-lucide-arrow-right" block @click="chooseStarter('blank')" />
+                </div>
+              </UPageCard>
+              <UPageCard>
+                <div class="space-y-4">
+                  <UIcon name="i-lucide-panels-top-left" class="size-7 text-primary" />
+                  <div>
+                    <h3 class="font-semibold text-highlighted">Marketing starter</h3>
+                    <p class="mt-1 text-sm text-muted">Use a reviewed hero, features, proof, FAQ, and closing action.</p>
+                  </div>
+                  <UButton label="Use starter page" icon="i-lucide-sparkles" block @click="chooseStarter('starter')" />
+                </div>
+              </UPageCard>
+            </div>
+          </div>
+        </div>
+        <PageEditor v-else v-model="state.content" class="min-h-0 flex-1" />
       </div>
     </template>
   </UDashboardPanel>

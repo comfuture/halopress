@@ -19,7 +19,9 @@ describe('page editor workspace contracts', () => {
     expect(editorSlot).toContain('<UEditorToolbar')
     expect(editorSlot).toContain('<UEditorDragHandle')
     expect(editor).toContain('<PageDocumentRenderer')
-    expect(editor).toContain('invisible absolute inset-0')
+    expect(editor).toContain('<div v-show="mode === \'edit\'"')
+    expect(editor).toContain('v-show="mode === \'preview\'"')
+    expect(editor).not.toContain('v-if="mode === \'edit\'"')
     expect(editor).not.toContain('transform: scale')
   })
 
@@ -40,11 +42,16 @@ describe('page editor workspace contracts', () => {
     const editor = await source('app/components/PageEditor.vue')
 
     expect(palette).toContain('keys: [\'label\', \'summary\', \'category\', \'keywords\']')
-    expect(palette).toContain('onSelect: () => emit(\'insert\', item.key)')
+    expect(palette).toContain('onSelect: () => emit(\'insert\', { kind: item.kind, key: item.key }')
     expect(palette).toContain('@dragstart="emit(\'dragstart\'')
-    expect(editor).toContain('application/x-halopress-page-block')
+    expect(palette).toContain('...pagePatternRegistry.patterns.map')
+    expect(editor).toContain('application/x-halopress-page-library')
     expect(editor).toContain('editor.view.posAtCoords')
     expect(editor).toContain('editor.commands.insertPageBlockAt')
+    expect(editor).toContain('editor.commands.insertPagePatternAt')
+    const dropHandler = editor.indexOf('function handleCanvasDrop(event: DragEvent)')
+    expect(editor.indexOf('event.preventDefault()', dropHandler))
+      .toBeLessThan(editor.indexOf('const position = dropPosition.value', dropHandler))
   })
 
   it('keeps block actions live-selection based and inspector updates focus safe', async () => {
@@ -57,6 +64,19 @@ describe('page editor workspace contracts', () => {
     expect(editor).not.toContain('.focus()')
     expect(inspector).toContain('<CmsAssetPicker v-model="selectedAssetId"')
     expect(inspector).toContain('Move link up')
+    expect(inspector).toContain('field.type === \'object-list\'')
+    expect(inspector).toContain('[\'select\', \'color-token\', \'spacing\'].includes(itemField.type)')
     expect(inspector).toContain('Portable JSON only')
+  })
+
+  it('offers explicit blank and reviewed starter choices only on new pages', async () => {
+    const createPage = await source('app/pages/_desk/pages/new.vue')
+    const editPage = await source('app/pages/_desk/pages/[id].vue')
+
+    expect(createPage).toContain('data-page-starter-choices')
+    expect(createPage).toContain('chooseStarter(\'blank\')')
+    expect(createPage).toContain('chooseStarter(\'starter\')')
+    expect(createPage).toContain('buildPageDocumentFromPattern(\'starter-page\')')
+    expect(editPage).not.toContain('data-page-starter-choices')
   })
 })

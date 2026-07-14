@@ -104,11 +104,15 @@ describe('page block palette metadata', () => {
     expect(pageBlockRegistry.components.map(component => component.key)).toEqual([
       'pageHero',
       'pageCard',
+      'pageSection',
+      'pageTestimonial',
+      'pageLogos',
+      'pageFAQ',
       'pageCTA'
     ])
 
     for (const component of pageBlockRegistry.components) {
-      expect(component.category).toMatch(/^(Hero|Content|Conversion)$/)
+      expect(component.category).toMatch(/^(Hero|Content|Trust|FAQ|Conversion)$/)
       expect(component.icon).toMatch(/^i-lucide-[a-z0-9-]+$/)
       expect(component.summary.trim().length).toBeGreaterThan(0)
       expect(component.keywords.length).toBeGreaterThan(0)
@@ -139,5 +143,39 @@ describe('page block palette metadata', () => {
       expect.objectContaining({ key: 'highlightColor', type: 'color-token' }),
       expect.objectContaining({ key: 'spotlightColor', type: 'color-token' })
     ]))
+  })
+
+  it('exposes typed repeatable controls for reviewed composite blocks', () => {
+    expect(pageBlockRegistry.byKey.pageSection.fields).toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: 'features', type: 'object-list', maxItems: 6 })
+    ]))
+    expect(pageBlockRegistry.byKey.pageLogos.fields).toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: 'items', type: 'object-list', maxItems: 12 })
+    ]))
+    expect(pageBlockRegistry.byKey.pageFAQ.fields).toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: 'items', type: 'object-list', maxItems: 12 })
+    ]))
+  })
+
+  it('rejects unsafe nested URLs in composite block props', () => {
+    const unsafeSection = pageDocument(pageBlock('pageSection', {
+      props: {
+        title: 'Features',
+        features: [{ title: 'Unsafe', to: 'javascript:alert(1)' }]
+      }
+    }))
+    const unsafeLogos = pageDocument(pageBlock('pageLogos', {
+      props: {
+        title: 'Proof',
+        items: [{ name: 'Unsafe', src: 'data:text/html;base64,WA==' }]
+      }
+    }))
+
+    expect(validatePageDocumentBlocks(unsafeSection)).toEqual([
+      expect.objectContaining({ key: 'pageSection', kind: 'malformed' })
+    ])
+    expect(validatePageDocumentBlocks(unsafeLogos)).toEqual([
+      expect.objectContaining({ key: 'pageLogos', kind: 'malformed' })
+    ])
   })
 })
