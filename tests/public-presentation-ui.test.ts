@@ -54,11 +54,26 @@ describe('public presentation UI contracts', () => {
 
   it('keeps SSR formatting deterministic and allows only safe absolute or relative links', () => {
     expect(formatPresentationDate('2026-07-14T05:00:00.000Z', false, 'en')).toBe('Jul 14, 2026')
+    expect(formatPresentationDate('2026-07-14', false, 'en')).toBe('Jul 14, 2026')
     expect(safePresentationLink('/about')).toBe('/about')
     expect(safePresentationLink('#contact')).toBe('#contact')
     expect(safePresentationLink('?page=2')).toBe('?page=2')
     expect(safePresentationLink('https://example.com/path')).toBe('https://example.com/path')
     expect(safePresentationLink('javascript:alert(1)')).toBeNull()
+  })
+
+  it('deduplicates legacy fallback slots before schemas are republished', async () => {
+    const { resolveSchemaPresentation } = await import('../app/utils/schema-presentation')
+    const presentation = resolveSchemaPresentation({
+      fields: [
+        { fieldId: 'title-id', key: 'title', kind: 'string' },
+        { fieldId: 'cover-id', key: 'cover', kind: 'asset' }
+      ]
+    })
+    expect(presentation.slots.title).toEqual({ fieldId: 'title-id', fieldKey: 'title' })
+    expect(presentation.slots.description).toBeUndefined()
+    expect(presentation.slots.image).toEqual({ fieldId: 'cover-id', fieldKey: 'cover' })
+    expect(presentation.slots.gallery).toBeUndefined()
   })
 
   it('leaves price fields available to non-catalog detail templates', () => {
