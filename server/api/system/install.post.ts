@@ -49,7 +49,7 @@ export default defineEventHandler(async (event) => {
   const setupSessionHash = await hashSetupSessionToken(setupSessionToken, signingSecret)
 
   const db = await getDb(event)
-  const status = await getRuntimeInstallStatus(db, { isCloudflareRuntime })
+  const status = await getRuntimeInstallStatus(db)
   if (status.ready) throw notFound()
   if (status.phase === 'migration_required') {
     throw createError({

@@ -36,6 +36,7 @@ import {
   getRuntimeInstallStatus,
   refreshInstallationSession,
   reserveInstallationSession,
+  runCloudflareMigrations,
   runMigrations,
   seedRoles
 } from '../server/utils/install'
@@ -58,25 +59,46 @@ async function withDatabase(run: (db: any) => Promise<void>) {
 }
 
 describe('installation state', () => {
-  it('prepares a clean local database during status lookup but leaves Cloudflare migrations deploy-owned', async () => {
+  it('reports missing migrations without mutating the database during a status lookup', async () => {
     await withDatabase(async (localDb) => {
       expect(await getInstallStatus(localDb)).toMatchObject({
         ready: false,
         canInstall: false,
         phase: 'migration_required'
       })
-      expect(await getRuntimeInstallStatus(localDb, { isCloudflareRuntime: false })).toMatchObject({
-        ready: false,
-        canInstall: true,
-        phase: 'ready_for_setup'
-      })
-    })
-
-    await withDatabase(async (cloudflareDb) => {
-      expect(await getRuntimeInstallStatus(cloudflareDb, { isCloudflareRuntime: true })).toMatchObject({
+      expect(await getRuntimeInstallStatus(localDb)).toMatchObject({
         ready: false,
         canInstall: false,
         phase: 'migration_required'
+      })
+    })
+  })
+
+  it('applies bundled D1 migrations with Wrangler-compatible filenames and is repeat-safe', async () => {
+    await withDatabase(async (db) => {
+      db.batch = async (statements: any[]) => {
+        const results = []
+        for (const statement of statements) results.push(await statement)
+        return results
+      }
+
+      await runCloudflareMigrations(db)
+      await runCloudflareMigrations(db)
+
+      expect(await db.values(sql.raw('SELECT name FROM d1_migrations ORDER BY id'))).toEqual([
+        ['0000_restore_materialized_search_index.sql'],
+        ['0001_add_installation_state.sql'],
+        ['0002_add_browser_setup_session.sql'],
+        ['0003_preserve_published_revisions.sql'],
+        ['0004_add_editorial_safety_revisions.sql'],
+        ['0005_add_schema_lifecycle_status.sql'],
+        ['0006_add_public_member_identities.sql'],
+        ['0007_add_public_routes_and_aliases.sql']
+      ])
+      expect(await getInstallStatus(db)).toMatchObject({
+        ready: false,
+        canInstall: true,
+        phase: 'ready_for_setup'
       })
     })
   })

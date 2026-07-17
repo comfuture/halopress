@@ -41,7 +41,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const db = await getDb(event)
-  const status = await getRuntimeInstallStatus(db, { isCloudflareRuntime })
+  const status = await getRuntimeInstallStatus(db)
   if (status.ready) {
     throw createError({ statusCode: 404, statusMessage: 'Not found' })
   }
