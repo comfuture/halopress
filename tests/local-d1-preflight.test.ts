@@ -49,7 +49,7 @@ console.log(JSON.stringify([{ results, success: true }]))
 
 describe('local D1 migration preflight', () => {
   it('parses Wrangler JSON despite bracketed log prefixes', () => {
-    expect(parseWranglerJson('[wrangler:inf] query\n[{"results":[],"success":true}]')).toEqual([
+    expect(parseWranglerJson('[wrangler:inf] ["log", "metadata"]\n[{"results":[],"success":true}]')).toEqual([
       { results: [], success: true }
     ])
   })

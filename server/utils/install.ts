@@ -181,6 +181,32 @@ export async function runMigrations(db: any) {
 
 const CLOUDFLARE_MIGRATIONS_TABLE = 'd1_migrations'
 
+function cloudflareMigrationStatements(migration: LoadedMigration) {
+  return migration.statements
+    .filter(statement => !/^PRAGMA\s+foreign_keys\s*=\s*ON\s*;?$/i.test(statement))
+    .map((statement) => {
+      if (/^PRAGMA\s+foreign_keys\s*=\s*OFF\s*;?$/i.test(statement)) {
+        return 'PRAGMA defer_foreign_keys = ON'
+      }
+      return statement
+    })
+}
+
+async function applyCloudflareMigration(db: any, migration: LoadedMigration) {
+  const d1 = db.$client
+  if (!d1 || typeof d1.prepare !== 'function' || typeof d1.batch !== 'function') {
+    throw new Error('Cloudflare D1 client is unavailable')
+  }
+
+  const statements = cloudflareMigrationStatements(migration)
+    .map(statement => d1.prepare(statement))
+  statements.push(
+    d1.prepare(`INSERT INTO ${CLOUDFLARE_MIGRATIONS_TABLE} (name) VALUES (?)`)
+      .bind(migration.name)
+  )
+  await d1.batch(statements)
+}
+
 /**
  * Applies the bundled SQL through the Worker D1 binding while using the same
  * filename ledger as `wrangler d1 migrations apply`.
@@ -200,19 +226,8 @@ async function runCloudflareMigrationsInternal(db: any) {
   for (const migration of await loadMigrations()) {
     if (appliedNames.has(migration.name)) continue
 
-    const statements = migration.statements
-      .filter(statement => !/^PRAGMA\s+foreign_keys\s*=\s*ON\s*;?$/i.test(statement))
-      .map((statement) => {
-        if (/^PRAGMA\s+foreign_keys\s*=\s*OFF\s*;?$/i.test(statement)) {
-          return db.run(sql.raw('PRAGMA defer_foreign_keys = ON'))
-        }
-        return db.run(sql.raw(statement))
-      })
-    statements.push(
-      db.run(sql`INSERT INTO d1_migrations (name) VALUES (${migration.name})`)
-    )
     try {
-      await db.batch(statements)
+      await applyCloudflareMigration(db, migration)
     } catch (error) {
       // Another Worker isolate may have completed the same migration while this
       // request was queued by D1. Treat that race as success only when Wrangler's

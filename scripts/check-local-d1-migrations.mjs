@@ -19,6 +19,7 @@ function escapeSqlString(value) {
 }
 
 export function parseWranglerJson(output) {
+  const candidates = []
   for (let start = output.indexOf('['); start >= 0; start = output.indexOf('[', start + 1)) {
     let depth = 0
     let inString = false
@@ -39,7 +40,7 @@ export function parseWranglerJson(output) {
         if (depth !== 0) continue
         try {
           const parsed = JSON.parse(output.slice(start, index + 1))
-          if (Array.isArray(parsed)) return parsed
+          if (Array.isArray(parsed)) candidates.push(parsed)
         } catch {
           // A log prefix used brackets; continue with the next candidate.
         }
@@ -47,6 +48,8 @@ export function parseWranglerJson(output) {
       }
     }
   }
+  const queryResult = candidates.find(candidate => candidate.some(item => Array.isArray(item?.results)))
+  if (queryResult) return queryResult
   throw new Error('Wrangler did not return a JSON query result')
 }
 

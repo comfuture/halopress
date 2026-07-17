@@ -302,6 +302,15 @@ onMounted(() => {
 
 async function copyRemediationCommand() {
   if (!import.meta.client || !remediationCommand.value) return
+  if (!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') {
+    toast.add({
+      title: 'Could not copy the command',
+      description: 'Select the command and copy it manually.',
+      color: 'error',
+      icon: 'i-lucide-circle-alert'
+    })
+    return
+  }
   try {
     await navigator.clipboard.writeText(remediationCommand.value)
     commandCopied.value = true

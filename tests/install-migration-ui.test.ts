@@ -24,6 +24,7 @@ describe('install migration maintenance UI', () => {
     expect(source).toContain('return \'pnpm db:migrate\'')
     expect(source).toContain('commandCopied ? \'i-lucide-check\' : \'i-lucide-copy\'')
     expect(source).toContain('@click="copyRemediationCommand"')
+    expect(source).toContain('typeof navigator.clipboard.writeText !== \'function\'')
     expect(source).toContain('await navigator.clipboard.writeText(remediationCommand.value)')
     expect(source).toContain('<div v-if="isCloudflareRuntime"')
     expect(source).toContain('onMounted(() => {')
