@@ -30,6 +30,7 @@ type InstallStatus = {
   retryAfterSeconds?: number
   missingBindings?: string[]
   hasLastError?: boolean
+  runtime?: 'local' | 'cloudflare' | 'node'
 }
 
 type InstallIssue = {
@@ -68,6 +69,8 @@ const activeStep = ref(1)
 const stepHeading = ref<HTMLElement | null>(null)
 const stateHeading = ref<HTMLElement | null>(null)
 const refreshing = ref(false)
+const migratingDatabase = ref(false)
+const commandCopied = ref(false)
 const claimingSession = ref(false)
 const submitting = ref(false)
 const installationComplete = ref(false)
@@ -76,8 +79,10 @@ const signedIn = ref(false)
 const signInWarning = ref('')
 const installError = ref<{ title: string; description: string } | null>(null)
 const reservationError = ref<{ title: string; description: string } | null>(null)
+const migrationError = ref<{ title: string; description: string } | null>(null)
 const serverFieldErrors = reactive<Record<string, string | undefined>>({})
 const { signIn, status: authStatus } = useAuth()
+const toast = useToast()
 
 const state = reactive({
   email: '',
@@ -97,6 +102,8 @@ const {
 installationComplete.value = Boolean(installStatus.value?.ready || installStatus.value?.phase === 'complete')
 
 const phase = computed(() => installStatus.value?.phase)
+const isMigrationRequired = computed(() => phase.value === 'migration_required')
+const isCloudflareRuntime = computed(() => installStatus.value?.runtime === 'cloudflare')
 const isCheckingReadiness = computed(() => refreshing.value || claimingSession.value || installStatusRequest.value === 'pending')
 const setupSessionOwned = computed(() => Boolean(installStatus.value?.setupSessionOwned))
 const canEnterSetup = computed(() => Boolean(
@@ -202,10 +209,10 @@ const readinessMessage = computed(() => {
 })
 
 const remediationCommand = computed(() => {
-  if (phase.value === 'migration_required') {
-    return 'pnpm exec wrangler d1 migrations apply DB --remote'
-  }
-  return ''
+  if (!isMigrationRequired.value) return ''
+  if (installStatus.value?.runtime === 'cloudflare') return 'pnpm exec wrangler d1 migrations apply DB --remote'
+  if (installStatus.value?.runtime === 'local') return 'pnpm db:d1:apply:local'
+  return 'pnpm db:migrate'
 })
 
 watch(() => state.email, () => {
@@ -263,6 +270,56 @@ async function refreshReadiness() {
     }
   } finally {
     refreshing.value = false
+  }
+}
+
+async function migrateCloudflareDatabase() {
+  if (migratingDatabase.value || !isCloudflareRuntime.value || !isMigrationRequired.value) return
+  migratingDatabase.value = true
+  migrationError.value = null
+  try {
+    await $fetch('/api/system/install/migrate', {
+      method: 'POST',
+      credentials: 'include'
+    })
+    await refreshInstallStatus()
+    if (installStatus.value?.ready) await navigateTo('/')
+  } catch (rawError) {
+    migrationError.value = {
+      title: 'Database update did not finish',
+      description: failureMessage(rawError as FetchFailure)
+    }
+  } finally {
+    migratingDatabase.value = false
+  }
+}
+
+onMounted(() => {
+  if (isCloudflareRuntime.value && isMigrationRequired.value) {
+    void migrateCloudflareDatabase()
+  }
+})
+
+async function copyRemediationCommand() {
+  if (!import.meta.client || !remediationCommand.value) return
+  try {
+    await navigator.clipboard.writeText(remediationCommand.value)
+    commandCopied.value = true
+    toast.add({
+      title: 'Migration command copied',
+      color: 'success',
+      icon: 'i-lucide-check'
+    })
+    window.setTimeout(() => {
+      commandCopied.value = false
+    }, 2000)
+  } catch {
+    toast.add({
+      title: 'Could not copy the command',
+      description: 'Select the command and copy it manually.',
+      color: 'error',
+      icon: 'i-lucide-circle-alert'
+    })
   }
 }
 
@@ -429,7 +486,10 @@ async function completeSetup() {
     <main class="flex min-h-dvh items-center">
       <UContainer class="w-full py-6 sm:py-10 lg:py-12">
         <section aria-labelledby="install-page-title" class="mx-auto w-full max-w-4xl space-y-6">
-          <div class="relative aspect-[3/1] overflow-hidden rounded-xl border border-default bg-inverted shadow-lg">
+          <div
+            v-if="!isMigrationRequired"
+            class="relative aspect-[3/1] overflow-hidden rounded-xl border border-default bg-inverted shadow-lg"
+          >
             <img
               src="/branding/halopress-install-wizard-journey.png"
               alt=""
@@ -448,20 +508,143 @@ async function completeSetup() {
             </div>
           </div>
 
+          <div v-else class="flex items-center justify-between gap-4">
+            <AppLogo class="h-7 w-auto shrink-0" />
+            <UColorModeButton class="min-h-11 min-w-11" />
+          </div>
+
           <div class="space-y-2">
             <p class="text-sm font-medium text-primary">
-              First-run setup
+              {{ isMigrationRequired ? 'Site maintenance' : 'First-run setup' }}
             </p>
             <h1 id="install-page-title" class="text-2xl font-semibold text-highlighted sm:text-3xl">
-              Welcome to HaloPress
+              {{ isMigrationRequired ? 'Database update required' : 'Welcome to HaloPress' }}
             </h1>
             <p class="max-w-2xl text-sm text-muted sm:text-base">
-              Create your account, choose helpful starter content, and start publishing.
-              HaloPress will guide you through each step.
+              <template v-if="isMigrationRequired">
+                HaloPress detected a newer database structure. Update it before the site can continue.
+              </template>
+              <template v-else>
+                Create your account, choose helpful starter content, and start publishing.
+                HaloPress will guide you through each step.
+              </template>
             </p>
           </div>
 
-          <UCard v-if="submitting || showExternalInstalling" variant="subtle">
+          <UCard v-if="isMigrationRequired" variant="subtle">
+            <div class="space-y-6 py-4 sm:px-4 sm:py-6">
+              <div class="flex flex-col gap-4 sm:flex-row sm:items-start">
+                <div class="flex size-12 shrink-0 items-center justify-center rounded-full bg-warning/10 text-warning">
+                  <UIcon name="i-lucide-database-backup" class="size-6" />
+                </div>
+                <div class="space-y-2">
+                  <h2 class="text-xl font-semibold text-highlighted">Update the HaloPress database</h2>
+                  <p class="text-sm text-muted sm:text-base">
+                    This is database maintenance, not first-run setup.
+                    It will not recreate the administrator account or start the setup wizard again.
+                  </p>
+                </div>
+              </div>
+
+              <UAlert
+                color="info"
+                variant="subtle"
+                icon="i-lucide-shield-check"
+                title="Your site data stays in place"
+                description="The migration applies the versioned database changes included with this HaloPress update. It does not reset the site or replace existing content."
+              />
+
+              <div class="space-y-3 rounded-lg border border-default bg-muted/30 px-4 py-4">
+                <p class="text-sm font-medium text-highlighted">
+                  {{ isCloudflareRuntime ? 'Update with Wrangler' : 'Update the local database' }}
+                </p>
+                <p class="text-sm text-muted">
+                  <template v-if="isCloudflareRuntime">
+                    Run this from a cloned repository with Cloudflare credentials:
+                  </template>
+                  <template v-else>
+                    Stop the development server, run this from the repository, and then start <code>pnpm dev</code> again:
+                  </template>
+                </p>
+                <div class="flex items-center rounded-lg bg-elevated">
+                  <code class="min-w-0 flex-1 overflow-x-auto px-4 py-3 text-xs text-highlighted sm:text-sm">{{ remediationCommand }}</code>
+                  <UTooltip :text="commandCopied ? 'Copied' : 'Copy command'">
+                    <UButton
+                      type="button"
+                      color="neutral"
+                      variant="ghost"
+                      size="sm"
+                      square
+                      :icon="commandCopied ? 'i-lucide-check' : 'i-lucide-copy'"
+                      :aria-label="commandCopied ? 'Migration command copied' : 'Copy migration command'"
+                      class="mr-2 shrink-0"
+                      @click="copyRemediationCommand"
+                    />
+                  </UTooltip>
+                </div>
+                <p v-if="installStatus?.missingTables?.length" class="break-words text-xs text-muted sm:text-sm">
+                  Missing tables: {{ installStatus.missingTables.join(', ') }}
+                </p>
+              </div>
+
+              <div v-if="isCloudflareRuntime" class="space-y-3 rounded-lg border border-default px-4 py-4">
+                <div class="space-y-1">
+                  <p class="text-sm font-medium text-highlighted">
+                    {{ migratingDatabase ? 'Updating the database automatically' : 'Automatic database update' }}
+                  </p>
+                  <p class="text-sm text-muted">
+                    {{ migratingDatabase
+                      ? 'Keep this page open. HaloPress is applying the bundled migrations through the deployed Worker.'
+                      : migrationError
+                        ? 'The automatic update stopped. Retry it here or use the Wrangler command above.'
+                        : 'HaloPress will apply the bundled migrations through the deployed Worker.' }}
+                  </p>
+                </div>
+                <UProgress
+                  v-if="migratingDatabase"
+                  animation="swing"
+                  size="sm"
+                  aria-label="Database update in progress"
+                />
+                <UButton
+                  v-if="migrationError"
+                  type="button"
+                  icon="i-lucide-database-zap"
+                  class="min-h-11 justify-center"
+                  :loading="migratingDatabase"
+                  :disabled="migratingDatabase"
+                  @click="migrateCloudflareDatabase"
+                >
+                  Retry database update
+                </UButton>
+              </div>
+
+              <UAlert
+                v-if="migrationError"
+                color="error"
+                variant="subtle"
+                icon="i-lucide-circle-alert"
+                :title="migrationError.title"
+                :description="migrationError.description"
+              />
+
+              <div class="flex justify-start">
+                <UButton
+                  type="button"
+                  color="neutral"
+                  variant="outline"
+                  icon="i-lucide-refresh-cw"
+                  class="min-h-11 justify-center"
+                  :loading="isCheckingReadiness"
+                  @click="refreshReadiness"
+                >
+                  Check again
+                </UButton>
+              </div>
+            </div>
+          </UCard>
+
+          <UCard v-else-if="submitting || showExternalInstalling" variant="subtle">
             <div class="space-y-6 py-4 sm:px-4 sm:py-8">
               <div class="mx-auto flex size-14 items-center justify-center rounded-full bg-primary/10 text-primary">
                 <UIcon name="i-lucide-loader-circle" class="size-7 animate-spin motion-reduce:animate-none" />
