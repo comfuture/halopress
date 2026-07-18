@@ -23,7 +23,7 @@ const colorModeBridgeScript = computed(() => {
   const preference = configuredColorModePreference.value
   return `(function(){var p="${preference}",m=p==="system"?(window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"):p,e=document.documentElement,h=window.__NUXT_COLOR_MODE__;e.classList.remove("light","dark");e.classList.add(m);e.style.colorScheme=m;if(h){h.preference=p;h.value=m}})()`
 })
-const { data: membership } = await useFetch<{ registrationEnabled: boolean }>('/api/membership')
+const { data: membership } = useFetch<{ registrationEnabled: boolean }>('/api/membership')
 const { data: session, status, signOut } = useAuth()
 
 const navigationItems = computed(() => siteNavigationItems(presentation.value, route.path))
@@ -92,7 +92,7 @@ if (import.meta.client) {
   useNuxtApp().hook('app:mounted', () => applyConfiguredColorMode(configuredColorModePreference.value))
 }
 const copyright = computed(() => presentation.value.footer.copyright
-  || `© ${new Date().getFullYear()} ${presentation.value.general.siteName}`)
+  || `© ${new Date().getUTCFullYear()} ${presentation.value.general.siteName}`)
 const headerUi = computed(() => {
   if (presentation.value.shell.headerVariant === 'minimal') return { root: 'border-b-0' }
   if (presentation.value.shell.headerVariant === 'centered') return { left: 'md:flex-1', center: 'md:flex-none', right: 'md:flex-1 md:justify-end' }

@@ -64,6 +64,15 @@ describe('persisted Layout runtime boundary', () => {
     expect(source).not.toContain('UNavigationMenu')
   })
 
+  it('keeps built-in shell status non-blocking and fallback dates timezone-stable', async () => {
+    const source = await readFile('app/components/layout-renderer/BuiltInLayoutRenderer.vue', 'utf8')
+    expect(source).toContain('const { data: membership } = useFetch<{ registrationEnabled: boolean }>(\'/api/membership\')')
+    expect(source).not.toContain('await useFetch<{ registrationEnabled: boolean }>(\'/api/membership\')')
+    expect(source.match(/v-if="membership\?\.registrationEnabled"/g)).toHaveLength(2)
+    expect(source).toContain('new Date().getUTCFullYear()')
+    expect(source).not.toContain('new Date().getFullYear()')
+  })
+
   it('batches selected Menus and bounds Page-list projection in database queries', async () => {
     const [layoutResolver, menuResolver] = await Promise.all([
       readFile('server/utils/layout-rendering.ts', 'utf8'),
