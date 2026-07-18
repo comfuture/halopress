@@ -187,6 +187,8 @@ describe('page editor workspace contracts', () => {
       expect(page).not.toContain('v-model:seo-title=')
       expect(page).not.toContain('v-model:structured-data-type=')
       expect(page).not.toContain('title: state.seoTitle')
+      expect(page).toContain('import { derivePublicSeoTitle } from \'~~/shared/public-seo\'')
+      expect(page).toContain('title: derivePublicSeoTitle(state.title)')
       expect(page).toContain('description: state.description || undefined')
       expect(page).toContain('imageAssetId: state.socialImageAssetId || undefined')
       expect(page).toContain('structuredDataType: state.structuredDataType || undefined')
@@ -198,6 +200,8 @@ describe('page editor workspace contracts', () => {
     expect(properties).not.toContain('<h2')
     expect(properties).not.toContain('SEO Title')
     expect(properties).not.toContain('Structured data type')
+    expect(properties).not.toContain('validationMessage')
+    expect(properties).not.toContain('<UAlert')
     expect(properties).toContain('label="Title"')
     expect(properties).toContain('label="Description"')
     expect(properties).toContain('label="Canonical path"')
@@ -218,6 +222,10 @@ describe('page editor workspace contracts', () => {
     expect(metadata.match(/:class="{ 'md:col-span-2': !compact }"/g)).toHaveLength(3)
     expect(editPage).toContain(':editable="!isDeleted"')
     expect(panel).toContain(':disabled="!props.editable"')
+    expect(panel).toContain('v-if="pageValidationMessage"')
+    expect(panel).toContain(':description="pageValidationMessage"')
+    expect(panel.indexOf('v-if="pageValidationMessage"')).toBeLessThan(panel.indexOf('<PageBlockInspector'))
+    expect(panel.indexOf('v-if="pageValidationMessage"')).toBeLessThan(panel.indexOf('<PagePropertiesInspector'))
   })
 
   it('offers explicit blank and reviewed starter choices only on new pages', async () => {

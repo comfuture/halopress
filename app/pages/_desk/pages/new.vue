@@ -3,6 +3,7 @@ import type { BreadcrumbItem } from '@nuxt/ui'
 import type { JSONContent } from '@tiptap/vue-3'
 import { validatePageDocumentBlocks } from '~~/shared/page-blocks'
 import { buildPageDocumentFromPattern } from '~~/shared/page-patterns'
+import { derivePublicSeoTitle } from '~~/shared/public-seo'
 import PageEditor from '~/components/PageEditor.vue'
 
 definePageMeta({
@@ -45,6 +46,7 @@ function publicMetadataPayload() {
   return {
     publicPath: state.publicPath,
     seo: {
+      title: derivePublicSeoTitle(state.title),
       description: state.description || undefined,
       imageAssetId: state.socialImageAssetId || undefined,
       structuredDataType: state.structuredDataType || undefined
