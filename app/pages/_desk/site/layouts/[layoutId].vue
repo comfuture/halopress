@@ -20,6 +20,9 @@ import {
   type LayoutValidationIssue,
   type LayoutViewport
 } from '~~/shared/site-layout'
+import LayoutCanvas from '~/components/layout-editor/LayoutCanvas.vue'
+import LayoutEditorPanel from '~/components/layout-editor/LayoutEditorPanel.vue'
+import LayoutElementCreateForm from '~/components/layout-editor/LayoutElementCreateForm.vue'
 import type { LayoutEditorDropPayload } from '~/utils/layout-editor'
 
 definePageMeta({ layout: 'desk' })
@@ -471,15 +474,14 @@ async function rename() {
   try {
     const resource = await renameLayout(request.layoutId, request.revision, parsedName.data)
     if (!shouldApplyLayoutMutationResult(request, latestRenameToken, layoutId.value, workingId.value)
-      || workingName.value !== request.snapshot
       || resource.status !== 'ready'
       || !document.value) return
-    const localDocument = { ...structuredClone(document.value), name: resource.name }
-    workingRevision.value = resource.revision
-    workingName.value = resource.name
-    baselineName.value = resource.name
-    baselineDocument.value = serializeLayoutDocument(resource.document)
-    history.value = createLayoutEditorHistory(localDocument, selection.value)
+    const reconciliation = reconcileLayoutRenameState(workingName.value, request, resource, document.value)
+    workingRevision.value = reconciliation.workingRevision
+    workingName.value = reconciliation.workingName
+    baselineName.value = reconciliation.baselineName
+    baselineDocument.value = reconciliation.baselineDocument
+    history.value = createLayoutEditorHistory(reconciliation.document, selection.value)
     staleConflict.value = null
     toast.add({ title: 'Layout renamed', color: 'success', icon: 'i-lucide-check' })
   } catch (renameError: any) {
@@ -676,7 +678,7 @@ async function removeLayout() {
       <div class="sticky top-2 z-30 rounded-lg border border-default bg-default/95 p-3 shadow-sm backdrop-blur" data-layout-command-bar>
         <div class="flex flex-wrap items-end gap-3">
           <UFormField label="Layout name" required class="min-w-56 flex-1">
-            <UInput v-model="workingName" maxlength="80" class="w-full" :disabled="renaming" data-layout-name-input />
+            <UInput v-model="workingName" maxlength="80" class="w-full" data-layout-name-input />
           </UFormField>
           <UButton
             type="button"

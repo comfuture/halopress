@@ -6,6 +6,7 @@ import {
   type LayoutAdminResource,
   type LayoutPresetKey
 } from '~~/shared/site-layout'
+import LayoutCreateForm from '~/components/layout-editor/LayoutCreateForm.vue'
 
 definePageMeta({ layout: 'desk' })
 

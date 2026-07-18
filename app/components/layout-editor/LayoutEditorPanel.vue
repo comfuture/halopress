@@ -9,6 +9,7 @@ import type {
   LayoutRegionKey
 } from '~~/shared/site-layout'
 import type { SiteMenuAdminResource } from '~~/shared/site-menu'
+import LayoutInspector from '~/components/layout-editor/LayoutInspector.vue'
 
 const props = defineProps<{
   document: LayoutDocument
