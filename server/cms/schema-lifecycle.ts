@@ -10,6 +10,7 @@ import {
   contentSearchData,
   documentAssetRef,
   documentRevision,
+  layoutReference,
   publicationRevision,
   publicRoute,
   schema as schemaTable,
@@ -252,6 +253,15 @@ export async function deleteSchemaResidue(
   const guard = cleanupGuard(schemaKey, options.guard ?? 'none')
 
   await withDbTransaction(event, db, async (tx: Db, statements) => {
+    // Draft and every historical published Schema-version reference share the
+    // Schema identity. Remove them only inside the same guarded cleanup group
+    // as the version rows so a concurrent Layout delete cannot observe a
+    // half-purged Schema.
+    await executeDbStatement(tx.delete(layoutReference)
+      .where(guardedWhere(and(
+        eq(layoutReference.ownerType, 'schema'),
+        eq(layoutReference.ownerId, schemaKey)
+      ), guard)), statements)
     await executeDbStatement(tx.delete(publicRoute)
       .where(guardedWhere(eq(publicRoute.schemaKey, schemaKey), guard)), statements)
     await executeDbStatement(tx.delete(contentSearchData)

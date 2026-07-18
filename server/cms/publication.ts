@@ -40,6 +40,7 @@ export function publicationRevisionValues(args: {
   schemaVersion?: number | null
   title?: string | null
   content: unknown
+  layoutId?: string | null
   createdBy?: string | null
   createdAt: Date
 }) {
@@ -51,6 +52,7 @@ export function publicationRevisionValues(args: {
     schemaVersion: args.schemaVersion ?? null,
     title: args.title ?? null,
     contentJson: JSON.stringify(args.content),
+    layoutId: args.layoutId ?? null,
     createdBy: args.createdBy ?? null,
     createdAt: args.createdAt
   }

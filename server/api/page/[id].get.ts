@@ -4,7 +4,7 @@ import { getDb } from '../../db/db'
 import { page as pageTable } from '../../db/schema'
 import { requireAdmin } from '../../utils/auth'
 import { notFound } from '../../utils/http'
-import { publicationMetadata } from '../../cms/publication'
+import { getPublicationRevision, publicationMetadata } from '../../cms/publication'
 import { getCanonicalPublicPath } from '../../cms/public-routes'
 import { parsePublicSeoJson } from '../../../shared/public-seo'
 import { parseStoredPageContent } from '../../cms/page-content'
@@ -25,6 +25,7 @@ export default defineEventHandler(async (event) => {
       contentJson: pageTable.contentJson,
       publicPath: pageTable.publicPath,
       seoJson: pageTable.seoJson,
+      layoutId: pageTable.layoutId,
       currentRevision: pageTable.currentRevision,
       publishedRevisionId: pageTable.publishedRevisionId,
       firstPublishedAt: pageTable.firstPublishedAt,
@@ -51,12 +52,14 @@ export default defineEventHandler(async (event) => {
   const publishedPublicPath = row.publishedRevisionId
     ? await getCanonicalPublicPath(db, 'page', row.id)
     : null
+  const publishedRevision = await getPublicationRevision(db, 'page', row.id, row.publishedRevisionId)
   return {
     ...rest,
     revision: currentRevision,
     content,
     seo: parsePublicSeoJson(row.seoJson),
     publishedPublicPath,
+    publishedLayoutId: publishedRevision?.layoutId ?? null,
     ...publicationMetadata(row)
   }
 })

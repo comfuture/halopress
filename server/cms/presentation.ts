@@ -130,6 +130,7 @@ export function compileSchemaPresentation(ast: SchemaAst, schemaVersion: number)
     preset: config.preset,
     collectionTemplate: config.collectionTemplate,
     detailTemplate: config.detailTemplate,
+    layoutId: config.layoutId,
     slugFieldId: config.slugFieldId,
     slugField: slugField ? { fieldId: slugField.id, fieldKey: slugField.key } : undefined,
     structuredDataType: config.structuredDataType ?? (config.preset === 'article' ? 'Article' : config.preset === 'catalog' ? 'Product' : 'WebPage'),

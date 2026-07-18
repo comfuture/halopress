@@ -9,6 +9,10 @@ import { executeDbStatement } from '../db/transaction'
 import { conflict } from '../utils/http'
 import { newId } from '../utils/ids'
 import { getTrustedRequestOrigin } from '../utils/request-origin'
+import {
+  pageLayoutAssignmentOwner,
+  syncLayoutAssignmentReference
+} from '../utils/layout-assignments'
 import { syncDocumentAssetRefs } from './asset-refs'
 import { mutateWithDocumentRevision } from './document-revisions'
 import { normalizePageContent } from './page-content'
@@ -38,10 +42,12 @@ export async function savePageWorking(args: {
   content: Record<string, unknown>
   publicPath?: string | null
   seo?: PublicSeoOverrides | null
+  layoutId?: string | null
   actorId: string | null
   expectedRevision: number
 }) {
   assertEditorialTransition(args.existing.status, 'save')
+  const layoutId = args.layoutId === undefined ? args.existing.layoutId ?? null : args.layoutId
   const status = args.existing.status === 'published' ? 'draft' : args.existing.status
   let updatedAt = new Date()
   await mutateWithDocumentRevision({
@@ -62,6 +68,7 @@ export async function savePageWorking(args: {
         contentJson: JSON.stringify(args.content),
         publicPath: args.publicPath ?? null,
         seoJson: args.seo ? JSON.stringify(args.seo) : null,
+        layoutId,
         currentRevision: nextRevision,
         updatedBy: args.actorId,
         updatedAt: now
@@ -78,6 +85,13 @@ export async function savePageWorking(args: {
         additionalAssetIds: args.seo?.imageAssetId ? [args.seo.imageAssetId] : [],
         trustedOrigin: getTrustedRequestOrigin(args.event),
         statements
+      })
+      await syncLayoutAssignmentReference({
+        db: tx,
+        statements,
+        owner: pageLayoutAssignmentOwner(args.existing.id, 'working', args.title),
+        layoutId,
+        now
       })
     }
   })
@@ -96,10 +110,12 @@ export async function publishPageWorking(args: {
   content: Record<string, unknown>
   publicPath?: string | null
   seo?: PublicSeoOverrides | null
+  layoutId?: string | null
   actorId: string | null
   expectedRevision: number
 }) {
   assertEditorialTransition(args.existing.status, 'publish')
+  const layoutId = args.layoutId === undefined ? args.existing.layoutId ?? null : args.layoutId
   const revisionId = newId()
   const publicPath = pageCanonicalPath({
     pageId: args.existing.id,
@@ -125,6 +141,7 @@ export async function publishPageWorking(args: {
         documentId: args.existing.id,
         title: args.title,
         content: args.content,
+        layoutId,
         createdBy: args.actorId,
         createdAt: now
       })), statements)
@@ -134,6 +151,7 @@ export async function publishPageWorking(args: {
         contentJson: JSON.stringify(args.content),
         publicPath,
         seoJson: args.seo ? JSON.stringify(args.seo) : null,
+        layoutId,
         currentRevision: nextRevision,
         publishedRevisionId: revisionId,
         firstPublishedAt: args.existing.firstPublishedAt ?? now,
@@ -159,6 +177,15 @@ export async function publishPageWorking(args: {
           additionalAssetIds: args.seo?.imageAssetId ? [args.seo.imageAssetId] : [],
           trustedOrigin: getTrustedRequestOrigin(args.event),
           statements
+        })
+      }
+      for (const slot of ['working', 'published'] as const) {
+        await syncLayoutAssignmentReference({
+          db: tx,
+          statements,
+          owner: pageLayoutAssignmentOwner(args.existing.id, slot, args.title),
+          layoutId,
+          now
         })
       }
       await publishCanonicalRoute({
@@ -220,6 +247,7 @@ export async function discardPageWorking(args: {
         contentJson: revision.contentJson,
         publicPath: route?.path ?? args.existing.publicPath ?? null,
         seoJson: route?.seo ? JSON.stringify(route.seo) : null,
+        layoutId: revision.layoutId ?? null,
         currentRevision: nextRevision,
         transitionAt: now,
         transitionBy: args.actorId,
@@ -238,6 +266,13 @@ export async function discardPageWorking(args: {
         additionalAssetIds: route?.seo?.imageAssetId ? [route.seo.imageAssetId] : [],
         trustedOrigin: getTrustedRequestOrigin(args.event),
         statements
+      })
+      await syncLayoutAssignmentReference({
+        db: tx,
+        statements,
+        owner: pageLayoutAssignmentOwner(args.existing.id, 'working', revision.title),
+        layoutId: revision.layoutId ?? null,
+        now
       })
     }
   })
@@ -292,6 +327,13 @@ export async function unpublishPage(args: {
         eq(documentAssetRef.documentId, args.existing.id),
         eq(documentAssetRef.projectionScope, 'published')
       )), statements)
+      await syncLayoutAssignmentReference({
+        db: tx,
+        statements,
+        owner: pageLayoutAssignmentOwner(args.existing.id, 'published', args.existing.title),
+        layoutId: null,
+        now
+      })
     }
   })
   return mutationMetadata(args.existing, args.expectedRevision, {
@@ -349,6 +391,13 @@ export async function deletePage(args: {
         eq(documentAssetRef.documentId, args.existing.id),
         eq(documentAssetRef.projectionScope, 'published')
       )), statements)
+      await syncLayoutAssignmentReference({
+        db: tx,
+        statements,
+        owner: pageLayoutAssignmentOwner(args.existing.id, 'published', args.existing.title),
+        layoutId: null,
+        now
+      })
     }
   })
   return mutationMetadata(args.existing, args.expectedRevision, {

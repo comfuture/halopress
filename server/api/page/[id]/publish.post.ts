@@ -10,12 +10,13 @@ import { badRequest, notFound } from '../../../utils/http'
 import { requireExpectedRevision } from '../../../cms/document-revisions'
 import { normalizePublicPath } from '../../../../shared/public-routing'
 import { normalizePublicSeoOverrides, parsePublicSeoJson } from '../../../../shared/public-seo'
+import { layoutAssignmentHttpError, prepareLayoutAssignmentChange } from '../../../utils/layout-assignments'
 
 export default defineEventHandler(async (event) => {
   const session = await requireAdmin(event)
   const id = event.context.params?.id as string
   if (!id) throw notFound('Page not found')
-  const body = await readBody<{ revision?: number, title?: string, content?: unknown, publicPath?: string | null, seo?: unknown }>(event)
+  const body = await readBody<{ revision?: number, title?: string, content?: unknown, publicPath?: string | null, seo?: unknown, layoutId?: string | null }>(event)
   const expectedRevision = requireExpectedRevision(body?.revision)
   const db = await getDb(event)
   const existing = await db.select().from(pageTable).where(eq(pageTable.id, id)).get()
@@ -32,18 +33,24 @@ export default defineEventHandler(async (event) => {
   } catch (error) {
     throw badRequest(error instanceof Error ? error.message : 'Invalid public metadata')
   }
-  return {
-    ok: true,
-    ...(await publishPageWorking({
-      event,
-      db,
-      existing,
-      title,
-      content,
-      publicPath,
-      seo,
+  try {
+    const layoutId = await prepareLayoutAssignmentChange({ event, db, body, currentLayoutId: existing.layoutId })
+    return {
+      ok: true,
+      ...(await publishPageWorking({
+        event,
+        db,
+        existing,
+        title,
+        content,
+        publicPath,
+        seo,
+        layoutId,
         actorId: (session.user as any)?.id ?? null,
         expectedRevision
-    }))
+      }))
+    }
+  } catch (error) {
+    throw layoutAssignmentHttpError(error)
   }
 })

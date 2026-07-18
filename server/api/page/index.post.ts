@@ -11,12 +11,18 @@ import { requireAdmin } from '../../utils/auth'
 import { newId } from '../../utils/ids'
 import { getTrustedRequestOrigin } from '../../utils/request-origin'
 import { badRequest } from '../../utils/http'
+import {
+  layoutAssignmentHttpError,
+  pageLayoutAssignmentOwner,
+  prepareLayoutAssignmentChange,
+  syncLayoutAssignmentReference
+} from '../../utils/layout-assignments'
 import { normalizePublicPath } from '../../../shared/public-routing'
 import { normalizePublicSeoOverrides } from '../../../shared/public-seo'
 
 export default defineEventHandler(async (event) => {
   const session = await requireAdmin(event)
-  const body = await readBody<{ title?: string, status?: string, content?: unknown, publicPath?: string | null, seo?: unknown }>(event)
+  const body = await readBody<{ title?: string, status?: string, content?: unknown, publicPath?: string | null, seo?: unknown, layoutId?: string | null }>(event)
   assertDraftWriteStatus(body?.status)
   const id = newId()
   const title = body?.title?.trim() || null
@@ -34,40 +40,53 @@ export default defineEventHandler(async (event) => {
   const actorId = (session.user as any)?.id ?? null
   const db = await getDb(event)
 
-  await withDbTransaction(event, db, async (tx: any, statements) => {
-    await executeDbStatement(tx.insert(pageTable).values({
-      id,
-      title,
-      status,
-      contentJson: JSON.stringify(content),
-      publicPath,
-      seoJson: seo ? JSON.stringify(seo) : null,
-      currentRevision: 1,
-      createdBy: actorId,
-      updatedBy: actorId,
-      createdAt: now,
-      updatedAt: now
-    }), statements)
-    await createInitialDocumentRevision({
-      tx,
-      statements,
-      documentKind: 'page',
-      documentId: id,
-      state: { snapshot: content, status, title },
-      actorId,
-      createdAt: now
+  try {
+    const layoutId = await prepareLayoutAssignmentChange({ event, db, body, currentLayoutId: null })
+    await withDbTransaction(event, db, async (tx: any, statements) => {
+      await executeDbStatement(tx.insert(pageTable).values({
+        id,
+        title,
+        status,
+        contentJson: JSON.stringify(content),
+        publicPath,
+        seoJson: seo ? JSON.stringify(seo) : null,
+        layoutId,
+        currentRevision: 1,
+        createdBy: actorId,
+        updatedBy: actorId,
+        createdAt: now,
+        updatedAt: now
+      }), statements)
+      await createInitialDocumentRevision({
+        tx,
+        statements,
+        documentKind: 'page',
+        documentId: id,
+        state: { snapshot: content, status, title },
+        actorId,
+        createdAt: now
+      })
+      await syncDocumentAssetRefs({
+        db: tx,
+        documentKind: 'page',
+        documentId: id,
+        projectionScope: 'working',
+        content,
+        additionalAssetIds: seo?.imageAssetId ? [seo.imageAssetId] : [],
+        trustedOrigin: getTrustedRequestOrigin(event),
+        statements
+      })
+      await syncLayoutAssignmentReference({
+        db: tx,
+        statements,
+        owner: pageLayoutAssignmentOwner(id, 'working', title),
+        layoutId,
+        now
+      })
     })
-    await syncDocumentAssetRefs({
-      db: tx,
-      documentKind: 'page',
-      documentId: id,
-      projectionScope: 'working',
-      content,
-      additionalAssetIds: seo?.imageAssetId ? [seo.imageAssetId] : [],
-      trustedOrigin: getTrustedRequestOrigin(event),
-      statements
-    })
-  })
+  } catch (error) {
+    throw layoutAssignmentHttpError(error)
+  }
 
   return {
     ok: true,
