@@ -118,6 +118,31 @@ describe('Schema Layout publication atomicity', () => {
     }
   })
 
+  it('rejects a missing draft inside the SQLite transaction before any public write', async () => {
+    const fixture = await createTestSqliteDb()
+    try {
+      await runMigrations(fixture.db)
+      await seedRoles(fixture.db)
+      await seedLayout(fixture.db, 'layout-schema-purged-sqlite')
+
+      await expect(commitSchemaPublication(publicationArgs(
+        fixture.db,
+        localEvent,
+        'layout-schema-purged-sqlite'
+      ))).rejects.toMatchObject({ statusCode: 404, statusMessage: 'Draft not found' })
+      expect(await fixture.db.select().from(schema).where(eq(schema.schemaKey, 'article'))).toEqual([])
+      expect(await fixture.db.select().from(schemaActive).where(eq(schemaActive.schemaKey, 'article'))).toEqual([])
+      expect(await fixture.db.select().from(schemaRole).where(eq(schemaRole.schemaKey, 'article'))).toEqual([])
+      expect(await fixture.db.select().from(publicRoute).where(eq(publicRoute.documentId, 'article'))).toEqual([])
+      expect(await fixture.db.select().from(layoutReference).where(and(
+        eq(layoutReference.ownerId, 'article'),
+        eq(layoutReference.slot, 'published:1')
+      ))).toEqual([])
+    } finally {
+      fixture.close()
+    }
+  })
+
   it('uses one D1 batch and leaves no half-published state when Layout deletion wins', async () => {
     const fixture = await createTestSqliteDb()
     try {
@@ -215,6 +240,57 @@ describe('Schema Layout publication atomicity', () => {
       expect(executedStatements).toBe(1)
       expect(await fixture.db.select().from(schemaDraft).where(eq(schemaDraft.schemaKey, 'article')).get())
         .toMatchObject({ currentRevision: 2, updatedBy: 'admin-2' })
+      expect(await fixture.db.select().from(schema).where(eq(schema.schemaKey, 'article'))).toEqual([])
+      expect(await fixture.db.select().from(schemaActive).where(eq(schemaActive.schemaKey, 'article'))).toEqual([])
+      expect(await fixture.db.select().from(schemaRole).where(eq(schemaRole.schemaKey, 'article'))).toEqual([])
+      expect(await fixture.db.select().from(publicRoute).where(eq(publicRoute.documentId, 'article'))).toEqual([])
+      expect(await fixture.db.select().from(layoutReference).where(and(
+        eq(layoutReference.ownerId, 'article'),
+        eq(layoutReference.slot, 'published:1')
+      ))).toEqual([])
+    } finally {
+      fixture.close()
+    }
+  })
+
+  it('fences a D1 publish when purge removes the prechecked draft and rolls every public write back', async () => {
+    const fixture = await createTestSqliteDb()
+    try {
+      await runMigrations(fixture.db)
+      await seedRoles(fixture.db)
+      await seedLayout(fixture.db, 'layout-schema-purged')
+      await seedDraft(fixture.db, 'layout-schema-purged')
+      let executedStatements = 0
+      const batch = vi.fn(async (statements: any[]) => {
+        await fixture.db.delete(schemaDraft).where(eq(schemaDraft.schemaKey, 'article'))
+        await fixture.db.run(sql.raw('BEGIN IMMEDIATE'))
+        try {
+          for (const statement of statements) {
+            executedStatements += 1
+            await statement
+          }
+          await fixture.db.run(sql.raw('COMMIT'))
+        } catch (error) {
+          await fixture.db.run(sql.raw('ROLLBACK'))
+          throw error
+        }
+      })
+      const d1Db = new Proxy(fixture.db as any, {
+        get(target, property, receiver) {
+          if (property === 'batch') return batch
+          if (property === 'transaction') return vi.fn(() => {
+            throw new Error('D1 Schema publication must use batch')
+          })
+          return Reflect.get(target, property, receiver)
+        }
+      })
+
+      await expect(commitSchemaPublication(publicationArgs(d1Db, d1Event, 'layout-schema-purged')))
+        .rejects.toMatchObject({ statusCode: 404, statusMessage: 'Draft not found' })
+      expect(batch).toHaveBeenCalledOnce()
+      expect(batch.mock.calls[0]?.[0]).toHaveLength(6)
+      expect(executedStatements).toBe(1)
+      expect(await fixture.db.select().from(schemaDraft).where(eq(schemaDraft.schemaKey, 'article'))).toEqual([])
       expect(await fixture.db.select().from(schema).where(eq(schema.schemaKey, 'article'))).toEqual([])
       expect(await fixture.db.select().from(schemaActive).where(eq(schemaActive.schemaKey, 'article'))).toEqual([])
       expect(await fixture.db.select().from(schemaRole).where(eq(schemaRole.schemaKey, 'article'))).toEqual([])
