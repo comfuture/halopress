@@ -7,9 +7,11 @@ import {
   readSetupSessionToken
 } from '../../../utils/install-session'
 import { isAuthRuntimeReady, resolveAuthSigningSecret } from '../../../utils/install-token'
+import { resolveOnboardingDeploymentFromEvent } from '../../../utils/onboarding'
 
 export default defineEventHandler(async (event) => {
-  const isCloudflareRuntime = Boolean((event as any)?.context?.cloudflare)
+  const runtime = resolveOnboardingDeploymentFromEvent(event).runtime
+  const isCloudflareRuntime = runtime === 'cloudflare'
   const missingBindings = getMissingCloudflareBindings(event)
   if (missingBindings.length) {
     return {
@@ -18,13 +20,14 @@ export default defineEventHandler(async (event) => {
       canInstall: false,
       setupSessionOwned: false,
       phase: 'binding_missing' as const,
+      runtime,
       missingBindings,
       missingTables: []
     }
   }
 
   const db = await getDb(event)
-  const status = await getRuntimeInstallStatus(db, { isCloudflareRuntime })
+  const status = await getRuntimeInstallStatus(db)
   const signingSecret = resolveAuthSigningSecret(event)
   const runtimeSecretReady = isAuthRuntimeReady(isCloudflareRuntime, signingSecret)
 
@@ -36,6 +39,7 @@ export default defineEventHandler(async (event) => {
       canInstall: false,
       setupSessionOwned: false,
       phase: 'configuration_required' as const,
+      runtime,
       missingBindings
     }
   }
@@ -44,6 +48,7 @@ export default defineEventHandler(async (event) => {
     clearSetupSessionCookie(event, isCloudflareRuntime)
     return {
       ...status,
+      runtime,
       canStartSetup: false,
       canInstall: false,
       setupSessionOwned: false,
@@ -54,6 +59,7 @@ export default defineEventHandler(async (event) => {
   if (status.phase === 'migration_required') {
     return {
       ...status,
+      runtime,
       canStartSetup: false,
       canInstall: false,
       setupSessionOwned: false,
@@ -70,6 +76,7 @@ export default defineEventHandler(async (event) => {
 
   return {
     ...status,
+    runtime,
     phase: setupLocked ? 'setup_locked' as const : status.phase,
     canStartSetup: status.canInstall && !access.owned && !setupLocked,
     canInstall: status.canInstall && access.owned,

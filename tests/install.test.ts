@@ -36,6 +36,7 @@ import {
   getRuntimeInstallStatus,
   refreshInstallationSession,
   reserveInstallationSession,
+  runCloudflareMigrations,
   runMigrations,
   seedRoles
 } from '../server/utils/install'
@@ -58,27 +59,60 @@ async function withDatabase(run: (db: any) => Promise<void>) {
 }
 
 describe('installation state', () => {
-  it('prepares a clean local database during status lookup but leaves Cloudflare migrations deploy-owned', async () => {
+  it('reports missing migrations without mutating the database during a status lookup', async () => {
     await withDatabase(async (localDb) => {
       expect(await getInstallStatus(localDb)).toMatchObject({
         ready: false,
         canInstall: false,
         phase: 'migration_required'
       })
-      expect(await getRuntimeInstallStatus(localDb, { isCloudflareRuntime: false })).toMatchObject({
-        ready: false,
-        canInstall: true,
-        phase: 'ready_for_setup'
-      })
-    })
-
-    await withDatabase(async (cloudflareDb) => {
-      expect(await getRuntimeInstallStatus(cloudflareDb, { isCloudflareRuntime: true })).toMatchObject({
+      expect(await getRuntimeInstallStatus(localDb)).toMatchObject({
         ready: false,
         canInstall: false,
         phase: 'migration_required'
       })
     })
+  })
+
+  it('prepares bundled D1 migrations before passing them to the native batch API', async () => {
+    const batches: Array<Array<{ query: string, params: string[] }>> = []
+    const prepare = (query: string) => ({
+      query,
+      params: [] as string[],
+      bind(...params: string[]) {
+        return { query, params }
+      }
+    })
+    const db = {
+      $client: {
+        prepare,
+        batch: async (statements: Array<{ query: string, params: string[] }>) => {
+          batches.push(statements)
+        }
+      },
+      run: async () => {},
+      values: async () => []
+    }
+
+    await runCloudflareMigrations(db)
+
+    expect(batches).toHaveLength(8)
+    expect(batches.every(batch => batch.every(statement => typeof statement.query === 'string'))).toBe(true)
+    expect(batches.flat().some(statement => statement.query === 'PRAGMA foreign_keys = OFF')).toBe(false)
+    expect(batches.flat().some(statement => statement.query === 'PRAGMA defer_foreign_keys = ON')).toBe(true)
+    expect(batches.map(batch => batch.at(-1))).toEqual([
+      '0000_restore_materialized_search_index.sql',
+      '0001_add_installation_state.sql',
+      '0002_add_browser_setup_session.sql',
+      '0003_preserve_published_revisions.sql',
+      '0004_add_editorial_safety_revisions.sql',
+      '0005_add_schema_lifecycle_status.sql',
+      '0006_add_public_member_identities.sql',
+      '0007_add_public_routes_and_aliases.sql'
+    ].map(name => ({
+      query: 'INSERT INTO d1_migrations (name) VALUES (?)',
+      params: [name]
+    })))
   })
 
   it('requires the editorial revision table before reporting installation readiness', async () => {

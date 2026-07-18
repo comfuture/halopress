@@ -17,11 +17,12 @@ import {
   writeSetupSessionCookie
 } from '../../../utils/install-session'
 import { isAuthRuntimeReady, resolveAuthSigningSecret } from '../../../utils/install-token'
+import { resolveOnboardingDeploymentFromEvent } from '../../../utils/onboarding'
 
 export default defineEventHandler(async (event) => {
   requireSameOriginSetupRequest(event)
 
-  const isCloudflareRuntime = Boolean((event as any)?.context?.cloudflare)
+  const isCloudflareRuntime = resolveOnboardingDeploymentFromEvent(event).runtime === 'cloudflare'
   const missingBindings = getMissingCloudflareBindings(event)
   if (missingBindings.length) {
     throw createError({
@@ -41,7 +42,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const db = await getDb(event)
-  const status = await getRuntimeInstallStatus(db, { isCloudflareRuntime })
+  const status = await getRuntimeInstallStatus(db)
   if (status.ready) {
     throw createError({ statusCode: 404, statusMessage: 'Not found' })
   }

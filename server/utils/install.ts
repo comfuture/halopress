@@ -78,14 +78,22 @@ async function sha256Hex(text: string) {
   return createHash('sha256').update(text).digest('hex')
 }
 
-async function loadMigrations(): Promise<Array<{ when: number; hash: string; statements: string[] }>> {
+type LoadedMigration = { name: string; when: number; hash: string; statements: string[] }
+
+async function loadMigrations(): Promise<LoadedMigration[]> {
   if (!(import.meta as any).glob) {
     const { readMigrationFiles } = await import('drizzle-orm/migrator')
+    const { readFile } = await import('node:fs/promises')
     const { resolve } = await import('node:path')
+    const migrationsFolder = resolve(process.cwd(), 'server/db/migrations')
     const migrations = readMigrationFiles({
-      migrationsFolder: resolve(process.cwd(), 'server/db/migrations')
+      migrationsFolder
     })
-    return migrations.map((migration) => ({
+    const journal = JSON.parse(await readFile(resolve(migrationsFolder, 'meta/_journal.json'), 'utf8')) as {
+      entries: Array<{ tag: string }>
+    }
+    return migrations.map((migration, index) => ({
+      name: `${journal.entries[index]?.tag || migration.folderMillis}.sql`,
       when: migration.folderMillis,
       hash: migration.hash,
       statements: migration.sql.map(statement => statement.trim()).filter(Boolean)
@@ -109,7 +117,7 @@ async function loadMigrations(): Promise<Array<{ when: number; hash: string; sta
     import: 'default',
     eager: true
   })
-  const entries: Array<{ when: number; hash: string; statements: string[] }> = []
+  const entries: LoadedMigration[] = []
 
   for (const entry of journal.entries) {
     const fileKey = Object.keys(sqlModules).find(key => key.endsWith(`/${entry.tag}.sql`))
@@ -117,6 +125,7 @@ async function loadMigrations(): Promise<Array<{ when: number; hash: string; sta
     const sqlText = sqlModules[fileKey] as string
     const hash = await sha256Hex(sqlText)
     entries.push({
+      name: `${entry.tag}.sql`,
       when: entry.when,
       hash,
       statements: splitStatements(sqlText)
@@ -167,6 +176,76 @@ let migrationQueue: Promise<void> = Promise.resolve()
 export async function runMigrations(db: any) {
   const migrationRun = migrationQueue.then(() => runMigrationsInternal(db))
   migrationQueue = migrationRun.catch(() => {})
+  await migrationRun
+}
+
+const CLOUDFLARE_MIGRATIONS_TABLE = 'd1_migrations'
+
+function cloudflareMigrationStatements(migration: LoadedMigration) {
+  return migration.statements
+    .filter(statement => !/^PRAGMA\s+foreign_keys\s*=\s*ON\s*;?$/i.test(statement))
+    .map((statement) => {
+      if (/^PRAGMA\s+foreign_keys\s*=\s*OFF\s*;?$/i.test(statement)) {
+        return 'PRAGMA defer_foreign_keys = ON'
+      }
+      return statement
+    })
+}
+
+async function applyCloudflareMigration(db: any, migration: LoadedMigration) {
+  const d1 = db.$client
+  if (!d1 || typeof d1.prepare !== 'function' || typeof d1.batch !== 'function') {
+    throw new Error('Cloudflare D1 client is unavailable')
+  }
+
+  const statements = cloudflareMigrationStatements(migration)
+    .map(statement => d1.prepare(statement))
+  statements.push(
+    d1.prepare(`INSERT INTO ${CLOUDFLARE_MIGRATIONS_TABLE} (name) VALUES (?)`)
+      .bind(migration.name)
+  )
+  await d1.batch(statements)
+}
+
+/**
+ * Applies the bundled SQL through the Worker D1 binding while using the same
+ * filename ledger as `wrangler d1 migrations apply`.
+ */
+async function runCloudflareMigrationsInternal(db: any) {
+  await db.run(sql.raw(`CREATE TABLE IF NOT EXISTS ${CLOUDFLARE_MIGRATIONS_TABLE} (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT UNIQUE,
+    applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+  )`))
+
+  const appliedRows = await db.values(
+    sql.raw(`SELECT name FROM ${CLOUDFLARE_MIGRATIONS_TABLE} ORDER BY id`)
+  )
+  const appliedNames = new Set((appliedRows ?? []).map((row: unknown[]) => String(row[0])))
+
+  for (const migration of await loadMigrations()) {
+    if (appliedNames.has(migration.name)) continue
+
+    try {
+      await applyCloudflareMigration(db, migration)
+    } catch (error) {
+      // Another Worker isolate may have completed the same migration while this
+      // request was queued by D1. Treat that race as success only when Wrangler's
+      // filename ledger now proves the migration was applied.
+      const racedRows = await db.values(
+        sql`SELECT name FROM d1_migrations WHERE name = ${migration.name} LIMIT 1`
+      )
+      if (!racedRows?.length) throw error
+    }
+    appliedNames.add(migration.name)
+  }
+}
+
+let cloudflareMigrationQueue: Promise<void> = Promise.resolve()
+
+export async function runCloudflareMigrations(db: any) {
+  const migrationRun = cloudflareMigrationQueue.then(() => runCloudflareMigrationsInternal(db))
+  cloudflareMigrationQueue = migrationRun.catch(() => {})
   await migrationRun
 }
 
@@ -726,12 +805,6 @@ export async function getInstallStatus(db: any, now = new Date()) {
   }
 }
 
-export async function getRuntimeInstallStatus(
-  db: any,
-  options: { isCloudflareRuntime: boolean; now?: Date }
-) {
-  if (!options.isCloudflareRuntime) {
-    await runMigrations(db)
-  }
-  return await getInstallStatus(db, options.now)
+export async function getRuntimeInstallStatus(db: any, now?: Date) {
+  return await getInstallStatus(db, now)
 }
