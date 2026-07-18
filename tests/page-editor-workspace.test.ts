@@ -16,7 +16,7 @@ describe('page editor workspace contracts', () => {
     const editorSlot = editor.slice(editorStart, editorEnd)
 
     expect(editorSlot).toMatch(/v-slot="{\s*editor\s*}"/)
-    expect(editorSlot).toMatch(/:items="editorProfile\.toolbarGroups"/)
+    expect(editorSlot).toMatch(/:items="toolbarGroups"/)
     expect(editorSlot).toMatch(/<RichEditorLinkPopover\s+:editor="editor"\s+auto-open/)
     expect(editorSlot).toMatch(/<UEditorDragHandle/)
     expect(editorSlot).toMatch(/<UDropdownMenu/)
@@ -25,6 +25,7 @@ describe('page editor workspace contracts', () => {
     expect(editor).toMatch(/editor\.commands\.setNodeSelection\(selected\.pos\)/)
     expect(editor).toMatch(/setMeta\('lockDragHandle',\s*open\)/)
     expect(editor).toMatch(/mapEditorItems\(editor,\s*groups\s+as\s+any,\s*editorProfile\.handlers\)/)
+    expect(editor).toMatch(/getPageToolbarGroups\(\s*editorProfile\.toolbarGroups,\s*selectedBlock\.value\s*\?\s*'pageBlock'\s*:\s*null\s*\)/)
     expect(editor).not.toContain('dragHandleNestedOptions')
     expect(editorSlot).not.toContain(':nested-options=')
     expect(editor).not.toContain('label: \'Duplicate block\'')

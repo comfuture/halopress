@@ -15,7 +15,7 @@ import type { PagePaletteItem } from '~/editor/page/palette'
 import { getPageBlockComponent, pageBlockRegistry } from '~/editor/page/registry'
 import { clearPageBlockSelection } from '~/editor/page/selection'
 import type { PageBlockAttrs, PageBlockComponentKey } from '~/editor/page/types'
-import { createPageProfile } from '~/editor/profiles'
+import { createPageProfile, getPageToolbarGroups } from '~/editor/profiles'
 import type { EditorProfileCustomization } from '~/editor/profiles'
 import ImageUpload from '~/editor/RichEditorImageUpload'
 import RichEditorImageUploadNode from '~/editor/RichEditorImageUploadNode.vue'
@@ -73,6 +73,10 @@ const isEditMode = computed(() => mode.value === 'edit')
 const isEditing = computed(() => props.editable && isEditMode.value)
 const activeComponent = computed(() => getPageBlockComponent(selectedBlock.value?.component))
 const activeFields = computed(() => activeComponent.value?.fields ?? [])
+const toolbarGroups = computed(() => getPageToolbarGroups(
+  editorProfile.toolbarGroups,
+  selectedBlock.value ? 'pageBlock' : null
+))
 
 const viewportItems = [
   { label: 'Desktop', value: 'desktop', icon: 'i-lucide-monitor' },
@@ -396,7 +400,7 @@ watch(mode, (nextMode) => {
               <UEditorToolbar
                 v-if="isEditing"
                 :editor="editor"
-                :items="editorProfile.toolbarGroups"
+                :items="toolbarGroups"
                 class="sticky top-0 z-10 min-h-12 flex-wrap border-b border-muted bg-default/95 px-2 py-2 backdrop-blur"
                 :class="toolbarRadiusClass"
               >

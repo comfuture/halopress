@@ -2,7 +2,28 @@ import PageBlock from '../page/PageBlock'
 import type { AnyExtension } from '@tiptap/core'
 import { createEditorProfile } from './merge'
 import { richTextProfileDefinition } from './richText'
-import type { EditorProfileCustomization, EditorProfileDefinition, EditorQuickMenuContext } from './types'
+import type {
+  EditorProfileCustomization,
+  EditorProfileDefinition,
+  EditorProfileToolbarGroup,
+  EditorQuickMenuContext
+} from './types'
+
+const pageBlockToolbarKinds = new Set(['undo', 'redo'])
+
+export function getPageToolbarGroups(
+  groups: EditorProfileToolbarGroup[],
+  selectedNodeType: string | null
+) {
+  if (selectedNodeType !== 'pageBlock') return groups
+  return groups
+    .map(group => group.filter(item => (
+      'kind' in item
+      && typeof item.kind === 'string'
+      && pageBlockToolbarKinds.has(item.kind)
+    )))
+    .filter(group => group.length > 0)
+}
 
 const pageQuickMenuGroups = richTextProfileDefinition.quickMenuGroups.map((contribution) => {
   if (contribution.key !== 'transform') return contribution
