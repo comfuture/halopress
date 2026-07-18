@@ -138,6 +138,52 @@ describe('Site reactive composables', () => {
     expect(refreshNuxtData).toHaveBeenCalledWith('site-presentation')
   })
 
+  it('keeps Theme status synchronous while the mutable Theme editor awaits persisted state', async () => {
+    const { state, promise } = createNuxtLikeAsyncData<any>()
+    const useFetch = vi.fn(() => promise)
+    const updated = { source: 'theme', configured: true, revision: 'theme-revision' }
+    const saveTheme = vi.fn(async () => updated)
+    const refreshNuxtData = vi.fn(async () => {})
+    vi.stubGlobal('ref', ref)
+    vi.stubGlobal('useFetch', useFetch)
+    vi.stubGlobal('$fetch', saveTheme)
+    vi.stubGlobal('refreshNuxtData', refreshNuxtData)
+
+    const {
+      useSiteThemeSettings,
+      useSiteThemeStatus
+    } = await import('../app/composables/useSiteThemeSettings')
+    const status = useSiteThemeStatus()
+
+    expect(Object.keys(promise)).toContain('then')
+    expect(status).not.toHaveProperty('then')
+    expect(status).not.toHaveProperty('catch')
+    expect(status).not.toHaveProperty('finally')
+    expect(status.data).toBe(state.data)
+    expect(status.pending.value).toBe(true)
+    expect(useFetch).toHaveBeenLastCalledWith('/api/settings/theme', {
+      key: 'site-theme-settings',
+      dedupe: 'defer'
+    })
+
+    const editor = useSiteThemeSettings()
+    expect(editor).toBeInstanceOf(Promise)
+    const editorState = await editor
+    expect(editorState).toMatchObject({
+      data: state.data,
+      pending: state.pending,
+      saving: expect.objectContaining({ value: false })
+    })
+
+    await editorState.saveTheme({} as any, 'expected-revision')
+    expect(saveTheme).toHaveBeenCalledWith('/api/settings/theme', {
+      method: 'PUT',
+      body: { theme: {}, expectedRevision: 'expected-revision' }
+    })
+    expect(state.data.value).toEqual(updated)
+    expect(refreshNuxtData).toHaveBeenCalledWith('site-theme-manifest')
+  })
+
   it('keeps Site menu editor helpers on a non-thenable AsyncData return surface', async () => {
     const { state, promise } = createNuxtLikeAsyncData<{ items: never[] }>()
     const useFetch = vi.fn(() => promise)

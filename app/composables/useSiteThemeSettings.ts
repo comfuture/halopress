@@ -23,14 +23,26 @@ export type SiteThemeAdminResponse = {
 
 const SITE_THEME_SETTINGS_DATA_KEY = 'site-theme-settings'
 
+function useSiteThemeSettingsData() {
+  return useFetch<SiteThemeAdminResponse>('/api/settings/theme', {
+    key: SITE_THEME_SETTINGS_DATA_KEY,
+    dedupe: 'defer'
+  })
+}
+
+export function useSiteThemeStatus() {
+  const { data, pending, status, error, refresh, execute, clear } = useSiteThemeSettingsData()
+
+  // Read-only status surfaces render their own loading and error states. Keep
+  // this return value synchronous and omit AsyncData's Promise methods.
+  return { data, pending, status, error, refresh, execute, clear }
+}
+
 export async function useSiteThemeSettings() {
   const saving = ref(false)
   // The mutable Theme editor waits for the persisted document so safe defaults
   // cannot overwrite an existing active Theme during hydration.
-  const result = await useFetch<SiteThemeAdminResponse>('/api/settings/theme', {
-    key: SITE_THEME_SETTINGS_DATA_KEY,
-    dedupe: 'defer'
-  })
+  const result = await useSiteThemeSettingsData()
 
   async function refreshTheme() {
     const response = await result.refresh()
