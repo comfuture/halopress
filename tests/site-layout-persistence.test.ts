@@ -356,6 +356,152 @@ describe('Layout persistence', () => {
     }
   })
 
+  it('rolls back a D1 save when the resource revision advances without history', async () => {
+    const fixture = await createTestSqliteDb()
+    dbState.current = fixture.db
+    try {
+      await runMigrations(fixture.db)
+      const { createLayout, updateLayout } = await import('../server/utils/site-layouts')
+      const created = await createLayout({} as any, { name: 'D1 save resource guard', presetKey: 'header-footer' }, 'creator')
+      const resourceBefore = await fixture.db.select().from(layoutResource)
+        .where(eq(layoutResource.id, created.id)).get()
+      const referencesBefore = await fixture.db.select().from(siteMenuReference)
+        .where(eq(siteMenuReference.ownerId, created.id))
+      const historyBefore = await fixture.db.select().from(documentRevision).where(and(
+        eq(documentRevision.documentKind, 'layout'),
+        eq(documentRevision.documentId, created.id)
+      ))
+      const winnerAt = new Date('2026-07-18T12:00:00.000Z')
+      const batch = vi.fn(async (statements: any[]) => {
+        await fixture.db.update(layoutResource).set({
+          currentRevision: 2,
+          updatedBy: 'out-of-band-winner',
+          updatedAt: winnerAt
+        }).where(eq(layoutResource.id, created.id))
+        await fixture.db.run(sql.raw('BEGIN IMMEDIATE'))
+        try {
+          for (const statement of statements) await statement
+          await fixture.db.run(sql.raw('COMMIT'))
+        } catch (error) {
+          await fixture.db.run(sql.raw('ROLLBACK'))
+          throw error
+        }
+      })
+      const d1Db = new Proxy(fixture.db, {
+        get(target, property, receiver) {
+          if (property === 'batch') return batch
+          if (property === 'transaction') {
+            return vi.fn(() => {
+              throw new Error('D1 Layout save must use batch')
+            })
+          }
+          return Reflect.get(target, property, receiver)
+        }
+      })
+      dbState.current = d1Db
+      const event = { context: { cloudflare: { env: { DB: {} } } } } as any
+
+      await expect(updateLayout(event, created.id, {
+        revision: 1,
+        document: withGap(created.document!, 'none')
+      }, 'stale-writer')).rejects.toMatchObject({
+        statusCode: 409,
+        data: expect.objectContaining({ currentRevision: 2, updatedBy: 'out-of-band-winner' })
+      })
+      expect(batch).toHaveBeenCalledOnce()
+      const resourceAfter = await fixture.db.select().from(layoutResource)
+        .where(eq(layoutResource.id, created.id)).get()
+      expect(resourceAfter).toMatchObject({
+        currentRevision: 2,
+        updatedBy: 'out-of-band-winner',
+        documentJson: resourceBefore?.documentJson,
+        name: resourceBefore?.name
+      })
+      expect(await fixture.db.select().from(siteMenuReference)
+        .where(eq(siteMenuReference.ownerId, created.id))).toEqual(referencesBefore)
+      expect(await fixture.db.select().from(documentRevision).where(and(
+        eq(documentRevision.documentKind, 'layout'),
+        eq(documentRevision.documentId, created.id)
+      ))).toEqual(historyBefore)
+    } finally {
+      fixture.close()
+      dbState.current = null
+    }
+  })
+
+  it('returns a conflict when a later writer commits before the save post-read', async () => {
+    const fixture = await createTestSqliteDb()
+    dbState.current = fixture.db
+    try {
+      await runMigrations(fixture.db)
+      const { createLayout, updateLayout } = await import('../server/utils/site-layouts')
+      const created = await createLayout({} as any, { name: 'D1 post-read guard', presetKey: 'header-footer' }, 'creator')
+      const submitted = withGap(created.document!, 'none')
+      const laterDocument = withGap(created.document!, 'compact')
+      const laterAt = new Date('2026-07-18T12:01:00.000Z')
+      const batch = vi.fn(async (statements: any[]) => {
+        await fixture.db.run(sql.raw('BEGIN IMMEDIATE'))
+        try {
+          for (const statement of statements) await statement
+          await fixture.db.run(sql.raw('COMMIT'))
+        } catch (error) {
+          await fixture.db.run(sql.raw('ROLLBACK'))
+          throw error
+        }
+        // Model another complete writer between this batch and its post-read.
+        await fixture.db.update(layoutResource).set({
+          documentJson: JSON.stringify(laterDocument),
+          currentRevision: 3,
+          updatedBy: 'later-writer',
+          updatedAt: laterAt
+        }).where(eq(layoutResource.id, created.id))
+        await fixture.db.insert(documentRevision).values({
+          id: 'd1-post-read-winner-revision',
+          documentKind: 'layout',
+          documentId: created.id,
+          revision: 3,
+          action: 'save',
+          status: 'active',
+          title: created.name,
+          snapshotJson: JSON.stringify(laterDocument),
+          createdBy: 'later-writer',
+          createdAt: laterAt
+        })
+      })
+      const d1Db = new Proxy(fixture.db, {
+        get(target, property, receiver) {
+          if (property === 'batch') return batch
+          if (property === 'transaction') {
+            return vi.fn(() => {
+              throw new Error('D1 Layout save must use batch')
+            })
+          }
+          return Reflect.get(target, property, receiver)
+        }
+      })
+      dbState.current = d1Db
+      const event = { context: { cloudflare: { env: { DB: {} } } } } as any
+
+      await expect(updateLayout(event, created.id, {
+        revision: 1,
+        document: submitted
+      }, 'first-writer')).rejects.toMatchObject({
+        statusCode: 409,
+        data: expect.objectContaining({ currentRevision: 3, updatedBy: 'later-writer' })
+      })
+      expect(batch).toHaveBeenCalledOnce()
+      expect(await fixture.db.select().from(layoutResource).where(eq(layoutResource.id, created.id)).get())
+        .toMatchObject({
+          currentRevision: 3,
+          updatedBy: 'later-writer',
+          documentJson: JSON.stringify(laterDocument)
+        })
+    } finally {
+      fixture.close()
+      dbState.current = null
+    }
+  })
+
   it('keeps D1 Menu references when the guarded resource delete matches no row', async () => {
     const fixture = await createTestSqliteDb()
     dbState.current = fixture.db
@@ -407,6 +553,11 @@ describe('Layout persistence', () => {
         eq(siteMenuReference.ownerType, 'site-layout'),
         eq(siteMenuReference.ownerId, created.id)
       ))).toHaveLength(1)
+      expect(await fixture.db.select({ revision: documentRevision.revision, action: documentRevision.action })
+        .from(documentRevision).where(and(
+          eq(documentRevision.documentKind, 'layout'),
+          eq(documentRevision.documentId, created.id)
+        ))).toEqual([{ revision: 1, action: 'create' }])
     } finally {
       fixture.close()
       dbState.current = null
@@ -511,6 +662,39 @@ describe('Layout persistence', () => {
       expect(serialized).not.toContain('app/layouts/desk.vue')
       expect(serialized).not.toContain('UHeader')
       expect(serialized).not.toContain('runtimeComponentKey')
+    } finally {
+      fixture.close()
+      dbState.current = null
+    }
+  })
+
+  it('sanitizes forbidden stored property names from admin repair projections', async () => {
+    const fixture = await createTestSqliteDb()
+    dbState.current = fixture.db
+    try {
+      await runMigrations(fixture.db)
+      const { createLayout, getLayout, listLayouts } = await import('../server/utils/site-layouts')
+      const created = await createLayout({} as any, { name: 'Forbidden property repair', presetKey: 'blank' }, 'admin')
+      await fixture.db.update(layoutResource).set({
+        documentJson: JSON.stringify({ ...created.document, 'app/layouts/desk.vue': true })
+      }).where(eq(layoutResource.id, created.id))
+
+      const admin = await getLayout({} as any, created.id)
+      expect(admin).toMatchObject({
+        name: 'Forbidden property repair',
+        status: 'repair-required',
+        document: null,
+        repair: {
+          revision: 1,
+          issues: [{
+            path: '',
+            message: 'Stored Layout contains forbidden framework or runtime data',
+            kind: 'forbidden'
+          }]
+        }
+      })
+      const listed = await listLayouts({} as any)
+      expect(JSON.stringify({ admin, listed })).not.toContain('app/layouts/desk.vue')
     } finally {
       fixture.close()
       dbState.current = null

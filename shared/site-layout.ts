@@ -372,6 +372,10 @@ const forbiddenLayoutIdentifiers = [
   /\.vue$/i
 ]
 
+function isForbiddenLayoutIdentifier(value: string) {
+  return forbiddenLayoutIdentifiers.some(pattern => pattern.test(value))
+}
+
 /**
  * Defense in depth for persisted public rendering contracts. Zod strictness
  * rejects unknown fields; this traversal also reports dangerous framework and
@@ -382,7 +386,7 @@ export function findForbiddenLayoutData(value: unknown): LayoutValidationIssue[]
   const seen = new Set<unknown>()
   const visit = (candidate: unknown, path: Array<string | number>) => {
     if (typeof candidate === 'string') {
-      if (forbiddenLayoutIdentifiers.some(pattern => pattern.test(candidate))) {
+      if (isForbiddenLayoutIdentifier(candidate)) {
         issues.push({ path: path.join('.'), message: 'Framework or runtime identifier is not allowed', kind: 'forbidden' })
       }
       return
@@ -398,7 +402,19 @@ export function findForbiddenLayoutData(value: unknown): LayoutValidationIssue[]
       if (forbiddenLayoutKeys.has(key.toLowerCase())) {
         issues.push({ path: keyPath.join('.'), message: `Persisted Layouts cannot contain ${key}`, kind: 'forbidden' })
       }
-      visit(nested, keyPath)
+      if (isForbiddenLayoutIdentifier(key)) {
+        // Never echo an unsafe property name through issue paths or messages.
+        // Continue scanning its value at the safe parent path so nested
+        // executable data still fails closed without leaking the raw key.
+        issues.push({
+          path: path.join('.'),
+          message: 'Persisted Layout contains a forbidden framework or runtime property name',
+          kind: 'forbidden'
+        })
+        visit(nested, path)
+      } else {
+        visit(nested, keyPath)
+      }
     }
   }
   visit(value, [])

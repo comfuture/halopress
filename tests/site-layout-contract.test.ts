@@ -156,7 +156,8 @@ describe('Layout domain contract', () => {
       { label: 'blank vue path', mutate: candidate => { candidate.name = 'app/layouts/blank.vue' } },
       { label: 'components alias', mutate: candidate => { candidate.name = '#components/UHeader' } },
       { label: 'tilde import', mutate: candidate => { candidate.name = '~/components/Header.vue' } },
-      { label: 'double tilde import', mutate: candidate => { candidate.name = '~~/app/layouts/desk.vue' } }
+      { label: 'double tilde import', mutate: candidate => { candidate.name = '~~/app/layouts/desk.vue' } },
+      { label: 'forbidden object key', mutate: candidate => { candidate['app/layouts/desk.vue'] = true } }
     ]
 
     for (const attack of attacks) {
@@ -167,6 +168,20 @@ describe('Layout domain contract', () => {
     }
 
     expect(findForbiddenLayoutData(base)).toEqual([])
+
+    const forbiddenProperty = { ...clone(base), 'app/layouts/desk.vue': true }
+    const forbiddenPropertyIssues = findForbiddenLayoutData(forbiddenProperty)
+    expect(forbiddenPropertyIssues).toEqual([{
+      path: '',
+      message: 'Persisted Layout contains a forbidden framework or runtime property name',
+      kind: 'forbidden'
+    }])
+    expect(JSON.stringify(forbiddenPropertyIssues)).not.toContain('app/layouts/desk.vue')
+    const parsedForbiddenProperty = parseLayoutDocument(forbiddenProperty)
+    expect(parsedForbiddenProperty.success).toBe(false)
+    if (!parsedForbiddenProperty.success) {
+      expect(JSON.stringify(parsedForbiddenProperty.issues)).not.toContain('app/layouts/desk.vue')
+    }
   })
 
   it('enforces forbidden identifiers through direct document and resolved projection schemas', () => {

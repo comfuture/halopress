@@ -36,6 +36,7 @@ import {
 import type { Db } from '../db/db'
 import { getDb } from '../db/db'
 import {
+  documentRevision as documentRevisionTable,
   layoutReference as layoutReferenceTable,
   layoutResource as layoutResourceTable,
   siteMenuReference as siteMenuReferenceTable,
@@ -178,6 +179,49 @@ async function requireLayoutRow(db: Db, layoutId: string) {
   const row = await findLayoutRow(db, layoutId)
   if (!row) throw new LayoutNotFoundError()
   return row
+}
+
+function isDocumentRevisionConflict(error: unknown) {
+  return Boolean(error && typeof error === 'object'
+    && 'statusCode' in error
+    && (error as { statusCode?: unknown }).statusCode === 409
+    && 'data' in error
+    && Number.isInteger((error as { data?: { currentRevision?: unknown } }).data?.currentRevision))
+}
+
+async function rethrowResourceRevisionConflict(
+  error: unknown,
+  db: Db,
+  layoutId: string,
+  expectedRevision: number
+) {
+  if (!isDocumentRevisionConflict(error)) return
+  const current = await findLayoutRow(db, layoutId)
+  if (current && current.currentRevision !== expectedRevision) throw revisionConflict(current)
+}
+
+async function guardLayoutResourceRevision(
+  tx: Db,
+  statements: any[] | undefined,
+  layoutId: string,
+  expectedRevision: number
+) {
+  // History is normally authoritative, but a corrupt/out-of-band resource
+  // update can advance only the row. If the expected resource row no longer
+  // exists, deliberately re-insert its immutable expected history revision.
+  // The unique conflict aborts the SQLite transaction or D1 batch before any
+  // resource, reference, or history mutation can commit.
+  const resourceAtExpectedRevision = tx.select({ one: sql`1` }).from(layoutResourceTable).where(and(
+    eq(layoutResourceTable.id, layoutId),
+    eq(layoutResourceTable.currentRevision, expectedRevision)
+  ))
+  const failedResourceGuard = tx.select().from(documentRevisionTable).where(and(
+    eq(documentRevisionTable.documentKind, 'layout'),
+    eq(documentRevisionTable.documentId, layoutId),
+    eq(documentRevisionTable.revision, expectedRevision),
+    notExists(resourceAtExpectedRevision)
+  )).limit(1)
+  await executeDbStatement(tx.insert(documentRevisionTable).select(failedResourceGuard), statements)
 }
 
 export async function listLayoutUsage(db: Db, layoutId: string): Promise<LayoutUsage[]> {
@@ -420,6 +464,7 @@ async function saveLayoutDocument(
       actorId,
       preserveOrdinarySaves: true,
       work: async (tx, statements, nextRevision, now) => {
+        await guardLayoutResourceRevision(tx, statements, layoutId, expectedRevision)
         await executeDbStatement(tx.update(layoutResourceTable).set({
           name: document.name,
           nameKey: layoutNameKey(document.name),
@@ -435,6 +480,7 @@ async function saveLayoutDocument(
       }
     })
   } catch (error) {
+    await rethrowResourceRevisionConflict(error, db, layoutId, expectedRevision)
     if (isUniqueLayoutNameError(error)) throw new LayoutNameConflictError()
     if (isForeignKeyConstraintError(error)) {
       await assertMenuReferencesAvailable(db, document)
@@ -443,7 +489,7 @@ async function saveLayoutDocument(
   }
 
   const row = await requireLayoutRow(db, layoutId)
-  if (row.currentRevision < expectedRevision + 1) throw revisionConflict(row)
+  if (row.currentRevision !== expectedRevision + 1) throw revisionConflict(row)
   return await rowToAdminResource(db, row)
 }
 
@@ -551,6 +597,7 @@ export async function deleteLayout(
       actorId,
       preserveOrdinarySaves: true,
       work: async (tx, statements) => {
+        await guardLayoutResourceRevision(tx, statements, layoutId, parsed.data.revision)
         // Do not pre-delete normalized Layout assignments: the restrictive FK
         // must make an assignment/delete race fail atomically and actionably.
         await executeDbStatement(tx.delete(layoutResourceTable).where(and(
@@ -571,6 +618,7 @@ export async function deleteLayout(
       }
     })
   } catch (error) {
+    await rethrowResourceRevisionConflict(error, db, layoutId, parsed.data.revision)
     if (isForeignKeyConstraintError(error)) throw new LayoutInUseError(await listLayoutUsage(db, layoutId))
     throw error
   }
