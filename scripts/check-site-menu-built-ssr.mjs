@@ -351,6 +351,11 @@ async function assertBuiltPageMode(origin, expectedMode) {
     new RegExp(`<body(?=[^>]*data-halo-theme-enabled="true")(?=[^>]*${modeAttribute})[^>]*>`),
     `Expected built SSR body to serialize the ${expectedMode} Site Theme mode`
   )
+  assert.ok(!html.includes('[object Object]'), 'Expected Unhead to serialize object-form body styles')
+  assert.ok(
+    html.includes('--ui-primary:var(--halo-site-color-primary'),
+    'Expected built SSR body to serialize the Site Theme UI custom properties'
+  )
   assert.match(
     html,
     new RegExp(`<div(?=[^>]*class="site-shell")(?=[^>]*${modeAttribute})[^>]*>`),

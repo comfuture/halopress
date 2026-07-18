@@ -313,7 +313,7 @@ export async function updateSitePresentation(
         isEncrypted: sql<boolean>`0`,
         groupKey: sql<string>`${SITE_PRESENTATION_GROUP}`,
         updatedBy: actorId === null ? sql<string | null>`null` : sql<string>`${actorId}`,
-        updatedAt: sql<Date>`${now.getTime()}`,
+        updatedAt: sql<Date>`${sql.param(now, settingsTable.updatedAt)}`,
         note: sql<string>`${'Managed from Desk site presentation settings'}`
       }).from(settingsTable).where(and(
         eq(settingsTable.scope, 'global'),
