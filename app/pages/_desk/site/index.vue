@@ -2,6 +2,7 @@
 definePageMeta({ layout: 'desk' })
 
 const { data: presentation, pending, error, refresh } = useSitePresentationStatus()
+const { data: menuData, pending: menusPending, error: menusError } = useSiteMenusStatus()
 
 const presentationStatus = computed(() => {
   if (presentation.value?.malformedStoredValue) return { label: 'Needs repair', color: 'warning' as const }
@@ -9,10 +10,10 @@ const presentationStatus = computed(() => {
   return { label: 'Built-in defaults', color: 'info' as const }
 })
 
-const presentationLinkCount = computed(() => {
-  const items = presentation.value?.value.navigation.items ?? []
-  return items.reduce((count, item) => count + 1 + item.children.length, 0)
-})
+const menuSetCount = computed(() => menuData.value?.items.length ?? 0)
+const menuLinkCount = computed(() => (menuData.value?.items ?? []).reduce((total, menu) => (
+  total + menu.document.items.reduce((count, item) => count + 1 + item.children.length, 0)
+), 0))
 </script>
 
 <template>
@@ -101,11 +102,11 @@ const presentationLinkCount = computed(() => {
         >
           <template #footer>
             <div class="flex w-full items-center justify-between gap-3">
-              <UBadge color="neutral" variant="soft">
-                Not available yet
+              <UBadge :color="menusError ? 'warning' : 'success'" variant="soft">
+                {{ menusPending ? 'Loading' : menusError ? 'Unavailable' : `${menuSetCount} menu ${menuSetCount === 1 ? 'set' : 'sets'}` }}
               </UBadge>
               <span class="text-xs text-muted">
-                {{ presentationLinkCount }} presentation {{ presentationLinkCount === 1 ? 'link' : 'links' }}
+                {{ menuLinkCount }} saved {{ menuLinkCount === 1 ? 'link' : 'links' }}
               </span>
             </div>
           </template>

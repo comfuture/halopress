@@ -1,5 +1,11 @@
 import { z } from 'zod'
 
+import type {
+  PublicSiteMenuDocument,
+  ResolvedSiteMenuLeaf,
+  SiteMenuItem
+} from './site-menu'
+
 export const SITE_PRIMARY_COLORS = ['blue', 'emerald', 'indigo', 'orange', 'purple', 'rose', 'teal'] as const
 export const SITE_NEUTRAL_COLORS = ['gray', 'neutral', 'slate', 'stone', 'zinc'] as const
 export const SITE_THEME_PRESETS = {
@@ -126,7 +132,6 @@ export const sitePresentationPatchSchema = z.object({
   general: siteGeneralSchema.optional(),
   appearance: siteAppearanceSchema.optional(),
   shell: siteShellSchema.optional(),
-  navigation: siteNavigationSchema.optional(),
   footer: siteFooterSchema.optional()
 }).strict().refine(value => Object.keys(value).length > 0, 'Provide at least one settings section')
 
@@ -148,12 +153,27 @@ export function siteThemePresetTokens(presetName: SiteThemePreset): Omit<SitePre
   }
 }
 
-export type PublicSitePresentation = Omit<SitePresentation, 'general'> & {
+export type SitePresentationAdminValue = Omit<SitePresentation, 'navigation'> & {
+  navigation: { items: SiteMenuItem[] }
+}
+
+// Footer links retain the existing typed destination delivery contract. The
+// resolved `to` is additive so current consumers can keep reading destination
+// while the public Site shell follows canonical routes without unsafe casts.
+export type PublicSiteFooterLink = PublicNavigationLeaf & {
+  to: string
+}
+
+export type PublicSitePresentation = Omit<SitePresentation, 'general' | 'navigation' | 'footer'> & {
   revision: string
+  navigation: PublicSiteMenuDocument
   general: Omit<SitePresentation['general'], 'logoAssetId' | 'faviconAssetId' | 'socialImageAssetId'> & {
     logoUrl: string | null
     faviconUrl: string
     socialImageUrl: string
+  }
+  footer: Omit<SitePresentation['footer'], 'links'> & {
+    links: PublicSiteFooterLink[]
   }
 }
 
@@ -193,9 +213,6 @@ export function defaultSitePresentation(): SitePresentation {
 }
 
 export function resolvePublicNavigationTarget(destination: PublicNavigationDestination) {
-  if (typeof (destination as PublicNavigationDestination & { publicPath?: unknown }).publicPath === 'string') {
-    return (destination as PublicNavigationDestination & { publicPath: string }).publicPath
-  }
   if (destination.type === 'home') return '/'
   if (destination.type === 'page') return `/p/${encodeURIComponent(destination.pageId)}`
   if (destination.type === 'collection') return `/${encodeURIComponent(destination.schemaKey)}/`
@@ -203,6 +220,25 @@ export function resolvePublicNavigationTarget(destination: PublicNavigationDesti
     return `/${encodeURIComponent(destination.schemaKey)}/${encodeURIComponent(destination.contentId)}`
   }
   return destination.url
+}
+
+function resolveLegacyNavigationLeaf(item: PublicNavigationLeaf): ResolvedSiteMenuLeaf {
+  const externalWindow = item.destination.type === 'external' && item.destination.newWindow
+  return {
+    id: item.id,
+    label: item.label,
+    to: resolvePublicNavigationTarget(item.destination),
+    value: item.id,
+    target: externalWindow ? '_blank' : undefined,
+    rel: externalWindow ? 'noopener noreferrer' : undefined
+  }
+}
+
+function resolveLegacyFooterLink(item: PublicNavigationLeaf): PublicSiteFooterLink {
+  return {
+    ...item,
+    to: resolvePublicNavigationTarget(item.destination)
+  }
 }
 
 export function toPublicSitePresentation(
@@ -227,7 +263,16 @@ export function toPublicSitePresentation(
     },
     appearance: value.appearance,
     shell: value.shell,
-    navigation: value.navigation,
-    footer: value.footer
+    navigation: {
+      version: 1,
+      items: value.navigation.items.map(item => ({
+        ...resolveLegacyNavigationLeaf(item),
+        children: item.children.map(resolveLegacyNavigationLeaf)
+      }))
+    },
+    footer: {
+      ...value.footer,
+      links: value.footer.links.map(resolveLegacyFooterLink)
+    }
   }
 }

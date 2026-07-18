@@ -8,6 +8,8 @@ import {
   installation,
   publicationRevision,
   schema,
+  siteMenuReference,
+  siteMenuSet,
   user
 } from '../server/db/schema'
 import { installInputSchema } from '../server/utils/install-input'
@@ -96,7 +98,7 @@ describe('installation state', () => {
 
     await runCloudflareMigrations(db)
 
-    expect(batches).toHaveLength(8)
+    expect(batches).toHaveLength(9)
     expect(batches.every(batch => batch.every(statement => typeof statement.query === 'string'))).toBe(true)
     expect(batches.flat().some(statement => statement.query === 'PRAGMA foreign_keys = OFF')).toBe(false)
     expect(batches.flat().some(statement => statement.query === 'PRAGMA defer_foreign_keys = ON')).toBe(true)
@@ -108,7 +110,8 @@ describe('installation state', () => {
       '0004_add_editorial_safety_revisions.sql',
       '0005_add_schema_lifecycle_status.sql',
       '0006_add_public_member_identities.sql',
-      '0007_add_public_routes_and_aliases.sql'
+      '0007_add_public_routes_and_aliases.sql',
+      '0008_add_site_menu_sets.sql'
     ].map(name => ({
       query: 'INSERT INTO d1_migrations (name) VALUES (?)',
       params: [name]
@@ -125,6 +128,20 @@ describe('installation state', () => {
         canInstall: false,
         phase: 'migration_required',
         missingTables: ['document_revision']
+      })
+    })
+  })
+
+  it.each(['site_menu_set', 'site_menu_reference'])('requires the %s table before reporting installation readiness', async (table) => {
+    await withDatabase(async (db) => {
+      await runMigrations(db)
+      await db.run(sql.raw(`DROP TABLE ${table}`))
+
+      expect(await getInstallStatus(db)).toMatchObject({
+        ready: false,
+        canInstall: false,
+        phase: 'migration_required',
+        missingTables: [table]
       })
     })
   })
@@ -160,6 +177,16 @@ describe('installation state', () => {
         phase: 'complete',
         userCount: 1
       })
+      expect(await db.select().from(siteMenuSet)).toEqual([
+        expect.objectContaining({ id: 'global-navigation', bootstrapOwned: true })
+      ])
+      expect(await db.select().from(siteMenuReference)).toEqual([
+        expect.objectContaining({
+          ownerType: 'public-site-shell',
+          ownerId: 'default-public-site',
+          menuSetId: 'global-navigation'
+        })
+      ])
     })
   })
 

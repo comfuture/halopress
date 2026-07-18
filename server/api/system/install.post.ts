@@ -113,7 +113,7 @@ export default defineEventHandler(async (event) => {
       sub = `user:${adminId}`
     }
 
-    await completeInstallation(db, claim.leaseToken, sub)
+    await completeInstallation(db, claim.leaseToken, sub, event)
     clearSetupSessionCookie(event, isCloudflareRuntime)
     return { ok: true }
   } catch (error) {
