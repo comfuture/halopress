@@ -44,6 +44,7 @@ const state = reactive({
   description: '',
   socialImageAssetId: '',
   structuredDataType: '',
+  layoutId: null as string | null,
   content: emptyDoc as JSONContent
 })
 
@@ -63,6 +64,7 @@ function buildSnapshot() {
   return {
     title: state.title || '',
     status: state.status,
+    layoutId: state.layoutId,
     ...publicMetadataPayload(),
     content: state.content
   }
@@ -133,6 +135,7 @@ watch(
     state.description = next.seo?.description || ''
     state.socialImageAssetId = next.seo?.imageAssetId || ''
     state.structuredDataType = next.seo?.structuredDataType || ''
+    state.layoutId = typeof next.layoutId === 'string' ? next.layoutId : null
     state.content = next.content || emptyDoc
     lastSavedJson.value = stableStringify(buildSnapshot())
   },
@@ -145,7 +148,7 @@ async function saveDraft() {
   try {
     await $fetch(`/api/page/${id.value}`, {
       method: 'PUT',
-      body: { revision: currentRevision.value, title: state.title, content: state.content, ...publicMetadataPayload() }
+      body: { revision: currentRevision.value, title: state.title, content: state.content, layoutId: state.layoutId, ...publicMetadataPayload() }
     })
     toast.add({ title: 'Saved draft' })
     await refresh()
@@ -162,7 +165,7 @@ async function publish() {
   try {
     await $fetch(`/api/page/${id.value}/publish`, {
       method: 'POST',
-      body: { revision: currentRevision.value, title: state.title, content: state.content, ...publicMetadataPayload() }
+      body: { revision: currentRevision.value, title: state.title, content: state.content, layoutId: state.layoutId, ...publicMetadataPayload() }
     })
     toast.add({ title: 'Published' })
     await refresh()
@@ -388,8 +391,11 @@ const actionMenuItems = computed<DropdownMenuItem[][]>(() => {
           v-model:public-path="state.publicPath"
           v-model:description="state.description"
           v-model:social-image-asset-id="state.socialImageAssetId"
+          v-model:layout-id="state.layoutId"
           :editable="!isDeleted"
           :page-validation-message="publishValidationIssues[0]?.message"
+          :published-layout-id="doc?.publishedLayoutId ?? null"
+          :has-published-revision="doc?.hasPublishedRevision === true"
           class="min-h-0 flex-1"
         />
       </div>

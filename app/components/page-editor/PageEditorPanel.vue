@@ -13,6 +13,8 @@ const props = withDefaults(defineProps<{
   activeLabel?: string
   editable?: boolean
   pageValidationMessage?: string
+  publishedLayoutId?: string | null
+  hasPublishedRevision?: boolean
 }>(), {
   activeLabel: undefined,
   editable: true,
@@ -31,6 +33,7 @@ const pageTitle = defineModel<string>('pageTitle', { default: '' })
 const publicPath = defineModel<string>('publicPath', { default: '' })
 const description = defineModel<string>('description', { default: '' })
 const socialImageAssetId = defineModel<string>('socialImageAssetId', { default: '' })
+const layoutId = defineModel<string | null>('layoutId', { default: null })
 const inspectorTabLabel = computed(() => (
   activeTab.value === 'inspector' && !props.selectedBlock ? 'Page properties' : 'Inspector'
 ))
@@ -102,8 +105,11 @@ function forwardDragStart(event: DragEvent, item: PagePaletteItem) {
           v-model:public-path="publicPath"
           v-model:description="description"
           v-model:social-image-asset-id="socialImageAssetId"
+          v-model:layout-id="layoutId"
           class="min-h-0 flex-1"
           :disabled="!props.editable"
+          :published-layout-id="props.publishedLayoutId"
+          :has-published-revision="props.hasPublishedRevision"
         />
       </div>
     </template>

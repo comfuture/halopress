@@ -39,6 +39,7 @@ const state = reactive({
   description: '',
   socialImageAssetId: '',
   structuredDataType: '',
+  layoutId: null as string | null,
   content: emptyDoc as JSONContent
 })
 
@@ -65,6 +66,7 @@ function chooseStarter(choice: 'blank' | 'starter') {
 function buildSnapshot() {
   return {
     title: state.title || '',
+    layoutId: state.layoutId,
     ...publicMetadataPayload(),
     content: state.content
   }
@@ -88,7 +90,7 @@ async function saveDraft() {
   try {
     const res = await $fetch<{ id: string }>('/api/page', {
       method: 'POST',
-      body: { title: state.title, content: state.content, ...publicMetadataPayload() }
+      body: { title: state.title, content: state.content, layoutId: state.layoutId, ...publicMetadataPayload() }
     })
     toast.add({ title: 'Created', description: res.id })
     allowNextNavigation()
@@ -107,12 +109,12 @@ async function publish() {
   try {
     const created = await $fetch<{ id: string; revision: number }>('/api/page', {
       method: 'POST',
-      body: { title: state.title, content: state.content, ...publicMetadataPayload() }
+      body: { title: state.title, content: state.content, layoutId: state.layoutId, ...publicMetadataPayload() }
     })
     createdId = created.id
     await $fetch(`/api/page/${created.id}/publish`, {
       method: 'POST',
-      body: { revision: created.revision, title: state.title, content: state.content, ...publicMetadataPayload() }
+      body: { revision: created.revision, title: state.title, content: state.content, layoutId: state.layoutId, ...publicMetadataPayload() }
     })
     toast.add({ title: 'Published', description: created.id })
     allowNextNavigation()
@@ -202,6 +204,7 @@ async function publish() {
           v-model:public-path="state.publicPath"
           v-model:description="state.description"
           v-model:social-image-asset-id="state.socialImageAssetId"
+          v-model:layout-id="state.layoutId"
           :page-validation-message="publishValidationIssues[0]?.message"
           class="min-h-0 flex-1"
         />
