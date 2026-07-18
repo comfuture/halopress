@@ -13,7 +13,14 @@ import {
   type SiteMenuDocument
 } from '../shared/site-menu'
 import { defaultSitePresentation } from '../shared/site-presentation'
-import { publicRoute, settings, siteMenuReference, siteMenuSet } from '../server/db/schema'
+import {
+  page,
+  publicationRevision,
+  publicRoute,
+  settings,
+  siteMenuReference,
+  siteMenuSet
+} from '../server/db/schema'
 import { runMigrations } from '../server/utils/install'
 import { createTestSqliteDb } from './fixtures/sqlite'
 
@@ -694,10 +701,15 @@ describe('Global navigation compatibility and cache revision', () => {
     try {
       await runMigrations(fixture.db)
       const now = new Date('2026-07-18T00:00:00.000Z')
+      const presentation = defaultSitePresentation()
+      presentation.footer.links = [
+        { id: 'about-footer', label: 'About', destination: { type: 'page', pageId: 'about-page' } },
+        { id: 'private-footer', label: 'Private', destination: { type: 'page', pageId: 'private-page' } }
+      ]
       await fixture.db.insert(settings).values({
         scope: 'global',
         key: 'site.presentation',
-        value: JSON.stringify(defaultSitePresentation()),
+        value: JSON.stringify(presentation),
         valueType: 'json',
         isEncrypted: false,
         groupKey: 'site.presentation',
@@ -707,22 +719,74 @@ describe('Global navigation compatibility and cache revision', () => {
       const { updateSiteMenu } = await import('../server/utils/site-menus')
       await updateSiteMenu({} as any, GLOBAL_SITE_MENU_ID, {
         name: 'Global navigation',
-        document: document([{ ...aboutItem, children: [] }])
+        document: document([
+          { ...aboutItem, children: [] },
+          {
+            id: 'private-menu',
+            label: 'Private',
+            destination: { type: 'page', pageId: 'private-page' },
+            children: []
+          }
+        ])
       }, 'admin-1')
-      await fixture.db.insert(publicRoute).values({
-        path: '/about',
-        routeKind: 'canonical',
+      await fixture.db.insert(publicationRevision).values({
+        id: 'publication-about-page',
         documentKind: 'page',
         documentId: 'about-page',
-        schemaKey: null,
-        seoJson: null,
-        createdAt: now,
-        updatedAt: now
+        title: 'Published About',
+        contentJson: JSON.stringify({ type: 'doc', content: [] }),
+        createdAt: now
       })
+      await fixture.db.insert(page).values([
+        {
+          id: 'about-page',
+          title: 'Working About',
+          status: 'published',
+          contentJson: JSON.stringify({ type: 'doc', content: [] }),
+          publishedRevisionId: 'publication-about-page',
+          createdAt: now,
+          updatedAt: now
+        },
+        {
+          id: 'private-page',
+          title: 'Private draft',
+          status: 'draft',
+          contentJson: JSON.stringify({ type: 'doc', content: [] }),
+          createdAt: now,
+          updatedAt: now
+        }
+      ])
+      await fixture.db.insert(publicRoute).values([
+        {
+          path: '/about',
+          routeKind: 'canonical',
+          documentKind: 'page',
+          documentId: 'about-page',
+          schemaKey: null,
+          seoJson: null,
+          createdAt: now,
+          updatedAt: now
+        },
+        {
+          path: '/private-page',
+          routeKind: 'canonical',
+          documentKind: 'page',
+          documentId: 'private-page',
+          schemaKey: null,
+          seoJson: null,
+          createdAt: now,
+          updatedAt: now
+        }
+      ])
 
       const { getPublicSitePresentation } = await import('../server/utils/site-presentation-settings')
       const before = await getPublicSitePresentation({} as any)
       expect(before.navigation.items[0]!.to).toBe('/about')
+      expect(before.navigation.items.map(item => item.id)).toEqual(['about-item'])
+      expect(before.footer.links).toEqual([
+        expect.objectContaining({ id: 'about-footer', to: '/about' })
+      ])
+      expect(JSON.stringify(before)).not.toContain('private-page')
 
       await fixture.db.update(publicRoute).set({ path: '/company/about', updatedAt: new Date('2026-07-18T01:00:00.000Z') })
         .where(eq(publicRoute.path, '/about'))

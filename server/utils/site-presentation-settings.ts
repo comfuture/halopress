@@ -1,9 +1,9 @@
+import { createHash } from 'node:crypto'
 import type { H3Event } from 'h3'
 import { and, eq, inArray, notExists, sql } from 'drizzle-orm'
 
 import {
   defaultSitePresentation,
-  resolvePublicNavigationTarget,
   sitePresentationPatchSchema,
   sitePresentationSchema,
   toPublicSitePresentation,
@@ -19,8 +19,11 @@ import { asset as assetTable, settings as settingsTable } from '../db/schema'
 import { getSetting, upsertSetting } from './settings'
 import { siteThemeSchema } from '../../shared/site-theme'
 import { getSiteMode } from './site-mode-settings'
-import { canonicalPathMap, type PublicDocumentKind } from '../cms/public-routes'
-import { getGlobalSiteMenuDocument, resolvePublicSiteMenu } from './site-menus'
+import {
+  getGlobalSiteMenuDocument,
+  resolveAnonymousReadableNavigationTargets,
+  resolvePublicSiteMenu
+} from './site-menus'
 
 export const SITE_PRESENTATION_SETTING_KEY = 'site.presentation'
 export const SITE_PRESENTATION_GROUP = 'site.presentation'
@@ -199,17 +202,10 @@ export async function getSitePresentationAdmin(event: H3Event): Promise<SitePres
   }
 }
 
-function resolvePublicFooterLink(item: PublicNavigationLeaf, paths: ReadonlyMap<string, string>): PublicSiteFooterLink {
-  const key = item.destination.type === 'page'
-    ? `page:${item.destination.pageId}`
-    : item.destination.type === 'collection'
-      ? `schema:${item.destination.schemaKey}`
-      : item.destination.type === 'content'
-        ? `content:${item.destination.contentId}`
-        : null
+function resolvePublicFooterLink(item: PublicNavigationLeaf, to: string): PublicSiteFooterLink {
   return {
     ...item,
-    to: key && paths.get(key) ? paths.get(key)! : resolvePublicNavigationTarget(item.destination)
+    to
   }
 }
 
@@ -219,13 +215,7 @@ export async function getPublicSitePresentation(event: H3Event): Promise<PublicS
   const presentation = toPublicSitePresentation(resolved.value, availableIds, 'pending')
   const menu = await resolvePublicSiteMenu(event, resolved.value.navigation.items)
   const destinations = resolved.value.footer.links.map(item => item.destination)
-  const identities = destinations.flatMap((destination) => {
-    if (destination.type === 'page') return [{ documentKind: 'page' as PublicDocumentKind, documentId: destination.pageId }]
-    if (destination.type === 'collection') return [{ documentKind: 'schema' as PublicDocumentKind, documentId: destination.schemaKey }]
-    if (destination.type === 'content') return [{ documentKind: 'content' as PublicDocumentKind, documentId: destination.contentId }]
-    return []
-  })
-  const paths = await canonicalPathMap(await getDb(event), identities)
+  const footerTargets = await resolveAnonymousReadableNavigationTargets(event, destinations)
   const projected: PublicSitePresentation = {
     version: presentation.version,
     revision: presentation.revision,
@@ -237,11 +227,33 @@ export async function getPublicSitePresentation(event: H3Event): Promise<PublicS
       variant: presentation.footer.variant,
       copyright: presentation.footer.copyright,
       showRoute: presentation.footer.showRoute,
-      links: resolved.value.footer.links.map(item => resolvePublicFooterLink(item, paths))
+      links: resolved.value.footer.links.flatMap((item, index) => {
+        const to = footerTargets[index]
+        return to ? [resolvePublicFooterLink(item, to)] : []
+      })
     }
   }
   const { revision: _pendingRevision, ...revisionInput } = projected
   return { ...projected, revision: revisionFor(revisionInput) }
+}
+
+/** Public branding only; unlike the full legacy presentation it resolves no Menu or footer targets. */
+export async function getPublicSiteIdentity(event: H3Event) {
+  const resolved = await resolveSitePresentation(event)
+  const availableIds = await availableBrandingAssetIds(event, resolved.value)
+  const presentation = toPublicSitePresentation(resolved.value, availableIds, 'pending')
+  const identity = {
+    siteName: presentation.general.siteName,
+    description: presentation.general.description,
+    locale: presentation.general.locale,
+    logoUrl: presentation.general.logoUrl,
+    faviconUrl: presentation.general.faviconUrl,
+    socialImageUrl: presentation.general.socialImageUrl
+  }
+  return {
+    ...identity,
+    revision: createHash('sha256').update(JSON.stringify(identity)).digest('hex')
+  }
 }
 
 export async function updateSitePresentation(

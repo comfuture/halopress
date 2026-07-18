@@ -123,7 +123,7 @@ describe('Site menu editor interaction contract', () => {
       readFile(resolve(root, 'app/components/site-menu/SiteMenuItemCreateModal.vue'), 'utf8'),
       readFile(resolve(root, 'app/components/SiteAdminSection.vue'), 'utf8'),
       readFile(resolve(root, 'app/pages/_desk/settings/navigation.vue'), 'utf8'),
-      readFile(resolve(root, 'app/layouts/default.vue'), 'utf8')
+      readFile(resolve(root, 'app/components/layout-renderer/BuiltInLayoutRenderer.vue'), 'utf8')
     ])
     expect(listPage).toContain('<template #actions>')
     expect(listPage).toContain('<UModal')

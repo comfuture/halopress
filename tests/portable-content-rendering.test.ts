@@ -76,6 +76,107 @@ describe('portable authored-content renderer', () => {
     expect(html).toContain('<span class="halo-logo-name">Text fallback</span>')
   })
 
+  it('allocates deterministic duplicate heading IDs and ignores hostile stored IDs', () => {
+    const document = {
+      type: 'doc',
+      content: [
+        {
+          type: 'heading',
+          attrs: { level: 2, id: 'stored-admin-anchor', class: 'fixed', onclick: 'alert(1)' },
+          content: [{ type: 'text', text: 'Repeated heading' }]
+        },
+        {
+          type: 'heading',
+          attrs: { level: 3, id: 'stored-second-anchor' },
+          content: [{ type: 'text', text: 'Repeated heading' }]
+        }
+      ]
+    }
+
+    const first = createPortablePageRendering(document, { origin })
+    const second = createPortablePageRendering(structuredClone(document), { origin })
+
+    expect(second).toEqual(first)
+    expect(first.outline).toEqual([
+      { id: 'halo-heading-repeated-heading', level: 2, text: 'Repeated heading' },
+      { id: 'halo-heading-repeated-heading-2', level: 3, text: 'Repeated heading' }
+    ])
+    expect(first.html).toContain('<h2 id="halo-heading-repeated-heading">Repeated heading</h2>')
+    expect(first.html).toContain('<h3 id="halo-heading-repeated-heading-2">Repeated heading</h3>')
+    expect(first.html).not.toMatch(/stored-(?:admin|second)-anchor|onclick=|class="fixed"/)
+  })
+
+  it('fails closed for deeply nested and cyclic hostile heading content without recursive extraction', () => {
+    const deepRoot: Record<string, any> = { type: 'paragraph', content: [] }
+    let cursor = deepRoot
+    for (let depth = 0; depth < 15_000; depth += 1) {
+      const child: Record<string, any> = { type: 'paragraph', content: [] }
+      cursor.content = [child]
+      cursor = child
+    }
+    cursor.content = [{ type: 'text', text: 'Too deep' }]
+    const cyclic: Record<string, any> = { type: 'paragraph', content: [] }
+    cyclic.content = [cyclic]
+
+    for (const content of [[deepRoot], [cyclic]]) {
+      expect(() => createPortablePageRendering({
+        type: 'doc',
+        content: [{ type: 'heading', attrs: { level: 2 }, content }]
+      }, { origin })).not.toThrow()
+      expect(createPortablePageRendering({
+        type: 'doc',
+        content: [{ type: 'heading', attrs: { level: 2 }, content }]
+      }, { origin }).html).toContain('Content exceeds portable rendering limits')
+    }
+  })
+
+  it('bounds the portable outline while retaining deterministic SSR anchors', () => {
+    const document = {
+      type: 'doc',
+      content: Array.from({ length: 140 }, () => ({
+        type: 'heading',
+        attrs: { level: 2 },
+        content: [{ type: 'text', text: 'Section' }]
+      }))
+    }
+
+    const rendering = createPortablePageRendering(document, { origin })
+
+    expect(rendering.outline).toHaveLength(128)
+    expect(rendering.outline[0]).toEqual({ id: 'halo-heading-section', level: 2, text: 'Section' })
+    expect(rendering.outline[127]).toEqual({ id: 'halo-heading-section-128', level: 2, text: 'Section' })
+    expect(rendering.html.match(/<h2 id="halo-heading-section(?:-\d+)?">/g)).toHaveLength(140)
+    expect(rendering.html).toContain('<h2 id="halo-heading-section-140">Section</h2>')
+  })
+
+  it('keeps heading IDs unique across rich-text fields with colliding normalized keys', () => {
+    const richText = {
+      type: 'doc',
+      content: [{
+        type: 'heading',
+        attrs: { level: 2, id: 'stored-heading' },
+        content: [{ type: 'text', text: 'Overview' }]
+      }]
+    }
+    const rendering = createPortableStructuredContentRendering({
+      Body: richText,
+      body: structuredClone(richText)
+    }, [
+      { fieldId: 'field-upper-body', key: 'Body', kind: 'richtext' },
+      { fieldId: 'field-lower-body', key: 'body', kind: 'richtext' }
+    ], { origin })
+    const ids = rendering.outline.map(entry => entry.id)
+
+    expect(rendering.outline).toHaveLength(2)
+    expect(new Set(ids).size).toBe(ids.length)
+    expect(rendering.fields.Body?.outline[0]?.id).not.toBe(rendering.fields.body?.outline[0]?.id)
+    expect(rendering.fields.Body?.html).not.toContain('stored-heading')
+    expect(rendering.fields.body?.html).not.toContain('stored-heading')
+    for (const field of Object.values(rendering.fields)) {
+      expect(classTokens(field.html).every(token => token.startsWith('halo-'))).toBe(true)
+    }
+  })
+
   it('renders every supported color and variant with finite renderer-owned icons', () => {
     for (const color of pageBlockColors) {
       const html = renderPortablePageDocument({

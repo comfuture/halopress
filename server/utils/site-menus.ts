@@ -1,5 +1,6 @@
+import { createHash } from 'node:crypto'
 import type { H3Event } from 'h3'
-import { and, asc, eq, isNull, notExists, sql } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNull, notExists, sql } from 'drizzle-orm'
 
 import {
   GLOBAL_SITE_MENU_ID,
@@ -21,10 +22,19 @@ import {
   type SiteMenuValidationIssue
 } from '../../shared/site-menu'
 import {
+  layoutMenuProjectionSchema,
+  type LayoutRenderContext,
+  type LayoutMenuProjection
+} from '../../shared/layout-rendering'
+import {
   resolvePublicNavigationTarget,
+  type PublicNavigationDestination,
   type PublicNavigationItem
 } from '../../shared/site-presentation'
-import { canonicalPathMap, type PublicDocumentKind } from '../cms/public-routes'
+import {
+  listCanonicalPublicRoutesByIdentity,
+  type PublicDocumentKind
+} from '../cms/public-routes'
 import type { Db } from '../db/db'
 import { getDb } from '../db/db'
 import {
@@ -612,26 +622,16 @@ export async function resolvePublicSiteMenu(
     item.destination,
     ...item.children.map(child => child.destination)
   ])
-  const identities = destinations.flatMap((destination) => {
-    if (destination.type === 'page') return [{ documentKind: 'page' as PublicDocumentKind, documentId: destination.pageId }]
-    if (destination.type === 'collection') return [{ documentKind: 'schema' as PublicDocumentKind, documentId: destination.schemaKey }]
-    if (destination.type === 'content') return [{ documentKind: 'content' as PublicDocumentKind, documentId: destination.contentId }]
-    return []
-  })
-  const paths = await canonicalPathMap(await getDb(event), identities)
-  const resolveLeaf = (item: SiteMenuLeaf): ResolvedSiteMenuLeaf => {
-    const key = item.destination.type === 'page'
-      ? `page:${item.destination.pageId}`
-      : item.destination.type === 'collection'
-        ? `schema:${item.destination.schemaKey}`
-        : item.destination.type === 'content'
-          ? `content:${item.destination.contentId}`
-          : null
+  const targets = await resolveAnonymousReadableNavigationTargets(event, destinations)
+  const targetByDestination = new Map(destinations.map((destination, index) => [destination, targets[index] ?? null]))
+  const resolveLeaf = (item: SiteMenuLeaf): ResolvedSiteMenuLeaf | null => {
+    const to = targetByDestination.get(item.destination)
+    if (!to) return null
     const externalWindow = item.destination.type === 'external' && item.destination.newWindow
     return {
       id: item.id,
       label: item.label,
-      to: key && paths.get(key) ? paths.get(key)! : resolvePublicNavigationTarget(item.destination),
+      to,
       value: item.value || item.id,
       icon: item.icon,
       badge: item.badge,
@@ -642,10 +642,17 @@ export async function resolvePublicSiteMenu(
 
   const publicDocument = publicSiteMenuDocumentSchema.parse({
     version: 1,
-    items: document.items.map(item => ({
-      ...resolveLeaf(item),
-      children: item.children.map(resolveLeaf)
-    }))
+    items: document.items.flatMap((item) => {
+      const parent = resolveLeaf(item)
+      if (!parent) return []
+      return [{
+        ...parent,
+        children: item.children.flatMap(child => {
+          const resolved = resolveLeaf(child)
+          return resolved ? [resolved] : []
+        })
+      }]
+    })
   })
 
   return {
@@ -653,4 +660,194 @@ export async function resolvePublicSiteMenu(
     name: GLOBAL_SITE_MENU_NAME,
     document: publicDocument
   }
+}
+
+export async function resolveAnonymousReadableNavigationTargets(
+  event: H3Event,
+  destinations: PublicNavigationDestination[]
+) {
+  const identities: Array<{ documentKind: PublicDocumentKind, documentId: string }> = []
+  for (const destination of destinations) {
+    if (destination.type === 'page') identities.push({ documentKind: 'page', documentId: destination.pageId })
+    else if (destination.type === 'collection') identities.push({ documentKind: 'schema', documentId: destination.schemaKey })
+    else if (destination.type === 'content') identities.push({ documentKind: 'content', documentId: destination.contentId })
+  }
+  const routes = await listCanonicalPublicRoutesByIdentity(await getDb(event), identities)
+  const routeMap = new Map(routes.map(route => [`${route.documentKind}:${route.documentId}`, route]))
+  return destinations.map((destination): string | null => {
+    if (destination.type === 'home') return '/'
+    if (destination.type === 'external') return resolvePublicNavigationTarget(destination)
+    const documentKind = destination.type === 'page'
+      ? 'page'
+      : destination.type === 'collection' ? 'schema' : 'content'
+    const documentId = destination.type === 'page'
+      ? destination.pageId
+      : destination.type === 'collection' ? destination.schemaKey : destination.contentId
+    const route = routeMap.get(`${documentKind}:${documentId}`)
+    if (!route || (destination.type === 'content' && route.schemaKey !== destination.schemaKey)) return null
+    return route.path
+  })
+}
+
+function publicMenuDigest(value: unknown) {
+  return createHash('sha256').update(JSON.stringify(value)).digest('hex')
+}
+
+function emptyPublicMenuDocument() {
+  return publicSiteMenuDocumentSchema.parse({ version: 1, items: [] })
+}
+
+type ParsedLayoutMenu = {
+  menuSetId: string
+  row?: SiteMenuRow
+  document?: SiteMenuDocument
+  malformed?: true
+}
+
+function layoutMenuIdentities(document: SiteMenuDocument) {
+  const identities: Array<{ documentKind: PublicDocumentKind, documentId: string }> = []
+  for (const item of document.items.flatMap(item => [item, ...item.children])) {
+    const destination = item.destination
+    if (destination.type === 'page') identities.push({ documentKind: 'page', documentId: destination.pageId })
+    else if (destination.type === 'collection') identities.push({ documentKind: 'schema', documentId: destination.schemaKey })
+    else if (destination.type === 'content') identities.push({ documentKind: 'content', documentId: destination.contentId })
+  }
+  return identities
+}
+
+/**
+ * Resolves all selected named Menus through one bounded identity lookup. Only
+ * canonical, published, anonymous-readable internal destinations are emitted;
+ * private IDs are never guessed into legacy paths.
+ */
+export async function resolvePublicLayoutMenus(
+  event: H3Event,
+  menuSetIdInputs: unknown[],
+  options: { context: LayoutRenderContext }
+): Promise<Map<string, LayoutMenuProjection>> {
+  const menuSetIds = [...new Set(menuSetIdInputs.map(value => siteMenuIdSchema.parse(value)))]
+  const db = await getDb(event)
+  const rows = menuSetIds.length
+    ? await db.select().from(siteMenuSetTable).where(inArray(siteMenuSetTable.id, menuSetIds)) as SiteMenuRow[]
+    : []
+  const rowById = new Map(rows.map(row => [row.id, row]))
+  const parsedMenus: ParsedLayoutMenu[] = menuSetIds.map((menuSetId) => {
+    const row = rowById.get(menuSetId)
+    if (!row) return { menuSetId }
+    try {
+      const parsed = siteMenuDocumentSchema.safeParse(JSON.parse(row.documentJson))
+      return parsed.success
+        ? { menuSetId, row, document: parsed.data }
+        : { menuSetId, row, malformed: true }
+    } catch {
+      return { menuSetId, row, malformed: true }
+    }
+  })
+  const publicRoutes = await listCanonicalPublicRoutesByIdentity(
+    db,
+    parsedMenus.flatMap(menu => menu.document ? layoutMenuIdentities(menu.document) : [])
+  )
+  const publicRouteMap = new Map(publicRoutes.map(route => [`${route.documentKind}:${route.documentId}`, route]))
+
+  const projections = new Map<string, LayoutMenuProjection>()
+  for (const parsedMenu of parsedMenus) {
+    const { menuSetId, row, document } = parsedMenu
+    if (!row) {
+      projections.set(menuSetId, layoutMenuProjectionSchema.parse({
+        status: 'missing',
+        menuSetId,
+        document: emptyPublicMenuDocument(),
+        digest: publicMenuDigest({ status: 'missing', menuSetId, context: options.context })
+      }))
+      continue
+    }
+    if (parsedMenu.malformed || !document) {
+      projections.set(menuSetId, layoutMenuProjectionSchema.parse({
+        status: 'malformed',
+        menuSetId,
+        document: emptyPublicMenuDocument(),
+        digest: publicMenuDigest({
+          status: 'malformed',
+          menuSetId,
+          stored: row.documentJson,
+          updatedAt: row.updatedAt.toISOString(),
+          context: options.context
+        })
+      }))
+      continue
+    }
+
+    const resolveLeaf = (item: SiteMenuLeaf): ResolvedSiteMenuLeaf | null => {
+      const destination = item.destination
+      let to: string | null
+      if (destination.type === 'home') to = '/'
+      else if (destination.type === 'external') to = resolvePublicNavigationTarget(destination)
+      else {
+        const documentKind = destination.type === 'page'
+          ? 'page'
+          : destination.type === 'collection' ? 'schema' : 'content'
+        const documentId = destination.type === 'page'
+          ? destination.pageId
+          : destination.type === 'collection' ? destination.schemaKey : destination.contentId
+        const route = publicRouteMap.get(`${documentKind}:${documentId}`)
+        to = route && (destination.type !== 'content' || route.schemaKey === destination.schemaKey)
+          ? route.path
+          : null
+      }
+      if (!to) return null
+      const externalWindow = destination.type === 'external' && destination.newWindow
+      return {
+        id: item.id,
+        label: item.label,
+        to,
+        value: item.value || item.id,
+        icon: item.icon,
+        badge: item.badge,
+        target: externalWindow ? '_blank' : undefined,
+        rel: externalWindow ? 'noopener noreferrer' : undefined
+      }
+    }
+
+    const publicDocument = publicSiteMenuDocumentSchema.parse({
+      version: 1,
+      items: document.items.flatMap((item) => {
+        const parent = resolveLeaf(item)
+        if (!parent) return []
+        return [{
+          ...parent,
+          children: item.children.flatMap(child => {
+            const resolved = resolveLeaf(child)
+            return resolved ? [resolved] : []
+          })
+        }]
+      })
+    })
+    projections.set(menuSetId, layoutMenuProjectionSchema.parse({
+      status: 'ready',
+      menuSetId,
+      name: row.name,
+      document: publicDocument,
+      digest: publicMenuDigest({
+        status: 'ready',
+        menuSetId,
+        name: row.name,
+        stored: row.documentJson,
+        updatedAt: row.updatedAt.toISOString(),
+        context: options.context,
+        document: publicDocument
+      })
+    }))
+  }
+  return projections
+}
+
+export async function resolvePublicLayoutMenu(
+  event: H3Event,
+  menuSetIdInput: unknown,
+  options: { context: LayoutRenderContext }
+): Promise<LayoutMenuProjection> {
+  const menuSetId = siteMenuIdSchema.parse(menuSetIdInput)
+  const projection = (await resolvePublicLayoutMenus(event, [menuSetId], options)).get(menuSetId)
+  if (!projection) throw new Error('Menu projection is unavailable')
+  return projection
 }

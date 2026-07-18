@@ -2,7 +2,7 @@ import { renderToString } from '@vue/server-renderer'
 import { createSSRApp, defineComponent, h, type PropType } from 'vue'
 import { describe, expect, it } from 'vitest'
 
-import { siteNavigationItems } from '../app/utils/site-presentation'
+import { resolvedMenuNavigationItems, siteNavigationItems } from '../app/utils/site-presentation'
 import type { PublicSiteMenuDocument } from '../shared/site-menu'
 import { defaultSitePresentation, toPublicSitePresentation } from '../shared/site-presentation'
 
@@ -44,7 +44,7 @@ function presentation(document: PublicSiteMenuDocument) {
 
 describe('public Site menu adapter contract', () => {
   it.each(['horizontal', 'vertical'] as const)('maps stable canonical navigation for a %s consumer', async (orientation) => {
-    const items = siteNavigationItems(presentation({
+    const document: PublicSiteMenuDocument = {
       version: 1,
       items: [{
         id: 'company',
@@ -66,7 +66,15 @@ describe('public Site menu adapter contract', () => {
         rel: 'noopener noreferrer',
         children: []
       }]
-    }), '/company/team')
+    }
+    const items = resolvedMenuNavigationItems(document, '/company/team')
+    expect(items).toEqual(siteNavigationItems(presentation(document), '/company/team'))
+    expect(items[0]).toMatchObject({
+      type: 'trigger',
+      active: true,
+      defaultOpen: true,
+      children: [{ active: true }]
+    })
     const html = await renderToString(createSSRApp(NavigationItemAdapterFixture, { items, orientation }))
 
     expect(html).toContain(`data-adapter-consumer="${orientation}"`)

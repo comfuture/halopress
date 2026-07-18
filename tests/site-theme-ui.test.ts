@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-import { siteThemeStyle } from '../app/utils/site-presentation'
+import { haloThemeAdapterStyle, siteThemeStyle } from '../app/utils/site-presentation'
 import { createPortablePageRendering, PORTABLE_CONTENT_STYLESHEET_PATH } from '../shared/portable-content'
 import { defaultSitePresentation, toPublicSitePresentation } from '../shared/site-presentation'
 import { defaultSiteTheme } from '../shared/site-theme'
@@ -13,7 +13,7 @@ const root = resolve(import.meta.dirname, '..')
 describe('Site Theme app and mode boundaries', () => {
   it('drives the anonymous public shell only from the public Theme manifest', async () => {
     const [layout, mainCss, colorModeBridgePlugin] = await Promise.all([
-      readFile(resolve(root, 'app/layouts/default.vue'), 'utf8'),
+      readFile(resolve(root, 'app/components/layout-renderer/BuiltInLayoutRenderer.vue'), 'utf8'),
       readFile(resolve(root, 'app/assets/css/main.css'), 'utf8'),
       readFile(resolve(root, 'server/plugins/public-color-mode-bridge.ts'), 'utf8')
     ])
@@ -74,6 +74,7 @@ describe('Site Theme app and mode boundaries', () => {
     expect(disabled['--ui-primary']).toBeUndefined()
 
     const enabled = siteThemeStyle(presentation, true)
+    expect(enabled).toEqual(haloThemeAdapterStyle())
     const exactRoles = {
       '--ui-text': '--halo-site-color-text',
       '--ui-text-dimmed': '--halo-site-color-text-dimmed',
@@ -121,19 +122,26 @@ describe('Site Theme app and mode boundaries', () => {
   })
 
   it('keeps Appearance reversible and partitions color-mode ownership deliberately', async () => {
-    const [appearance, app, layout] = await Promise.all([
+    const [appearance, app, desk, layout, pagePreview, contentPreview] = await Promise.all([
       readFile(resolve(root, 'app/pages/_desk/settings/appearance.vue'), 'utf8'),
       readFile(resolve(root, 'app/app.vue'), 'utf8'),
-      readFile(resolve(root, 'app/layouts/default.vue'), 'utf8')
+      readFile(resolve(root, 'app/layouts/desk.vue'), 'utf8'),
+      readFile(resolve(root, 'app/components/layout-renderer/BuiltInLayoutRenderer.vue'), 'utf8'),
+      readFile(resolve(root, 'app/pages/_preview/pages/[id].vue'), 'utf8'),
+      readFile(resolve(root, 'app/pages/_preview/content/[schemaKey]/[id].vue'), 'utf8')
     ])
     expect(appearance).toContain('!siteModePending.value && siteModeEnabled.value')
     expect(appearance).toContain('navigateTo(\'/_desk/site/themes\', { replace: true })')
     expect(appearance).not.toContain('redirectCode: 301')
     expect(appearance).toContain('v-if="!siteModePending && !siteModeEnabled"')
-    expect(app).toContain('route.path.startsWith(\'/_desk/\')')
-    expect(app).toContain('route.path.startsWith(\'/_preview/\')')
-    expect(app).toContain('presentation.value.appearance.colorMode')
-    expect(app).toContain('portableTheme.value.colorMode')
+    expect(app).not.toContain('useSitePresentation()')
+    expect(app).not.toContain('useSiteTheme()')
+    expect(desk).toContain('presentation.value.appearance.colorMode')
+    for (const preview of [pagePreview, contentPreview]) {
+      expect(preview).toContain('const { theme: previewTheme } = useSiteTheme()')
+      expect(preview).toContain('previewTheme.value?.colorMode')
+      expect(preview.indexOf('useSiteTheme()')).toBeGreaterThan(preview.indexOf(`=== 'ready'`))
+    }
     expect(layout).toContain('presentation.value.appearance.colorMode')
   })
 

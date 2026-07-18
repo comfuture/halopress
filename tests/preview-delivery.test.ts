@@ -88,6 +88,7 @@ beforeAll(async () => {
     schemaVersion: 1,
     status: 'draft',
     contentJson: JSON.stringify({ title: 'Working content' }),
+    publicPath: '/article/working-content',
     createdAt: now,
     updatedAt: now
   })
@@ -96,6 +97,7 @@ beforeAll(async () => {
     title: 'Working page',
     status: 'draft',
     contentJson: JSON.stringify({ type: 'doc', content: [{ type: 'paragraph' }] }),
+    publicPath: '/working-page',
     createdAt: now,
     updatedAt: now
   })
@@ -150,7 +152,8 @@ describe('preview delivery', () => {
     await expect(contentPreview(request.event)).resolves.toMatchObject({
       id: 'content-draft',
       status: 'draft',
-      content: { title: 'Working content' }
+      content: { title: 'Working content' },
+      layout: { context: { canonicalPath: '/article/working-content' } }
     })
     expectPrivatePreviewHeaders(request)
   })
@@ -160,7 +163,8 @@ describe('preview delivery', () => {
     await expect(pagePreview(request.event)).resolves.toMatchObject({
       id: 'page-draft',
       title: 'Working page',
-      status: 'draft'
+      status: 'draft',
+      layout: { context: { canonicalPath: '/working-page' } }
     })
     expectPrivatePreviewHeaders(request)
   })

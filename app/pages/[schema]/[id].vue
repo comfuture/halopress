@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { PUBLIC_PAGE_ROUTE_PREFIX, publicPathFromDecodedSegments, publicPathToHref } from '~~/shared/public-routing'
+import BuiltInLayoutRenderer from '~/components/layout-renderer/BuiltInLayoutRenderer.vue'
+import LayoutComposition from '~/components/layout-renderer/LayoutComposition.vue'
 
-definePageMeta({ key: route => `${String(route.params.schema)}/${String(route.params.id)}` })
+definePageMeta({ layout: false, key: route => `${String(route.params.schema)}/${String(route.params.id)}` })
 
 const route = useRoute()
 const { applyPublic, applyPrivateNoindex } = usePublicPageDeliveryHeaders()
@@ -12,7 +14,7 @@ try {
   applyPrivateNoindex()
   throw createError({ statusCode: 404, statusMessage: 'Not Found' })
 }
-const routeResult = await useFetch<any>('/api/delivery/route', { query: { path: requestedPath } })
+const routeResult = await useFetch<any>('/api/delivery/route', { query: { path: requestedPath, includeLayout: 1 } })
 if (routeResult.error.value || !routeResult.data.value) {
   applyPrivateNoindex()
   throw createError({ statusCode: 404, statusMessage: 'Not Found' })
@@ -78,14 +80,36 @@ if (!isAlias) {
 </script>
 
 <template>
-  <UContainer v-if="standalonePage" class="py-8">
-    <UPage>
-      <UPageHeader :title="standalonePage.title || 'Untitled page'" />
-      <UPageBody><PageDocumentRenderer :document="standalonePage.content" :rendering="standalonePage.rendering" /></UPageBody>
-    </UPage>
-  </UContainer>
+  <LayoutComposition v-if="resolvedRoute?.layout" :projection="resolvedRoute.layout">
+    <article v-if="standalonePage" class="layout-route-page-content">
+      <header><h1>{{ standalonePage.title || 'Untitled page' }}</h1></header>
+      <PageDocumentRenderer :document="standalonePage.content" :rendering="standalonePage.rendering" />
+    </article>
+    <PublicContentDetailRenderer
+      v-else
+      :schema="schema"
+      :content="content"
+      :rendering="doc?.rendering"
+      :fallback-title="doc?.title || doc?.id || id"
+    />
 
-  <UContainer v-else class="py-10 sm:py-14">
-    <PublicContentDetailRenderer :schema="schema" :content="content" :rendering="doc?.rendering" :fallback-title="doc?.title || doc?.id || id" />
-  </UContainer>
+    <template #fallback>
+      <BuiltInLayoutRenderer>
+        <UContainer v-if="standalonePage" class="py-8">
+          <UPage>
+            <UPageHeader :title="standalonePage.title || 'Untitled page'" />
+            <UPageBody><PageDocumentRenderer :document="standalonePage.content" :rendering="standalonePage.rendering" /></UPageBody>
+          </UPage>
+        </UContainer>
+        <UContainer v-else class="py-10 sm:py-14">
+          <PublicContentDetailRenderer :schema="schema" :content="content" :rendering="doc?.rendering" :fallback-title="doc?.title || doc?.id || id" />
+        </UContainer>
+      </BuiltInLayoutRenderer>
+    </template>
+  </LayoutComposition>
 </template>
+
+<style scoped>
+.layout-route-page-content { display: grid; gap: 2rem; width: 100%; }
+.layout-route-page-content h1 { font-size: clamp(2rem, 5vw, 3.5rem); font-weight: 700; line-height: 1.1; overflow-wrap: anywhere; }
+</style>

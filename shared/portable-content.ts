@@ -27,17 +27,26 @@ export type PortableRenderingBase = {
 
 export type PortableDocumentRendering = PortableRenderingBase & {
   html: string
+  outline: PortableOutlineEntry[]
 }
 
 export type PortableRichTextFieldRendering = {
   fieldId: string
   fieldKey: string
   html: string
+  outline: PortableOutlineEntry[]
 }
 
 export type PortableStructuredContentRendering = PortableRenderingBase & {
   fields: Record<string, PortableRichTextFieldRendering>
+  outline: PortableOutlineEntry[]
   truncated?: true
+}
+
+export type PortableOutlineEntry = {
+  id: string
+  level: 1 | 2 | 3 | 4
+  text: string
 }
 
 export type PortableRenderLimits = {
@@ -53,6 +62,7 @@ export type PortableRenderOptions = {
   origin: string
   limits?: Partial<PortableRenderLimits>
   theme?: PortableThemeArtifact
+  headingIdPrefix?: string
 }
 
 export type PortableSchemaField = {
@@ -68,6 +78,87 @@ const defaultLimits: PortableRenderLimits = {
   maxFields: 256,
   maxSchemaFields: 4_096,
   maxOutputLength: 512 * 1024
+}
+
+const PORTABLE_OUTLINE_LIMIT = 128
+
+function normalizedHeadingPrefix(value: unknown) {
+  return typeof value === 'string' && /^[a-z][a-z0-9-]{0,47}$/.test(value)
+    ? value
+    : 'halo-heading'
+}
+
+function portableHeadingSlug(value: string) {
+  const slug = value.normalize('NFKD').toLocaleLowerCase('en-US')
+    .replace(/[^\p{Letter}\p{Number}]+/gu, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 72)
+    .replace(/-+$/g, '')
+  return slug || 'section'
+}
+
+function portableHeadingFieldDiscriminator(fieldId: string, fieldKey: string) {
+  const value = `${fieldId}\u0000${fieldKey}`
+  let first = 0x811c9dc5
+  let second = 0x9e3779b9
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index)
+    first = Math.imul(first ^ code, 0x01000193)
+    second = Math.imul(second ^ code, 0x85ebca6b)
+  }
+  return `${(first >>> 0).toString(16).padStart(8, '0')}${(second >>> 0).toString(16).padStart(8, '0')}`
+}
+
+function portablePlainText(value: unknown, limit = 200): string {
+  let text = ''
+  const stack: Array<{ candidate: unknown, depth: number }> = [{ candidate: value, depth: 0 }]
+  const visited = new WeakSet<object>()
+  let nodes = 0
+  while (stack.length && text.length < limit && nodes < 256) {
+    const entry = stack.pop()!
+    const candidate = entry.candidate
+    if (entry.depth > 32 || !candidate || typeof candidate !== 'object') continue
+    if (visited.has(candidate)) continue
+    visited.add(candidate)
+    nodes += 1
+    if (Array.isArray(candidate)) {
+      for (let index = candidate.length - 1; index >= 0; index -= 1) {
+        stack.push({ candidate: candidate[index], depth: entry.depth + 1 })
+      }
+      continue
+    }
+    const node = candidate as Record<string, unknown>
+    if (typeof node.text === 'string') text += node.text.slice(0, limit - text.length)
+    if (Array.isArray(node.content)) {
+      stack.push({ candidate: node.content, depth: entry.depth + 1 })
+    }
+  }
+  return text.replace(/\s+/g, ' ').trim().slice(0, limit)
+}
+
+class PortableHeadingRegistry {
+  private readonly counts = new Map<string, number>()
+  readonly outline: PortableOutlineEntry[] = []
+
+  constructor(private readonly prefix: string) {}
+
+  add(level: number, value: unknown) {
+    const text = (typeof value === 'string' ? value : portablePlainText(value)).replace(/\s+/g, ' ').trim().slice(0, 200)
+    const base = portableHeadingSlug(text)
+    const count = (this.counts.get(base) ?? 0) + 1
+    this.counts.set(base, count)
+    const suffix = count === 1 ? '' : `-${count}`
+    const id = `${this.prefix}-${base.slice(0, Math.max(1, 127 - this.prefix.length - suffix.length))}${suffix}`
+    if (text && this.outline.length < PORTABLE_OUTLINE_LIMIT && [1, 2, 3, 4].includes(level)) {
+      this.outline.push({ id, level: level as PortableOutlineEntry['level'], text })
+    }
+    return id
+  }
+
+  reset() {
+    this.counts.clear()
+    this.outline.splice(0)
+  }
 }
 
 const plainMarkTags: Record<string, string> = {
@@ -169,7 +260,7 @@ class PortableBudget {
 class PortableWriter {
   private readonly parts: string[] = []
 
-  constructor(private readonly budget: PortableBudget) {}
+  constructor(private readonly budget: PortableBudget, private readonly headings: PortableHeadingRegistry) {}
 
   claimNode(depth: number) {
     this.budget.claimNode(depth)
@@ -197,6 +288,10 @@ class PortableWriter {
     this.push(` ${name}="`)
     this.escaped(value)
     this.push('"')
+  }
+
+  headingId(level: number, value: unknown) {
+    return this.headings.add(level, value)
   }
 
   toString() {
@@ -480,6 +575,9 @@ function writeRichTextNode(
   if (type === 'heading') {
     const level = [1, 2, 3, 4].includes(node.attrs?.level) ? Number(node.attrs.level) : 2
     writer.push(`<h${level}`)
+    // Stored author IDs are deliberately ignored. Only this deterministic,
+    // code-owned allocator can create SSR anchors for portable content.
+    writer.attribute('id', writer.headingId(level, node.content))
     writer.attribute('data-halo-align', alignment)
     writer.push('>')
     writeRichTextChildren(writer, node, origin, depth)
@@ -583,7 +681,9 @@ function writeBlockHeader(
     writer.push('</p>')
   }
   if (title) {
-    writer.push(`<h${headingLevel} class="halo-block-title">`)
+    writer.push(`<h${headingLevel} class="halo-block-title"`)
+    writer.attribute('id', writer.headingId(headingLevel, title))
+    writer.push('>')
     writer.escaped(title)
     writer.push(`</h${headingLevel}>`)
   }
@@ -642,7 +742,9 @@ function writeFeatures(writer: PortableWriter, features: unknown, origin: string
     }
     writePortableIcon(writer, feature.icon)
     writer.push('<div class="halo-feature-body">')
-    writer.push('<h3 class="halo-feature-title">')
+    writer.push('<h3 class="halo-feature-title"')
+    writer.attribute('id', writer.headingId(3, feature.title))
+    writer.push('>')
     writeText(writer, feature.title)
     writer.push('</h3>')
     if (typeof feature.description === 'string' && feature.description) {
@@ -830,7 +932,8 @@ function renderWithFallback(
   options: PortableRenderOptions,
   root: { className: string, contentKind: string },
   render: (writer: PortableWriter, origin: string) => void,
-  sharedBudget?: PortableBudget
+  sharedBudget?: PortableBudget,
+  headingPrefix = normalizedHeadingPrefix(options.headingIdPrefix)
 ) {
   const origin = normalizePortableOrigin(options.origin)
   const limits = renderingLimits(options.limits)
@@ -842,45 +945,51 @@ function renderWithFallback(
   const rootEnd = '</article>'
   const fallback = `${rootStart}<p class="halo-content-fallback" role="status">Content exceeds portable rendering limits</p>${rootEnd}`
   const budget = sharedBudget ?? new PortableBudget(limits)
+  const headings = new PortableHeadingRegistry(normalizedHeadingPrefix(headingPrefix))
   if (fallback.length > limits.maxOutputLength) {
     budget.markExceeded()
-    return ''
+    return { html: '', outline: headings.outline }
   }
   const checkpoint = budget.checkpoint()
   try {
-    const writer = new PortableWriter(budget)
+    const writer = new PortableWriter(budget, headings)
     writer.push(rootStart)
     render(writer, origin)
     writer.push(rootEnd)
-    return writer.toString()
+    return { html: writer.toString(), outline: headings.outline }
   } catch (error) {
     if (!(error instanceof PortableRenderBudgetError)) throw error
     budget.recover(checkpoint)
-    if (fallback.length > budget.remainingOutput()) return ''
+    headings.reset()
+    if (fallback.length > budget.remainingOutput()) return { html: '', outline: headings.outline }
     budget.charge(fallback.length)
-    return fallback
+    return { html: fallback, outline: headings.outline }
   }
 }
 
 export function renderPortableRichText(value: unknown, options: PortableRenderOptions) {
   return renderWithFallback(options, { className: 'halo-richtext', contentKind: 'richtext' }, (writer, origin) => {
     writeRichTextDocumentContent(writer, value, origin, { allowPageBlocks: false })
-  })
+  }).html
 }
 
 export function renderPortablePageDocument(value: unknown, options: PortableRenderOptions) {
   return renderWithFallback(options, { className: 'halo-page', contentKind: 'page' }, (writer, origin) => {
     writeRichTextDocumentContent(writer, value, origin, { allowPageBlocks: true })
-  })
+  }).html
 }
 
 export function createPortablePageRendering(
   document: unknown,
   options: PortableRenderOptions
 ): PortableDocumentRendering {
+  const rendered = renderWithFallback(options, { className: 'halo-page', contentKind: 'page' }, (writer, origin) => {
+    writeRichTextDocumentContent(writer, document, origin, { allowPageBlocks: true })
+  })
   return {
     ...renderingBase(options),
-    html: renderPortablePageDocument(document, options)
+    html: rendered.html,
+    outline: rendered.outline
   }
 }
 
@@ -888,9 +997,13 @@ export function createPortableRichTextRendering(
   document: unknown,
   options: PortableRenderOptions
 ): PortableDocumentRendering {
+  const rendered = renderWithFallback(options, { className: 'halo-richtext', contentKind: 'richtext' }, (writer, origin) => {
+    writeRichTextDocumentContent(writer, document, origin, { allowPageBlocks: false })
+  })
   return {
     ...renderingBase(options),
-    html: renderPortableRichText(document, options)
+    html: rendered.html,
+    outline: rendered.outline
   }
 }
 
@@ -900,6 +1013,7 @@ export function createPortableStructuredContentRendering(
   options: PortableRenderOptions
 ): PortableStructuredContentRendering {
   const fields: Record<string, PortableRichTextFieldRendering> = Object.create(null)
+  const outline: PortableOutlineEntry[] = []
   const limits = renderingLimits(options.limits)
   const budget = new PortableBudget(limits)
   const runtimeFields: unknown[] = Array.isArray(schemaFields) ? schemaFields : []
@@ -929,17 +1043,25 @@ export function createPortableStructuredContentRendering(
       truncated = true
       break
     }
-    const html = renderWithFallback(
+    const fieldHeadingPrefix = [
+      normalizedHeadingPrefix(options.headingIdPrefix).slice(0, 16),
+      portableHeadingSlug(fieldKey).slice(0, 12),
+      portableHeadingFieldDiscriminator(fieldId, fieldKey)
+    ].join('-').slice(0, 48)
+    const rendered = renderWithFallback(
       options,
       { className: 'halo-richtext', contentKind: 'richtext' },
       (writer, origin) => writeRichTextDocumentContent(writer, content[fieldKey], origin, { allowPageBlocks: false }),
-      budget
+      budget,
+      fieldHeadingPrefix
     )
     fields[fieldKey] = {
       fieldId,
       fieldKey,
-      html
+      html: rendered.html,
+      outline: rendered.outline
     }
+    outline.push(...rendered.outline.slice(0, Math.max(0, PORTABLE_OUTLINE_LIMIT - outline.length)))
     if (budget.exceeded) {
       truncated = true
       break
@@ -948,6 +1070,7 @@ export function createPortableStructuredContentRendering(
   return {
     ...renderingBase(options),
     fields,
+    outline,
     ...(truncated ? { truncated: true as const } : {})
   }
 }

@@ -8,6 +8,10 @@ import { content as contentTable } from '../../../../db/schema'
 import { getAuthSession, requireStaff } from '../../../../utils/auth'
 import { applyPreviewDeliveryHeaders } from '../../../../utils/delivery-policy'
 import { notFound, sendH3Error } from '../../../../utils/http'
+import {
+  resolvePreviewContentLayoutRendering,
+  resolvePreviewLayoutCanonicalPath
+} from '../../../../utils/layout-rendering'
 import { requireSchemaPermission } from '../../../../utils/schema-permission'
 import { createPortableStructuredRenderingForEvent } from '../../../../utils/portable-content-delivery'
 
@@ -33,6 +37,11 @@ export default defineEventHandler(async (event) => {
   const sourceSchema = await getSchemaVersion(db, schemaKey, row.schemaVersion)
   if (!sourceSchema) return sendH3Error(event, notFound('Content not found'))
   const content = parseContentJson(row.contentJson)
+  const rendering = await createPortableStructuredRenderingForEvent(
+    event,
+    content,
+    sourceSchema.registry?.fields ?? []
+  )
   return {
     id: row.id,
     schemaKey: row.schemaKey,
@@ -40,11 +49,15 @@ export default defineEventHandler(async (event) => {
     status: row.status,
     content,
     schema: sourceSchema,
-    rendering: await createPortableStructuredRenderingForEvent(
-      event,
-      content,
-      sourceSchema.registry?.fields ?? []
-    ),
+    rendering,
+    layout: await resolvePreviewContentLayoutRendering(event, {
+      visibility: 'preview',
+      documentKind: 'content',
+      documentId: row.id,
+      schemaKey: row.schemaKey,
+      schemaVersion: row.schemaVersion,
+      canonicalPath: resolvePreviewLayoutCanonicalPath(row.publicPath)
+    }, rendering.outline),
     updatedAt: row.updatedAt,
     ...publicationMetadata(row)
   }

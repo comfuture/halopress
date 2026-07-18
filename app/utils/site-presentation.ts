@@ -1,12 +1,12 @@
 import type { NavigationMenuItem } from '@nuxt/ui'
-import type { ResolvedSiteMenuLeaf } from '~~/shared/site-menu'
+import type { ResolvedSiteMenuDocument, ResolvedSiteMenuLeaf } from '~~/shared/site-menu'
 import type { PublicSitePresentation } from '~~/shared/site-presentation'
 
 const colorShades = ['50', '100', '200', '300', '400', '500', '600', '700', '800', '900', '950'] as const
 
-export function siteThemeStyle(presentation: PublicSitePresentation, haloThemeEnabled = false) {
-  const style: Record<string, string> = haloThemeEnabled
-    ? {
+/** Finite code-owned bridge from Halo Theme tokens to Nuxt UI semantics. */
+export function haloThemeAdapterStyle() {
+  return {
     '--ui-primary': 'var(--halo-site-color-primary, var(--color-purple-500))',
     '--ui-secondary': 'var(--halo-site-color-secondary, var(--color-blue-500))',
     '--ui-success': 'var(--halo-site-color-success, var(--color-green-600))',
@@ -29,7 +29,12 @@ export function siteThemeStyle(presentation: PublicSitePresentation, haloThemeEn
     '--ui-border-accented': 'var(--halo-site-color-border-accented, var(--color-zinc-300))',
     '--ui-border-inverted': 'var(--halo-site-color-border-inverted, var(--color-zinc-900))',
     '--ui-radius': 'var(--halo-radius-control, 0.25rem)'
-      }
+  }
+}
+
+export function siteThemeStyle(presentation: PublicSitePresentation, haloThemeEnabled = false) {
+  const style: Record<string, string> = haloThemeEnabled
+    ? haloThemeAdapterStyle()
     : {}
   if (!haloThemeEnabled) {
     for (const shade of colorShades) {
@@ -58,8 +63,11 @@ function navigationLeaf(item: ResolvedSiteMenuLeaf, currentPath: string): Naviga
   }
 }
 
-export function siteNavigationItems(presentation: PublicSitePresentation, currentPath: string): NavigationMenuItem[] {
-  return presentation.navigation.items.map((item) => {
+export function resolvedMenuNavigationItems(
+  document: ResolvedSiteMenuDocument,
+  currentPath: string
+): NavigationMenuItem[] {
+  return document.items.map((item) => {
     const parent = navigationLeaf(item, currentPath)
     const children = item.children.map(child => navigationLeaf(child, currentPath))
     if (!children.length) return parent
@@ -80,6 +88,10 @@ export function siteNavigationItems(presentation: PublicSitePresentation, curren
       children
     }
   })
+}
+
+export function siteNavigationItems(presentation: PublicSitePresentation, currentPath: string): NavigationMenuItem[] {
+  return resolvedMenuNavigationItems(presentation.navigation, currentPath)
 }
 
 export function siteFooterLinks(presentation: PublicSitePresentation, currentPath: string): NavigationMenuItem[] {

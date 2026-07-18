@@ -7,6 +7,7 @@ import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import process from 'node:process'
+import { EncryptJWT } from 'jose'
 
 const projectRoot = resolve(import.meta.dirname, '..')
 const wranglerConfig = join(projectRoot, 'wrangler.jsonc')
@@ -15,6 +16,37 @@ const publicAssets = join(projectRoot, '.output/public')
 const packageManager = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm'
 const readyTimeoutMs = 30_000
 const authSecret = 'halopress-built-ssr-smoke-secret'
+
+async function authenticatedCookie(tenantKey) {
+  const encoder = new TextEncoder()
+  const sourceKey = await globalThis.crypto.subtle.importKey(
+    'raw',
+    encoder.encode(authSecret),
+    'HKDF',
+    false,
+    ['deriveBits']
+  )
+  const bits = await globalThis.crypto.subtle.deriveBits({
+    name: 'HKDF',
+    hash: 'SHA-256',
+    salt: new Uint8Array(0),
+    info: encoder.encode('NextAuth.js Generated Encryption Key')
+  }, sourceKey, 256)
+  const token = await new EncryptJWT({
+    id: 'built-admin',
+    email: 'built-admin@example.com',
+    name: 'Built Admin',
+    role: 'admin',
+    accountType: 'staff',
+    tenantKey
+  })
+    .setProtectedHeader({ alg: 'dir', enc: 'A256GCM' })
+    .setIssuedAt()
+    .setExpirationTime(Math.floor(Date.now() / 1000) + 3600)
+    .setJti(globalThis.crypto.randomUUID())
+    .encrypt(new Uint8Array(bits))
+  return `next-auth.session-token=${token}`
+}
 
 function sqlString(value) {
   return `'${String(value).replaceAll('\'', '\'\'')}'`
@@ -177,7 +209,7 @@ function seedSql() {
       destination: {
         type: 'external',
         url: 'https://example.com/built-ssr-external',
-        newWindow: false
+        newWindow: true
       },
       value: 'built-ssr-external',
       children: []
@@ -189,6 +221,165 @@ function seedSql() {
       type: 'paragraph',
       content: [{ type: 'text', text: 'Built portable Theme delivery' }]
     }]
+  })
+  const layoutPageWorkingDocument = JSON.stringify({
+    type: 'doc',
+    content: [
+      {
+        type: 'heading',
+        attrs: { level: 2, id: 'stored-working-heading-must-not-survive' },
+        content: [{ type: 'text', text: 'Working Page outline' }]
+      },
+      { type: 'paragraph', content: [{ type: 'text', text: 'Working Page marker' }] }
+    ]
+  })
+  const layoutPagePublishedDocument = JSON.stringify({
+    type: 'doc',
+    content: [
+      {
+        type: 'heading',
+        attrs: { level: 2, id: 'stored-heading-must-not-survive' },
+        content: [{ type: 'text', text: 'Runtime outline' }]
+      },
+      { type: 'paragraph', content: [{ type: 'text', text: 'Published Page marker' }] }
+    ]
+  })
+  const layoutDocument = JSON.stringify({
+    version: 1,
+    layoutId: 'built-runtime-layout',
+    name: 'Built Runtime Layout',
+    grid: {
+      maxWidth: 'wide',
+      gap: 'comfortable',
+      columns: { mobile: 4, tablet: 8, desktop: 12 },
+      regions: [
+        {
+          id: 'header',
+          flow: 'start',
+          placement: {
+            mobile: { row: 1, column: 1, span: 4, visibility: 'visible' },
+            tablet: { row: 1, column: 1, span: 8, visibility: 'visible' },
+            desktop: { row: 1, column: 1, span: 12, visibility: 'visible' }
+          }
+        },
+        {
+          id: 'content',
+          flow: 'start',
+          placement: {
+            mobile: { row: 2, column: 1, span: 4, visibility: 'visible' },
+            tablet: { row: 2, column: 1, span: 5, visibility: 'visible' },
+            desktop: { row: 2, column: 1, span: 8, visibility: 'visible' }
+          }
+        },
+        {
+          id: 'right-sidebar',
+          flow: 'start',
+          placement: {
+            mobile: { row: 3, column: 1, span: 4, visibility: 'visible' },
+            tablet: { row: 2, column: 6, span: 3, visibility: 'visible' },
+            desktop: { row: 2, column: 9, span: 4, visibility: 'visible' }
+          }
+        },
+        {
+          id: 'footer',
+          flow: 'start',
+          placement: {
+            mobile: { row: 4, column: 1, span: 4, visibility: 'visible' },
+            tablet: { row: 3, column: 1, span: 8, visibility: 'visible' },
+            desktop: { row: 3, column: 1, span: 12, visibility: 'visible' }
+          }
+        }
+      ]
+    },
+    elements: [
+      { id: 'logo-header', type: 'site-logo', region: 'header', order: 0, props: { size: 'small', link: 'home' } },
+      { id: 'title-header', type: 'site-title', region: 'header', order: 1, props: { emphasis: 'strong', link: 'home' } },
+      { id: 'menu-header', type: 'menu', region: 'header', order: 2, props: { menuSetId: 'global-navigation', orientation: 'horizontal' } },
+      { id: 'page-content', type: 'page-content', region: 'content', order: 0, props: {} },
+      { id: 'page-list', type: 'page-list', region: 'right-sidebar', order: 0, props: { scope: 'all-pages', sort: 'title-ascending', limit: 10 } },
+      { id: 'toc', type: 'table-of-contents', region: 'right-sidebar', order: 1, props: { maxDepth: 3, marker: 'ordered' } },
+      { id: 'copyright', type: 'copyright', region: 'footer', order: 0, props: { format: 'year-site', startYear: 2025 } }
+    ]
+  })
+  const articleAst = {
+    schemaKey: 'article',
+    title: 'Built Articles',
+    fields: [
+      { id: 'title-id', key: 'title', kind: 'string', title: 'Title', required: true },
+      { id: 'body-id', key: 'body', kind: 'richtext', title: 'Body' }
+    ],
+    presentation: {
+      contractVersion: 1,
+      preset: 'article',
+      collectionTemplate: 'list',
+      detailTemplate: 'article',
+      slugFieldId: 'title-id',
+      structuredDataType: 'Article',
+      layoutId: 'built-runtime-layout',
+      slots: { title: 'title-id', body: 'body-id' }
+    }
+  }
+  const articleJsonSchema = {
+    $schema: 'https://json-schema.org/draft/2020-12/schema',
+    type: 'object',
+    title: 'Built Articles',
+    properties: {
+      title: { title: 'Title', type: 'string' },
+      body: { title: 'Body', type: ['object', 'array', 'string', 'null'], 'x-ui': { widget: 'u-editor' } }
+    },
+    required: ['title'],
+    additionalProperties: false
+  }
+  const articleRegistry = {
+    schemaKey: 'article',
+    version: 1,
+    title: 'Built Articles',
+    listing: { titleFieldKey: 'title', descriptionFieldKey: 'body', imageFieldKey: null },
+    presentation: {
+      contractVersion: 1,
+      schemaVersion: 1,
+      preset: 'article',
+      collectionTemplate: 'list',
+      detailTemplate: 'article',
+      slugFieldId: 'title-id',
+      slugField: { fieldId: 'title-id', fieldKey: 'title' },
+      structuredDataType: 'Article',
+      slots: {
+        title: { fieldId: 'title-id', fieldKey: 'title' },
+        body: { fieldId: 'body-id', fieldKey: 'body' }
+      },
+      fields: [
+        { fieldId: 'title-id', fieldKey: 'title', kind: 'string', renderer: 'text', title: 'Title' },
+        { fieldId: 'body-id', fieldKey: 'body', kind: 'richtext', renderer: 'rich_text', title: 'Body' }
+      ]
+    },
+    fields: [
+      { fieldId: 'title-id', key: 'title', kind: 'string', title: 'Title', required: true },
+      { fieldId: 'body-id', key: 'body', kind: 'richtext', title: 'Body' }
+    ],
+    relations: []
+  }
+  const contentWorkingDocument = JSON.stringify({
+    title: 'Working Content Detail',
+    body: {
+      type: 'doc',
+      content: [{
+        type: 'heading',
+        attrs: { level: 2 },
+        content: [{ type: 'text', text: 'Working Content marker' }]
+      }]
+    }
+  })
+  const contentPublishedDocument = JSON.stringify({
+    title: 'Published Content Detail',
+    body: {
+      type: 'doc',
+      content: [{
+        type: 'heading',
+        attrs: { level: 2 },
+        content: [{ type: 'text', text: 'Published Content marker' }]
+      }]
+    }
   })
 
   return `
@@ -218,6 +409,24 @@ INSERT INTO settings (
   'site.theme', 'test:built-ssr', unixepoch(), 'Persist dark Theme for SSR fixture'
 );
 
+INSERT INTO user_role (role_key, title, level) VALUES
+  ('anonymous', 'Anonymous', 0),
+  ('admin', 'Administrator', 100);
+
+INSERT INTO user (
+  id, email, name, account_type, role_key, status, created_at
+) VALUES (
+  'built-admin', 'built-admin@example.com', 'Built Admin', 'staff', 'admin', 'active', unixepoch()
+);
+
+INSERT INTO site_layout_resource (
+  id, name, name_key, document_json, current_revision,
+  created_by, updated_by, created_at, updated_at
+) VALUES (
+  'built-runtime-layout', 'Built Runtime Layout', 'built runtime layout', ${sqlString(layoutDocument)}, 1,
+  'test:built-ssr', 'test:built-ssr', unixepoch(), unixepoch()
+);
+
 INSERT INTO page (
   id, title, status, content_json, current_revision, published_revision_id,
   first_published_at, published_at, created_by, updated_by, created_at, updated_at
@@ -242,6 +451,77 @@ INSERT INTO public_route (
   unixepoch(), unixepoch()
 );
 
+INSERT INTO page (
+  id, title, status, content_json, public_path, layout_id, current_revision,
+  published_revision_id, first_published_at, published_at,
+  created_by, updated_by, created_at, updated_at
+) VALUES (
+  'built-layout-page', 'Built Layout Page', 'published', ${sqlString(layoutPageWorkingDocument)},
+  '/built-layout-page', 'built-runtime-layout', 1, 'built-layout-page-revision',
+  unixepoch(), unixepoch(), 'test:built-ssr', 'test:built-ssr', unixepoch(), unixepoch()
+);
+
+INSERT INTO publication_revision (
+  id, document_kind, document_id, title, content_json, layout_id, created_by, created_at
+) VALUES (
+  'built-layout-page-revision', 'page', 'built-layout-page', 'Built Layout Page',
+  ${sqlString(layoutPagePublishedDocument)}, 'built-runtime-layout', 'test:built-ssr', unixepoch()
+);
+
+INSERT INTO public_route (
+  path, route_kind, document_kind, document_id, schema_key, seo_json, created_at, updated_at
+) VALUES
+  ('/built-layout-page', 'canonical', 'page', 'built-layout-page', NULL,
+   '{"title":"Built Layout Route Title","description":"Built Layout route description"}', unixepoch(), unixepoch()),
+  ('/built-layout-alias', 'alias', 'page', 'built-layout-page', NULL, NULL, unixepoch(), unixepoch());
+
+INSERT INTO schema (
+  schema_key, version, title, ast_json, json_schema, ui_schema, registry_json,
+  created_by, created_at, note
+) VALUES (
+  'article', 1, 'Built Articles', ${sqlString(JSON.stringify(articleAst))},
+  ${sqlString(JSON.stringify(articleJsonSchema))}, '{"x-ui":{"schemaKey":"article"}}',
+  ${sqlString(JSON.stringify(articleRegistry))}, 'test:built-ssr', unixepoch(), 'Built SSR fixture'
+);
+
+INSERT INTO schema_active (schema_key, active_version, status, updated_at)
+VALUES ('article', 1, 'active', unixepoch());
+
+INSERT INTO schema_role (
+  schema_key, role_key, can_read, can_write, can_publish, can_archive, can_delete, can_admin
+) VALUES ('article', 'anonymous', 1, 0, 0, 0, 0, 0);
+
+INSERT INTO content (
+  id, schema_key, schema_version, status, content_json, public_path, current_revision,
+  published_revision_id, first_published_at, published_at,
+  created_by, updated_by, created_at, updated_at
+) VALUES (
+  'built-content', 'article', 1, 'published', ${sqlString(contentWorkingDocument)},
+  '/article/built-content', 1, 'built-content-revision', unixepoch(), unixepoch(),
+  'test:built-ssr', 'test:built-ssr', unixepoch(), unixepoch()
+);
+
+INSERT INTO publication_revision (
+  id, document_kind, document_id, schema_key, schema_version, title, content_json,
+  created_by, created_at
+) VALUES (
+  'built-content-revision', 'content', 'built-content', 'article', 1,
+  'Published Content Detail', ${sqlString(contentPublishedDocument)}, 'test:built-ssr', unixepoch()
+);
+
+INSERT INTO content_listing (
+  content_id, projection_scope, schema_key, schema_version, title, description,
+  image, status, created_at, updated_at
+) VALUES
+  ('built-content', 'working', 'article', 1, 'Working Content Detail', 'Working content description', NULL, 'published', unixepoch(), unixepoch()),
+  ('built-content', 'published', 'article', 1, 'Published Content Detail', 'Published content description', NULL, 'published', unixepoch(), unixepoch());
+
+INSERT INTO public_route (
+  path, route_kind, document_kind, document_id, schema_key, seo_json, created_at, updated_at
+) VALUES
+  ('/article', 'canonical', 'schema', 'article', 'article', NULL, unixepoch(), unixepoch()),
+  ('/article/built-content', 'canonical', 'content', 'built-content', 'article', NULL, unixepoch(), unixepoch());
+
 INSERT INTO site_menu_set (
   id, name, name_key, document_json, bootstrap_owned,
   bootstrap_source_updated_at, created_by, updated_by, created_at, updated_at
@@ -256,6 +536,20 @@ INSERT INTO site_menu_reference (
   'public-site-shell', 'default-public-site', 'global-navigation',
   'global-navigation', 'Built-in public Site navigation', unixepoch(), unixepoch()
 );
+
+INSERT INTO site_menu_reference (
+  owner_type, owner_id, slot, menu_set_id, label, created_at, updated_at
+) VALUES (
+  'site-layout', 'built-runtime-layout', 'menu-header',
+  'global-navigation', 'Built Runtime Layout menu', unixepoch(), unixepoch()
+);
+
+INSERT INTO site_layout_reference (
+  owner_type, owner_id, slot, layout_id, label, behavior, created_at, updated_at
+) VALUES
+  ('page', 'built-layout-page', 'working', 'built-runtime-layout', 'Built Layout Page working Layout', 'use-current', unixepoch(), unixepoch()),
+  ('page', 'built-layout-page', 'published', 'built-runtime-layout', 'Built Layout Page published Layout', 'use-current', unixepoch(), unixepoch()),
+  ('schema', 'article', 'published:1', 'built-runtime-layout', 'article v1 Layout', 'use-current', unixepoch(), unixepoch());
 `.trim()
 }
 
@@ -388,6 +682,165 @@ async function assertBuiltPageMode(origin, expectedMode) {
   return html
 }
 
+function assertReadyLayoutMarkup(html, label) {
+  assert.ok(html.includes('data-layout-renderer'), `Expected ${label} to use the persisted Layout renderer`)
+  assert.ok(html.includes('data-layout-id="built-runtime-layout"'), `Expected ${label} to use the assigned Layout ID`)
+  for (const type of [
+    'site-logo',
+    'site-title',
+    'menu',
+    'page-content',
+    'page-list',
+    'table-of-contents',
+    'copyright'
+  ]) {
+    assert.ok(html.includes(`data-layout-element="${type}"`), `Expected ${label} to render ${type}`)
+  }
+  assert.ok(!html.includes('data-built-in-layout-renderer'), `Expected ${label} to avoid the built-in fallback shell`)
+  assert.ok(!html.includes('HaloPress Desk'), `Expected ${label} to avoid Desk structure`)
+  assert.ok(
+    html.includes('--ui-primary:var(--halo-site-color-primary'),
+    `Expected ${label} to serialize the code-owned Halo to Nuxt UI adapter`
+  )
+}
+
+async function setSiteMode(origin, cookie, enabled) {
+  const response = await fetch(`${origin}/api/settings/site-mode`, {
+    method: 'PUT',
+    headers: {
+      Cookie: cookie,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ enabled })
+  })
+  const body = await response.text()
+  assert.equal(response.status, 200, `Expected authenticated Site mode ${enabled ? 'enable' : 'disable'} update: ${body}`)
+  assert.equal(JSON.parse(body).value.enabled, enabled)
+}
+
+async function assertLayoutRouteDelivery(origin) {
+  const path = encodeURIComponent('/built-layout-page')
+  const headlessResponse = await fetch(`${origin}/api/delivery/route?path=${path}`)
+  assert.equal(headlessResponse.status, 200, 'Expected default route delivery to succeed')
+  const headless = await headlessResponse.json()
+  assert.ok(!Object.hasOwn(headless, 'layout'), 'Headless route delivery must remain Layout-free by default')
+
+  const response = await fetch(`${origin}/api/delivery/route?path=${path}&includeLayout=1`)
+  assert.equal(response.status, 200, 'Expected opt-in Layout route delivery to succeed')
+  const etag = response.headers.get('etag')
+  assert.ok(etag, 'Expected opt-in Layout route delivery to have a strong ETag')
+  const route = await response.json()
+  assert.equal(route.layout.status, 'ready')
+  assert.equal(route.layout.layoutId, 'built-runtime-layout')
+  assert.match(route.layout.revision, /^[0-9a-f]{64}$/)
+  assert.equal(route.layout.elements.length, 7)
+  assert.equal(route.layout.elements.find(element => element.type === 'menu')?.props.menu.status, 'ready')
+  assert.equal(route.layout.elements.find(element => element.type === 'table-of-contents')?.props.items[0]?.text, 'Runtime outline')
+
+  const stable = await fetch(`${origin}/api/delivery/route?path=${path}&includeLayout=1`, {
+    headers: { 'If-None-Match': etag }
+  })
+  assert.equal(stable.status, 304, 'Expected stable Layout route projection conditional revalidation')
+
+  const alias = await fetch(`${origin}/api/delivery/route?path=${encodeURIComponent('/built-layout-alias')}&includeLayout=1`)
+  assert.equal(alias.status, 200, 'Expected alias delivery to resolve')
+  const aliasRoute = await alias.json()
+  assert.equal(aliasRoute.routeKind, 'alias')
+  assert.ok(!Object.hasOwn(aliasRoute, 'layout'), 'Alias route delivery must never carry composition')
+}
+
+async function assertPersistedLayoutSurfaces(origin) {
+  const pageResponse = await fetch(`${origin}/built-layout-page`)
+  const pageHtml = await pageResponse.text()
+  assert.equal(pageResponse.status, 200, 'Expected persisted Layout Page SSR')
+  assertReadyLayoutMarkup(pageHtml, 'public Page')
+  assert.ok(pageHtml.includes('id="halo-heading-runtime-outline"'), 'Expected deterministic SSR heading ID')
+  assert.ok(pageHtml.includes('href="#halo-heading-runtime-outline"'), 'Expected TOC to link to the SSR heading ID')
+  assert.ok(!pageHtml.includes('id="stored-heading-must-not-survive"'), 'Stored heading IDs must not become DOM anchors')
+  assert.match(pageHtml, /<html[^>]+lang="[^"]+"/, 'Expected ready Layout SSR to preserve html lang')
+  assert.match(pageHtml, /<link[^>]+rel="icon"/, 'Expected ready Layout SSR to preserve a favicon')
+  assert.ok(pageHtml.includes('<title>Built Layout Route Title</title>'), 'Expected route SEO to override baseline Site title')
+  assert.ok(pageHtml.includes('target="_blank"') && pageHtml.includes('rel="noopener noreferrer"'), 'Expected safe external Menu attributes')
+  assert.ok(pageHtml.includes('Published Page marker'), 'Expected public Page SSR to use the exact published revision')
+  assert.ok(!pageHtml.includes('Working Page marker'), 'Public Page SSR must not expose working Page content')
+
+  for (const [path, label, expected] of [
+    ['/article', 'public collection', 'Published Content Detail'],
+    ['/article/built-content', 'public detail', 'Published Content marker']
+  ]) {
+    const response = await fetch(`${origin}${path}`)
+    const html = await response.text()
+    assert.equal(response.status, 200, `Expected ${label} SSR`)
+    assertReadyLayoutMarkup(html, label)
+    assert.ok(html.includes(expected), `Expected ${label} semantic content`)
+    assert.ok(!html.includes('Working Content marker'), `${label} must not expose working content`)
+  }
+
+  const cookie = await authenticatedCookie('127.0.0.1')
+  for (const [path, label, expected] of [
+    ['/_preview/pages/built-layout-page', 'full Page preview', 'Working Page marker'],
+    ['/_preview/content/article/built-content', 'full content preview', 'Working Content marker']
+  ]) {
+    const response = await fetch(`${origin}${path}`, { headers: { Cookie: cookie } })
+    const html = await response.text()
+    assert.equal(response.status, 200, `Expected authenticated ${label} SSR: ${html.slice(0, 1_000)}`)
+    assert.equal(response.headers.get('cache-control'), 'private, no-store')
+    assert.match(response.headers.get('vary') ?? '', /Cookie/i)
+    assert.match(response.headers.get('x-robots-tag') ?? '', /noindex/i)
+    assertReadyLayoutMarkup(html, label)
+    assert.ok(html.includes(expected), `Expected ${label} content`)
+    assert.ok(!html.includes('Published Page marker') && !html.includes('Published Content marker'), `${label} must not mix published authored content`)
+
+    const anonymous = await fetch(`${origin}${path}`)
+    const anonymousHtml = await anonymous.text()
+    assert.equal(anonymous.status, 404, `Expected anonymous ${label} to remain non-enumerating`)
+    assert.ok(!anonymousHtml.includes(expected), `Anonymous ${label} must not expose private working content`)
+  }
+
+  const editor = await fetch(`${origin}/_desk/pages/built-layout-page`, { headers: { Cookie: cookie } })
+  const editorHtml = await editor.text()
+  assert.equal(editor.status, 200, 'Expected authenticated internal Page editor SSR')
+  assert.ok(editorHtml.includes('HaloPress Desk'), 'Expected the internal Page editor to retain the Desk shell')
+  assert.ok(!editorHtml.includes('data-layout-renderer'), 'Internal Page editor must remain persisted-Layout-free')
+  assert.ok(!editorHtml.includes('data-layout-canvas'), 'Page editor preview must not link the Layout editor canvas')
+  const isolatedPreview = editorHtml.match(/<iframe(?=[^>]*data-page-editor-preview-surface)[^>]*>/)?.[0]
+  assert.ok(isolatedPreview, 'Expected the Page editor isolated preview surface in SSR')
+  assert.ok(isolatedPreview.includes('data-portable-content-isolated'), 'Expected the Page editor preview to remain portable and isolated')
+  assert.ok(isolatedPreview.includes('Working Page marker'), 'Expected the isolated editor preview to render working Page content')
+  assert.ok(!isolatedPreview.includes('data-layout-renderer'), 'Persisted Layout must not enter the isolated editor preview subtree')
+  assert.ok(!isolatedPreview.includes('HaloPress Desk'), 'Desk structure must not enter the isolated editor preview subtree')
+
+  await setSiteMode(origin, cookie, false)
+  try {
+    const disabledPublic = await fetch(`${origin}/built-layout-page`)
+    const disabledPublicHtml = await disabledPublic.text()
+    assert.equal(disabledPublic.status, 200, 'Expected assigned public Page to remain rendered while Sites mode is disabled')
+    assert.ok(disabledPublicHtml.includes('Published Page marker'), 'Disabled public Page must retain published content')
+    assert.ok(!disabledPublicHtml.includes('data-layout-renderer'), 'Disabled public Page must not render persisted Layout')
+
+    for (const [path, label, expected] of [
+      ['/_preview/pages/built-layout-page', 'disabled full Page preview', 'Working Page marker'],
+      ['/_preview/content/article/built-content', 'disabled full content preview', 'Working Content marker']
+    ]) {
+      const response = await fetch(`${origin}${path}`, { headers: { Cookie: cookie } })
+      const html = await response.text()
+      assert.equal(response.status, 200, `Expected ${label} to remain rendered`)
+      assert.equal(response.headers.get('cache-control'), 'private, no-store')
+      assert.ok(html.includes(expected), `Expected ${label} working content`)
+      assert.ok(!html.includes('data-layout-renderer'), `${label} must not render persisted Layout`)
+    }
+  } finally {
+    await setSiteMode(origin, cookie, true)
+  }
+
+  const reenabled = await fetch(`${origin}/built-layout-page`)
+  const reenabledHtml = await reenabled.text()
+  assert.equal(reenabled.status, 200, 'Expected public Page after re-enabling Sites mode')
+  assertReadyLayoutMarkup(reenabledHtml, 're-enabled public Page')
+
+  return pageHtml
+}
+
 async function assertCompiledSiteThemeAdapter(origin, html) {
   const hrefs = [...html.matchAll(/<link[^>]+href="([^"]+\.css)"/g)].map(match => match[1])
   const stylesheets = await Promise.all(hrefs.map(async href => fetch(new URL(href, origin)).then(response => response.text())))
@@ -421,6 +874,18 @@ async function assertCompiledSiteThemeAdapter(origin, html) {
     /body\.site-theme-adapter\[data-halo-theme-enabled=(?:true|"true")\][^{]*\{[^}]*font-family:var\(--halo-font-family-body\)[^}]*font-size:var\(--halo-font-size-base\)[^}]*line-height:var\(--halo-line-height-body\)/,
     'Expected body-level public teleports to inherit the Theme body typography tokens'
   )
+}
+
+async function assertCompiledLayoutRenderer(origin, html) {
+  const hrefs = [...html.matchAll(/<link[^>]+href="([^"]+\.css)"/g)].map(match => match[1])
+  const stylesheets = await Promise.all(hrefs.map(async href => fetch(new URL(href, origin)).then(response => response.text())))
+  const css = stylesheets.join('\n')
+  assert.ok(css.includes('.layout-runtime-grid'), 'Expected built responsive Layout renderer CSS')
+  assert.match(css, /grid-template-columns:repeat\(4,minmax\(0,1fr\)\)/, 'Expected the mobile four-column Layout grid')
+  assert.match(css, /@media\(min-width:640px\)/, 'Expected the source-owned tablet breakpoint')
+  assert.match(css, /grid-template-columns:repeat\(8,minmax\(0,1fr\)\)/, 'Expected the tablet eight-column Layout grid')
+  assert.match(css, /@media\(min-width:1024px\)/, 'Expected the source-owned desktop breakpoint')
+  assert.match(css, /grid-template-columns:repeat\(12,minmax\(0,1fr\)\)/, 'Expected the desktop twelve-column Layout grid')
 }
 
 function assertRenderedMenu(html) {
@@ -547,21 +1012,31 @@ async function main() {
     assert.ok(html.includes(themeHref), 'Expected anonymous SSR to load the exact Theme digest CSS')
     assert.ok(html.lastIndexOf(baseHref) < html.lastIndexOf(themeHref), 'Expected base CSS before the final Theme CSS link')
     assert.ok(!html.slice(html.lastIndexOf(themeHref)).includes(baseHref), 'No base CSS link may occur after the final Theme link')
-    assert.ok(html.includes('data-halo-color-mode="dark"'), 'Expected the saved dark Theme mode in anonymous shell SSR')
+    const serializedColorModes = html.match(/data-halo-color-mode(?:=|%3D)[^\s>]*/g) ?? []
+    assert.ok(
+      html.includes('data-halo-color-mode="dark"'),
+      `Expected the saved dark Theme mode in anonymous shell SSR: ${serializedColorModes.join(', ')}`
+    )
     assert.ok(html.includes('--ui-primary:var(--halo-site-color-primary'), 'Expected the live Halo to Nuxt UI adapter path')
     await assertCompiledSiteThemeAdapter(origin, html)
+
+    await assertLayoutRouteDelivery(origin)
 
     await assertBuiltPageMode(origin, 'dark')
     await setPersistedThemeMode(stateDirectory, stateArgs, 'light')
     await assertBuiltPageMode(origin, 'light')
     await setPersistedThemeMode(stateDirectory, stateArgs, 'system')
     await assertBuiltPageMode(origin, 'default')
+    await setPersistedThemeMode(stateDirectory, stateArgs, 'dark')
+
+    const layoutPageHtml = await assertPersistedLayoutSurfaces(origin)
+    await assertCompiledLayoutRenderer(origin, layoutPageHtml)
 
     const verticalResponse = await fetch(`http://127.0.0.1:${port}/_site-menu-ssr-fixture`)
     const verticalHtml = await verticalResponse.text()
     assert.equal(verticalResponse.status, 200, `Expected vertical fixture SSR to succeed, received ${verticalResponse.status}`)
     assertRenderedNuxtFixture(verticalHtml)
-    console.log('Built Site/Theme SSR smoke passed: anonymous manifest, immutable CSS, portable Page, dark/light/system root modes, ordered shell links, and Nuxt menus rendered correctly.')
+    console.log('Built Site/Layout/Theme SSR smoke passed: ready/fallback public routes, collection/detail, authenticated previews, isolated Page editor, responsive CSS, ETags, immutable CSS, root modes, and Nuxt menus rendered correctly.')
   } finally {
     if (worker) await stopWorker(worker)
     await rm(stateDirectory, { recursive: true, force: true })

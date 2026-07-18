@@ -23,6 +23,7 @@ import type { SchemaRegistry } from './types'
 
 export type PublicDocumentKind = 'content' | 'page' | 'schema'
 export type PublicRouteRow = typeof publicRouteTable.$inferSelect
+export const PUBLIC_ROUTE_D1_IN_CHUNK_SIZE = 90
 
 type RouteIdentity = {
   documentKind: PublicDocumentKind
@@ -200,8 +201,8 @@ export async function canonicalPathMap(db: Db, identities: Array<{ documentKind:
     const ids = [...unique.values()]
       .filter(item => item.documentKind === documentKind)
       .map(item => item.documentId)
-    for (let offset = 0; offset < ids.length; offset += 200) {
-      const chunk = ids.slice(offset, offset + 200)
+    for (let offset = 0; offset < ids.length; offset += PUBLIC_ROUTE_D1_IN_CHUNK_SIZE) {
+      const chunk = ids.slice(offset, offset + PUBLIC_ROUTE_D1_IN_CHUNK_SIZE)
       if (!chunk.length) continue
       const rows = await db.select({
         path: publicRouteTable.path,
@@ -304,10 +305,7 @@ export async function resolvePublicRoute(db: Db, requestedPath: string) {
   }
 }
 
-export async function listCanonicalPublicRoutes(db: Db) {
-  const rows = await db.select().from(publicRouteTable)
-    .where(eq(publicRouteTable.routeKind, 'canonical'))
-    .orderBy(publicRouteTable.path) as PublicRouteRow[]
+async function keepAnonymousReadableCanonicalRoutes(db: Db, rows: PublicRouteRow[]) {
   const pageIds = rows.filter(row => row.documentKind === 'page').map(row => row.documentId)
   const schemaIds = rows.filter(row => row.documentKind === 'schema').map(row => row.documentId)
   const contentIds = rows.filter(row => row.documentKind === 'content').map(row => row.documentId)
@@ -316,8 +314,8 @@ export async function listCanonicalPublicRoutes(db: Db) {
   const activeSchemas = new Set<string>()
   const anonymousSchemas = new Set<string>()
 
-  for (let offset = 0; offset < pageIds.length; offset += 200) {
-    const chunk = pageIds.slice(offset, offset + 200)
+  for (let offset = 0; offset < pageIds.length; offset += PUBLIC_ROUTE_D1_IN_CHUNK_SIZE) {
+    const chunk = pageIds.slice(offset, offset + PUBLIC_ROUTE_D1_IN_CHUNK_SIZE)
     if (!chunk.length) continue
     const published = await db.select({
       id: pageTable.id,
@@ -327,8 +325,8 @@ export async function listCanonicalPublicRoutes(db: Db) {
     for (const row of published) if (row.publishedRevisionId && row.status !== 'deleted') readablePages.add(row.id)
   }
 
-  for (let offset = 0; offset < contentIds.length; offset += 200) {
-    const chunk = contentIds.slice(offset, offset + 200)
+  for (let offset = 0; offset < contentIds.length; offset += PUBLIC_ROUTE_D1_IN_CHUNK_SIZE) {
+    const chunk = contentIds.slice(offset, offset + PUBLIC_ROUTE_D1_IN_CHUNK_SIZE)
     if (!chunk.length) continue
     contentRows.push(...await db.select({
       id: contentTable.id,
@@ -339,8 +337,8 @@ export async function listCanonicalPublicRoutes(db: Db) {
   }
 
   const relevantSchemaIds = [...new Set([...schemaIds, ...contentRows.map(row => row.schemaKey)])]
-  for (let offset = 0; offset < relevantSchemaIds.length; offset += 200) {
-    const chunk = relevantSchemaIds.slice(offset, offset + 200)
+  for (let offset = 0; offset < relevantSchemaIds.length; offset += PUBLIC_ROUTE_D1_IN_CHUNK_SIZE) {
+    const chunk = relevantSchemaIds.slice(offset, offset + PUBLIC_ROUTE_D1_IN_CHUNK_SIZE)
     if (!chunk.length) continue
     const [lifecycleRows, permissionRows] = await Promise.all([
       db.select({ schemaKey: schemaActiveTable.schemaKey, status: schemaActiveTable.status })
@@ -365,4 +363,38 @@ export async function listCanonicalPublicRoutes(db: Db) {
     if (row.documentKind === 'schema') return activeSchemas.has(row.documentId) && anonymousSchemas.has(row.documentId)
     return readableContent.has(row.documentId)
   })
+}
+
+export async function listCanonicalPublicRoutesByIdentity(
+  db: Db,
+  identities: Array<Pick<RouteIdentity, 'documentKind' | 'documentId'>>
+) {
+  const unique = new Map(identities.map(identity => [
+    `${identity.documentKind}:${identity.documentId}`,
+    identity
+  ]))
+  const rows: PublicRouteRow[] = []
+  for (const documentKind of ['content', 'page', 'schema'] as const) {
+    const ids = [...unique.values()]
+      .filter(identity => identity.documentKind === documentKind)
+      .map(identity => identity.documentId)
+    for (let offset = 0; offset < ids.length; offset += PUBLIC_ROUTE_D1_IN_CHUNK_SIZE) {
+      const chunk = ids.slice(offset, offset + PUBLIC_ROUTE_D1_IN_CHUNK_SIZE)
+      if (!chunk.length) continue
+      rows.push(...await db.select().from(publicRouteTable).where(and(
+        eq(publicRouteTable.documentKind, documentKind),
+        eq(publicRouteTable.routeKind, 'canonical'),
+        inArray(publicRouteTable.documentId, chunk)
+      )) as PublicRouteRow[])
+    }
+  }
+  rows.sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0)
+  return await keepAnonymousReadableCanonicalRoutes(db, rows)
+}
+
+export async function listCanonicalPublicRoutes(db: Db) {
+  const rows = await db.select().from(publicRouteTable)
+    .where(eq(publicRouteTable.routeKind, 'canonical'))
+    .orderBy(publicRouteTable.path) as PublicRouteRow[]
+  return await keepAnonymousReadableCanonicalRoutes(db, rows)
 }

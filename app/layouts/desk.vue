@@ -3,6 +3,11 @@ import type { NavigationMenuItem } from '@nuxt/ui'
 import { buildSiteAdminNavigation } from '~~/shared/site-admin-sections'
 
 const route = useRoute()
+const { presentation } = await useSitePresentation()
+const colorMode = useColorMode()
+watch(() => presentation.value.appearance.colorMode, preference => {
+  colorMode.preference = preference
+}, { immediate: true })
 
 const { data, signOut } = useAuth()
 const { enabled: siteModeEnabled } = useSiteMode()

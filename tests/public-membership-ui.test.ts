@@ -38,7 +38,7 @@ describe('public membership UI contracts', () => {
   })
 
   it('shows session and logout affordances while restricting Desk actions to staff admins', async () => {
-    const layout = await readProjectFile('app/layouts/default.vue')
+    const layout = await readProjectFile('app/components/layout-renderer/BuiltInLayoutRenderer.vue')
 
     expect(layout).toContain('const { data: session, status, signOut } = useAuth()')
     expect(layout).toContain(`session.value?.user?.role === 'admin' && session.value.user.accountType === 'staff'`)
