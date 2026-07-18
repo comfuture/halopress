@@ -84,8 +84,8 @@ describe('Site menu editor interaction contract', () => {
 
     for (const list of [parents, children]) {
       expect(list).toContain('useSortable(listRef, model')
-      expect(list).toContain('nextTick(() => sortable.start())')
       expect(list).toContain('watchElement: true')
+      expect(list).not.toContain('sortable.start()')
       expect(list).toContain('forceFallback: true')
       expect(list).toContain('delayOnTouchOnly: true')
       expect(list).toContain('touchStartThreshold: 3')

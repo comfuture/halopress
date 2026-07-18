@@ -63,7 +63,7 @@ function onMove(event: MoveEvent) {
   return true
 }
 
-const sortable = useSortable(listRef, model, {
+useSortable(listRef, model, {
   watchElement: true,
   handle: '.hp-menu-child-drag-handle',
   draggable: '.hp-menu-child-sort-item',
@@ -90,10 +90,6 @@ const sortable = useSortable(listRef, model, {
   onEnd: () => {
     dropTarget.value = null
   }
-})
-
-onMounted(() => {
-  nextTick(() => sortable.start())
 })
 </script>
 
