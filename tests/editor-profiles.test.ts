@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   createPageProfile,
   createRichTextProfile,
+  getPageToolbarGroups,
   mergeNamedContributions
 } from '../app/editor/profiles'
 
@@ -105,6 +106,16 @@ describe('richText and page profiles', () => {
     expect(paragraphItems.map(item => item.label)).toEqual(expect.arrayContaining([
       'Turn into', 'Reset formatting'
     ]))
+  })
+
+  it('keeps only history controls in the toolbar for atomic page blocks', () => {
+    const page = createPageProfile()
+    const pageBlockGroups = getPageToolbarGroups(page.toolbarGroups, 'pageBlock')
+    const paragraphGroups = getPageToolbarGroups(page.toolbarGroups, 'paragraph')
+
+    expect(pageBlockGroups.flat().map(item => 'kind' in item ? item.kind : null)).toEqual(['undo', 'redo'])
+    expect(paragraphGroups).toBe(page.toolbarGroups)
+    expect(paragraphGroups.flat().some(item => 'kind' in item && item.kind === 'blockquote')).toBe(true)
   })
 
   it('supports named customization without changing the component implementation', () => {
