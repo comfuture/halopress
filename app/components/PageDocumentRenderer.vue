@@ -15,7 +15,12 @@ const props = withDefaults(defineProps<{
   isolated: false
 })
 
-const { theme, pending: themePending, error: themeError } = useSiteTheme()
+const {
+  theme,
+  pending: themePending,
+  error: themeError,
+  refresh: refreshTheme
+} = useSiteTheme()
 const colorMode = useColorMode()
 const renderedColorMode = computed(() => colorMode.preference === 'dark'
   ? 'dark'
@@ -73,7 +78,8 @@ useHead(() => {
     :aria-busy="themePending"
     data-portable-theme-pending
   >
-    {{ themeError ? 'Theme preview is unavailable.' : 'Loading the published Theme…' }}
+    <span>{{ themeError ? 'Theme preview is unavailable.' : 'Loading the published Theme…' }}</span>
+    <button v-if="themeError" type="button" @click="refreshTheme()">Retry Theme</button>
   </div>
   <div
     v-else-if="activeRendering"
@@ -82,7 +88,8 @@ useHead(() => {
     v-html="renderedHtml"
   />
   <div v-else class="halo-preview-loading" aria-live="polite" :aria-busy="themePending">
-    {{ themeError ? 'Portable content Theme is unavailable.' : 'Loading the published Theme…' }}
+    <span>{{ themeError ? 'Portable content Theme is unavailable.' : 'Loading the published Theme…' }}</span>
+    <button v-if="themeError" type="button" @click="refreshTheme()">Retry Theme</button>
   </div>
 </template>
 
@@ -99,9 +106,19 @@ useHead(() => {
 .halo-preview-loading {
   display: grid;
   min-height: 12rem;
+  gap: 0.75rem;
   place-items: center;
   color: #52525b;
   background: #ffffff;
   font: 0.875rem/1.5 ui-sans-serif, system-ui, sans-serif;
+}
+
+.halo-preview-loading button {
+  padding: 0.375rem 0.75rem;
+  border: 1px solid #a1a1aa;
+  border-radius: 0.375rem;
+  background: #ffffff;
+  font: inherit;
+  cursor: pointer;
 }
 </style>

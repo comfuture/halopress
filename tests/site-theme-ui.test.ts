@@ -12,9 +12,10 @@ const root = resolve(import.meta.dirname, '..')
 
 describe('Site Theme app and mode boundaries', () => {
   it('drives the anonymous public shell only from the public Theme manifest', async () => {
-    const [layout, mainCss] = await Promise.all([
+    const [layout, mainCss, colorModeBridgePlugin] = await Promise.all([
       readFile(resolve(root, 'app/layouts/default.vue'), 'utf8'),
-      readFile(resolve(root, 'app/assets/css/main.css'), 'utf8')
+      readFile(resolve(root, 'app/assets/css/main.css'), 'utf8'),
+      readFile(resolve(root, 'server/plugins/public-color-mode-bridge.ts'), 'utf8')
     ])
     expect(layout).toContain('const { theme: siteTheme } = useSiteTheme()')
     expect(layout).toContain('siteTheme.value?.siteModeEnabled === true')
@@ -26,6 +27,18 @@ describe('Site Theme app and mode boundaries', () => {
     expect(layout).toContain(': presentation.value.appearance.colorMode')
     expect(layout).toContain('halo-stylesheet-${href}')
     expect(layout).toContain('site-theme-adapter')
+    expect(layout).toContain('configuredColorModePreference')
+    expect(layout).toContain(`hook('app:mounted'`)
+    expect(layout).toContain(`window.matchMedia('(prefers-color-scheme: dark)')`)
+    expect(layout).toContain(`addEventListener('change', syncSystemColorMode)`)
+    expect(layout).toContain('colorMode.preference === \'system\' && systemPrefersDark.value')
+    expect(layout).toContain('halo-public-color-mode-bridge')
+    expect(layout).toContain('tagPriority: \'low\'')
+    expect(layout).toContain('window.__NUXT_COLOR_MODE__')
+    expect(layout).toContain('document.documentElement')
+    expect(layout).toContain('e.classList.remove("light","dark")')
+    expect(colorModeBridgePlugin).toContain('hooks.hook(\'render:response\'')
+    expect(colorModeBridgePlugin).toContain('.replace(\'</head>\', `${bridge}</head>`)')
     expect(layout).toContain('colorMode.preference === \'dark\'')
     expect(layout).toContain('colorMode.preference === \'light\'')
     expect(layout).toContain('\'data-halo-color-mode\': siteModeEnabled.value ? shellColorMode.value : undefined')
@@ -34,11 +47,17 @@ describe('Site Theme app and mode boundaries', () => {
     expect(mainCss).toContain('[data-halo-color-mode="dark"]')
     expect(mainCss).toContain('@media (prefers-color-scheme: dark)')
     expect(mainCss).toContain('[data-halo-color-mode="default"]')
+    expect(mainCss).toContain('color-scheme: dark')
+    expect(mainCss).toContain('font-family: var(--halo-font-family-heading)')
+    expect(mainCss).toContain('line-height: var(--halo-line-height-heading)')
     for (const role of ['primary', 'secondary', 'success', 'info', 'warning', 'error']) {
       expect(mainCss).toContain(`:where(.bg-${role})`)
       expect(mainCss).toContain(`--ui-text-inverted: var(--halo-site-color-on-${role})`)
     }
-    expect(layout).toContain('<UColorModeButton v-if="presentation.shell.showColorMode"')
+    expect(layout).toContain('data-public-color-mode-toggle')
+    expect(layout).toContain(':aria-label="visitorColorModeLabel"')
+    expect(layout).toContain(':icon="visitorColorModeIcon"')
+    expect(layout).toContain('colorMode.preference = visitorColorModeIsDark.value ? \'light\' : \'dark\'')
   })
 
   it('retains legacy Nuxt UI shell tokens while disabled and maps every v4 semantic role while enabled', () => {
@@ -130,6 +149,7 @@ describe('Site Theme app and mode boundaries', () => {
       expect(renderer).toContain('colorMode.preference === \'light\'')
       expect(renderer).toContain(': \'default\'')
       expect(renderer).toContain('data-halo-color-mode')
+      expect(renderer).toContain('Retry Theme')
       expect(renderer).not.toContain('useRequestURL()')
     }
     expect(schemaIndex).toContain(':rendering="standalonePage.rendering"')
@@ -143,6 +163,9 @@ describe('Site Theme app and mode boundaries', () => {
     expect(editor).toContain('<UInputNumber')
     expect(editor).toContain('aria-live="polite"')
     expect(editor).toContain('isDirty ? \'Unsaved custom token changes.\'')
+    expect(editor).toContain('<p v-if="saveStatus"')
+    expect(editor).toContain('{{ saveStatus }}')
+    expect(editor).toContain('The Theme changed elsewhere. Refresh before saving again.')
     expect(editor).toContain('Your draft was preserved')
     expect(editor).toContain('Theme validation failed')
     expect(editor).toContain('<USlideover')

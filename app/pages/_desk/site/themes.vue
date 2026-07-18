@@ -333,9 +333,14 @@ async function discardAndReload() {
           </div>
 
           <div class="flex flex-wrap items-center justify-between gap-3 border-t border-muted pt-5">
-            <p class="text-sm text-muted" aria-live="polite">
-              {{ isDirty ? 'Unsaved custom token changes.' : (saveStatus || 'Published Theme is up to date.') }}
-            </p>
+            <div class="space-y-1 text-sm" aria-live="polite">
+              <p v-if="saveStatus" :class="saveStatus.includes('failed') || saveStatus.includes('changed elsewhere') ? 'text-error' : 'text-muted'">
+                {{ saveStatus }}
+              </p>
+              <p class="text-muted">
+                {{ isDirty ? 'Unsaved custom token changes.' : 'Published Theme is up to date.' }}
+              </p>
+            </div>
             <div class="flex gap-2">
               <UButton color="neutral" variant="outline" :disabled="saving" @click="discardAndReload">
                 {{ isDirty ? 'Discard and reload' : 'Reload published' }}

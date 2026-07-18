@@ -39,10 +39,10 @@ function persistedTheme(colorMode) {
     radii: { control: 0.25, sm: 0.25, md: 0.375, lg: 0.5 },
     typography: {
       bodyFontFamily: 'public-sans',
-      headingFontFamily: 'public-sans',
+      headingFontFamily: 'system-serif',
       fontSizeBase: 1,
       lineHeightBody: 1.6,
-      lineHeightHeading: 1.15
+      lineHeightHeading: 1.3
     },
     spacing: { block: 1.25, inline: 0.75 },
     content: { maxWidth: 72, textWidth: 48 }
@@ -356,6 +356,30 @@ async function assertBuiltPageMode(origin, expectedMode) {
     new RegExp(`<div(?=[^>]*class="site-shell")(?=[^>]*${modeAttribute})[^>]*>`),
     `Expected built SSR shell to serialize the ${expectedMode} Site Theme mode`
   )
+  const expectedPreference = expectedMode === 'default' ? 'system' : expectedMode
+  const bridgePosition = html.indexOf('id="halo-public-color-mode-bridge"')
+  const nuxtColorModePosition = html.indexOf('getStorageValue("localStorage","nuxt-color-mode")')
+  assert.ok(bridgePosition >= 0, 'Expected the server-resolved public color-mode bridge in the head')
+  assert.ok(
+    nuxtColorModePosition >= 0 && nuxtColorModePosition < bridgePosition,
+    'Expected the public color-mode bridge after the Nuxt pre-paint helper'
+  )
+  assert.ok(
+    html.includes(`var p="${expectedPreference}"`),
+    `Expected the pre-paint bridge to serialize the ${expectedPreference} preference`
+  )
+  if (expectedMode === 'dark' || expectedMode === 'light') {
+    assert.match(
+      html,
+      new RegExp(`<html(?=[^>]*class="[^"]*${expectedMode}[^"]*")(?=[^>]*style="[^"]*color-scheme:\\s*${expectedMode}[^"]*")[^>]*>`),
+      `Expected explicit ${expectedMode} SSR class and native color scheme`
+    )
+  }
+  const expectedToggleLabel = expectedMode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'
+  assert.ok(
+    html.includes(`aria-label="${expectedToggleLabel}"`),
+    `Expected the ${expectedMode} SSR color-mode button to say ${expectedToggleLabel}`
+  )
   return html
 }
 
@@ -380,6 +404,12 @@ async function assertCompiledSiteThemeAdapter(origin, html) {
   assert.ok(
     css.includes('--ui-text-inverted:var(--halo-site-color-on-warning)'),
     'Expected the built adapter to use the warning-specific solid foreground'
+  )
+  assert.ok(css.includes('color-scheme:dark'), 'Expected explicit and system dark native color-scheme coverage')
+  assert.ok(
+    css.includes('font-family:var(--halo-font-family-heading)')
+    && css.includes('line-height:var(--halo-line-height-heading)'),
+    'Expected the built public shell to consume the distinct heading typography tokens'
   )
 }
 

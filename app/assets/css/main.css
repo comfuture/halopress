@@ -174,9 +174,15 @@
 .site-shell[data-halo-theme-enabled="true"] {
   color: var(--halo-site-color-text);
   background: var(--halo-site-color-background);
+  color-scheme: light;
   font-family: var(--halo-font-family-body);
   font-size: var(--halo-font-size-base);
   line-height: var(--halo-line-height-body);
+}
+
+body.site-theme-adapter[data-halo-theme-enabled="true"] :where(h1, h2, h3, h4, h5, h6) {
+  font-family: var(--halo-font-family-heading);
+  line-height: var(--halo-line-height-heading);
 }
 
 body.site-theme-adapter[data-halo-theme-enabled="true"],
@@ -214,6 +220,7 @@ body.site-theme-adapter[data-halo-theme-enabled="true"],
 
 body.site-theme-adapter[data-halo-theme-enabled="true"][data-halo-color-mode="dark"],
 .site-shell[data-halo-theme-enabled="true"][data-halo-color-mode="dark"] {
+  color-scheme: dark;
   --halo-site-color-primary: var(--halo-color-primary-dark);
   --halo-site-color-on-primary: var(--halo-color-on-primary-dark);
   --halo-site-color-secondary: var(--halo-color-secondary-dark);
@@ -248,6 +255,7 @@ body.site-theme-adapter[data-halo-theme-enabled="true"][data-halo-color-mode="da
 @media (prefers-color-scheme: dark) {
   body.site-theme-adapter[data-halo-theme-enabled="true"][data-halo-color-mode="default"],
   .site-shell[data-halo-theme-enabled="true"][data-halo-color-mode="default"] {
+    color-scheme: dark;
     --halo-site-color-primary: var(--halo-color-primary-dark);
     --halo-site-color-on-primary: var(--halo-color-on-primary-dark);
     --halo-site-color-secondary: var(--halo-color-secondary-dark);

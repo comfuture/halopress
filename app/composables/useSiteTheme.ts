@@ -19,5 +19,9 @@ export function useSiteTheme() {
     dedupe: 'defer'
   })
   const theme = computed(() => normalizePublicSiteThemeManifest(data.value))
-  return { data, theme, pending, status, error, refresh, execute, clear }
+  const contractError = computed(() => status.value === 'success' && theme.value === null
+    ? new Error('The public Theme manifest has an unsupported or malformed contract.')
+    : null)
+  const themeError = computed(() => error.value ?? contractError.value)
+  return { data, theme, pending, status, error: themeError, refresh, execute, clear }
 }
