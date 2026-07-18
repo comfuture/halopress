@@ -2,8 +2,10 @@ import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
+const projectRoot = resolve(import.meta.dirname, '..')
+
 async function source(path: string) {
-  return await readFile(resolve(process.cwd(), path), 'utf8')
+  return await readFile(resolve(projectRoot, path), 'utf8')
 }
 
 function expectOrdered(value: string, ...tokens: string[]) {

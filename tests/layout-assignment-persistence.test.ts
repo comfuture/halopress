@@ -393,7 +393,7 @@ describe('published Layout resolution', () => {
       })
       expect(JSON.stringify(publicPage)).not.toMatch(/configured|malformedStoredValue|storedLayoutId|updatedBy/)
 
-      const deliverySource = await readFile(resolve(process.cwd(), 'server/api/delivery/page/[id].get.ts'), 'utf8')
+      const deliverySource = await readFile(resolve(import.meta.dirname, '../server/api/delivery/page/[id].get.ts'), 'utf8')
       expect(deliverySource).not.toContain('getSiteLayoutAssignmentAdmin')
       expect(deliverySource).not.toContain('/api/settings/site-layout')
     } finally {
