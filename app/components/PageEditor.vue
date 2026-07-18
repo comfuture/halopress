@@ -67,6 +67,7 @@ const panelCollapsed = ref(false)
 const mobilePanelOpen = ref(false)
 const dropPosition = ref<number | null>(null)
 const dropIndicatorTop = ref<number | null>(null)
+let desktopPanelMediaQuery: MediaQueryList | null = null
 
 const isEditMode = computed(() => mode.value === 'edit')
 const isEditing = computed(() => props.editable && isEditMode.value)
@@ -89,10 +90,26 @@ const canvasSurfaceClass = computed(() => isFullWidthCanvas.value
   : 'rounded-md border border-muted shadow-sm')
 const toolbarRadiusClass = computed(() => isFullWidthCanvas.value ? 'rounded-none' : 'rounded-t-md')
 const workspaceColumns = computed(() => {
-  if (!isEditMode.value) return 'xl:grid-cols-1'
-  return panelCollapsed.value
-    ? 'xl:grid-cols-[minmax(0,1fr)_3rem]'
-    : 'xl:grid-cols-[minmax(0,1fr)_22rem]'
+  if (!isEditMode.value || panelCollapsed.value) return 'xl:grid-cols-1'
+  return 'xl:grid-cols-[minmax(0,1fr)_22rem]'
+})
+
+function usesDesktopPanel() {
+  return desktopPanelMediaQuery?.matches
+    ?? (import.meta.client && window.matchMedia('(min-width: 1280px)').matches)
+}
+
+function handlePanelBreakpointChange(event: MediaQueryListEvent) {
+  if (event.matches) mobilePanelOpen.value = false
+}
+
+onMounted(() => {
+  desktopPanelMediaQuery = window.matchMedia('(min-width: 1280px)')
+  desktopPanelMediaQuery.addEventListener('change', handlePanelBreakpointChange)
+})
+
+onBeforeUnmount(() => {
+  desktopPanelMediaQuery?.removeEventListener('change', handlePanelBreakpointChange)
 })
 
 function getEditor() {
@@ -178,10 +195,23 @@ function showPageProperties() {
   activePanel.value = 'inspector'
 }
 
-function openMobilePanel(tab: 'library' | 'inspector') {
+function openPanel(tab: 'library' | 'inspector') {
   if (!isEditMode.value) return
   activePanel.value = tab
-  mobilePanelOpen.value = true
+  if (usesDesktopPanel()) {
+    panelCollapsed.value = false
+  } else {
+    mobilePanelOpen.value = true
+  }
+}
+
+function togglePanel() {
+  if (!isEditMode.value) return
+  if (usesDesktopPanel()) {
+    panelCollapsed.value = !panelCollapsed.value
+  } else {
+    mobilePanelOpen.value = !mobilePanelOpen.value
+  }
 }
 
 const getDragHandleItems = (editor: Editor): DropdownMenuItem[][] => {
@@ -279,8 +309,8 @@ function handleCanvasDrop(event: DragEvent) {
 
 defineShortcuts({
   meta_shift_p: () => { mode.value = mode.value === 'edit' ? 'preview' : 'edit' },
-  meta_shift_b: () => openMobilePanel('library'),
-  meta_shift_i: () => openMobilePanel('inspector')
+  meta_shift_b: () => openPanel('library'),
+  meta_shift_i: () => openPanel('inspector')
 })
 
 watch(mode, (nextMode) => {
@@ -290,18 +320,8 @@ watch(mode, (nextMode) => {
 
 <template>
   <div class="flex h-full min-h-0 flex-col bg-muted/30" data-page-editor-workspace>
-    <div class="flex flex-wrap items-center justify-between gap-2 border-b border-muted bg-default px-3 py-2">
-      <div class="flex items-center gap-1">
-        <UButton
-          v-if="isEditMode"
-          class="xl:hidden"
-          label="Editor panel"
-          icon="i-lucide-panel-right"
-          color="neutral"
-          variant="ghost"
-          size="sm"
-          @click="mobilePanelOpen = true;"
-        />
+    <UDashboardToolbar>
+      <template #left>
         <UButton
           :label="mode === 'edit' ? 'Preview' : 'Edit'"
           :icon="mode === 'edit' ? 'i-lucide-eye' : 'i-lucide-pencil'"
@@ -311,19 +331,32 @@ watch(mode, (nextMode) => {
           :disabled="!editable"
           @click="mode = mode === 'edit' ? 'preview' : 'edit';"
         />
-      </div>
-      <div class="inline-flex items-center gap-1" role="group" aria-label="Canvas viewport">
+      </template>
+
+      <template #right>
+        <div class="inline-flex items-center gap-1" role="group" aria-label="Canvas viewport">
+          <UButton
+            v-for="item in viewportItems"
+            :key="item.value"
+            :label="item.label"
+            :icon="item.icon"
+            color="neutral"
+            :variant="viewport === item.value ? 'soft' : 'ghost'"
+            @click="viewport = item.value as typeof viewport;"
+          />
+        </div>
         <UButton
-          v-for="item in viewportItems"
-          :key="item.value"
-          :label="item.label"
-          :icon="item.icon"
+          v-if="isEditMode"
+          aria-label="Toggle page editor panel"
+          data-page-editor-panel-toggle
+          icon="i-lucide-panel-right"
           color="neutral"
-          :variant="viewport === item.value ? 'soft' : 'ghost'"
-          @click="viewport = item.value as typeof viewport;"
+          variant="ghost"
+          size="sm"
+          @click="togglePanel"
         />
-      </div>
-    </div>
+      </template>
+    </UDashboardToolbar>
 
     <div class="grid min-h-0 flex-1 grid-cols-1" :class="workspaceColumns">
       <main
@@ -412,33 +445,26 @@ watch(mode, (nextMode) => {
         </div>
       </main>
 
-      <aside v-if="isEditMode" class="hidden min-h-0 border-l border-muted bg-default xl:flex xl:flex-col" aria-label="Page editor panel">
-        <template v-if="panelCollapsed">
-          <UButton aria-label="Expand page editor panel" icon="i-lucide-panel-right-open" color="neutral" variant="ghost" class="m-2" @click="panelCollapsed = false;" />
-        </template>
-        <template v-else>
-          <PageEditorPanel
-            v-model:active-tab="activePanel"
-            v-model:page-title="pageTitle"
-            v-model:public-path="publicPath"
-            v-model:seo-title="seoTitle"
-            v-model:seo-description="seoDescription"
-            v-model:seo-image-asset-id="seoImageAssetId"
-            v-model:structured-data-type="structuredDataType"
-            :selected-block="selectedBlock"
-            :active-fields="activeFields"
-            :active-label="activeComponent?.label"
-            :editable="isEditing"
-            :page-description="pageDescription"
-            :page-validation-message="pageValidationMessage"
-            collapsible
-            @collapse="panelCollapsed = true"
-            @insert="insertPaletteItem"
-            @dragstart="startPaletteDrag"
-            @update-block="updateSelectedBlock"
-            @show-page-properties="showPageProperties"
-          />
-        </template>
+      <aside v-if="isEditMode && !panelCollapsed" class="hidden min-h-0 border-l border-muted bg-default xl:flex xl:flex-col" aria-label="Page editor panel">
+        <PageEditorPanel
+          v-model:active-tab="activePanel"
+          v-model:page-title="pageTitle"
+          v-model:public-path="publicPath"
+          v-model:seo-title="seoTitle"
+          v-model:seo-description="seoDescription"
+          v-model:seo-image-asset-id="seoImageAssetId"
+          v-model:structured-data-type="structuredDataType"
+          :selected-block="selectedBlock"
+          :active-fields="activeFields"
+          :active-label="activeComponent?.label"
+          :editable="isEditing"
+          :page-description="pageDescription"
+          :page-validation-message="pageValidationMessage"
+          @insert="insertPaletteItem"
+          @dragstart="startPaletteDrag"
+          @update-block="updateSelectedBlock"
+          @show-page-properties="showPageProperties"
+        />
       </aside>
     </div>
 
