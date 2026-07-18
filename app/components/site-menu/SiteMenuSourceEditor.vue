@@ -117,21 +117,6 @@ function valueInputType(field: SiteMenuSourceFieldOption | undefined) {
   return field?.kind === 'number' || field?.kind === 'integer' ? 'number' : 'text'
 }
 
-function typedFilterValue(field: SiteMenuSourceFieldOption | undefined, value: unknown) {
-  if (field?.kind === 'boolean') {
-    if (value === true || value === 'true') return true
-    if (value === false || value === 'false') return false
-  }
-  if ((field?.kind === 'number' || field?.kind === 'integer')
-    && (typeof value === 'string' || typeof value === 'number')) {
-    const number = Number(value)
-    if (Number.isFinite(number)) return number
-  }
-  return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
-    ? value
-    : ''
-}
-
 function updateSchemaKey(value: unknown) {
   if (model.value.source.type !== 'schemaQuery' || typeof value !== 'string') return
   model.value.source = {
@@ -177,14 +162,14 @@ function updateExactValue(index: number, value: unknown) {
   if (model.value.source.type !== 'schemaQuery') return
   const filter = model.value.source.filters[index]
   if (!filter || filter.operator !== 'exact') return
-  filter.value = typedFilterValue(fieldForFilter(filter), value)
+  filter.value = siteMenuTypedFilterValue(fieldForFilter(filter), value)
 }
 
 function updateSetValue(filterIndex: number, valueIndex: number, value: unknown) {
   if (model.value.source.type !== 'schemaQuery') return
   const filter = model.value.source.filters[filterIndex]
   if (!filter || filter.operator !== 'exactSet') return
-  filter.values[valueIndex] = typedFilterValue(fieldForFilter(filter), value)
+  filter.values[valueIndex] = siteMenuTypedFilterValue(fieldForFilter(filter), value)
 }
 
 function addSetValue(filterIndex: number) {

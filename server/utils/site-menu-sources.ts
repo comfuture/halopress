@@ -17,7 +17,6 @@ import {
   assertPublishedFieldCompatibility,
   loadPublishedSchemaFieldsByKey,
   type PublishedSchemaFields,
-  type PublishedSearchQueryRunner,
   type PublishedSearchField
 } from '../cms/published-search'
 import { PUBLIC_ROUTE_D1_IN_CHUNK_SIZE } from '../cms/public-routes'
@@ -76,7 +75,14 @@ export type PreparedSchemaSource = {
 }
 
 export type SiteMenuD1Gate = {
-  run: PublishedSearchQueryRunner
+  run: <T>(query: () => Promise<T>, signal?: AbortSignal) => Promise<T>
+}
+
+type SiteMenuD1Waiter = {
+  signal?: AbortSignal
+  resolve: () => void
+  reject: (error: unknown) => void
+  removeAbortListener: () => void
 }
 
 class InvalidSiteMenuSourceError extends Error {
@@ -96,28 +102,52 @@ class SiteMenuSourceTimeoutError extends Error {
 export function createSiteMenuD1Gate(concurrency = SITE_MENU_SOURCE_D1_CONCURRENCY): SiteMenuD1Gate {
   const limit = Math.max(1, Math.min(SITE_MENU_SOURCE_D1_CONCURRENCY, Math.floor(concurrency)))
   let active = 0
-  const waiting: Array<() => void> = []
-  const acquire = async () => {
+  const waiting: SiteMenuD1Waiter[] = []
+  const abortReason = (signal: AbortSignal) => (
+    signal.reason instanceof Error ? signal.reason : new Error('Dynamic source query was aborted')
+  )
+  const acquire = async (signal?: AbortSignal) => {
+    if (signal?.aborted) throw abortReason(signal)
     if (active < limit) {
       active++
       return
     }
-    await new Promise<void>(resolve => waiting.push(resolve))
+    await new Promise<void>((resolve, reject) => {
+      const handleAbort = () => {
+        const index = waiting.indexOf(waiter)
+        if (index === -1) return
+        waiting.splice(index, 1)
+        waiter.removeAbortListener()
+        waiter.reject(abortReason(signal!))
+      }
+      const waiter: SiteMenuD1Waiter = {
+        signal,
+        resolve: () => {
+          waiter.removeAbortListener()
+          resolve()
+        },
+        reject,
+        removeAbortListener: () => signal?.removeEventListener('abort', handleAbort)
+      }
+      waiting.push(waiter)
+      signal?.addEventListener('abort', handleAbort, { once: true })
+    })
   }
   const release = () => {
     const next = waiting.shift()
     if (next) {
       // Transfer the occupied slot directly. Decrementing before the queued
       // waiter resumes would briefly advertise capacity that does not exist.
-      next()
+      next.resolve()
       return
     }
     active--
   }
   return {
-    run: async <T>(query: () => Promise<T>) => {
-      await acquire()
+    run: async <T>(query: () => Promise<T>, signal?: AbortSignal) => {
+      await acquire(signal)
       try {
+        if (signal?.aborted) throw abortReason(signal)
         return await query()
       } finally {
         release()
@@ -448,7 +478,8 @@ async function resolveSchemaSource(
   db: Db,
   item: SiteMenuDynamicItem & { source: Extract<SiteMenuSource, { type: 'schemaQuery' }> },
   prepared: PreparedSchemaSource,
-  d1Gate: SiteMenuD1Gate
+  d1Gate: SiteMenuD1Gate,
+  signal: AbortSignal
 ): Promise<SiteMenuSourceCandidate[]> {
   const { issues } = validateSchemaSource(item.source, prepared)
   if (issues.length) throw new InvalidSiteMenuSourceError(issues[0]!.message)
@@ -504,14 +535,14 @@ async function resolveSchemaSource(
     rows = await d1Gate.run(async () => await rowsQuery.orderBy(
       direction === 'desc' ? desc(column) : asc(column),
       direction === 'desc' ? desc(contentListingTable.contentId) : asc(contentListingTable.contentId)
-    ))
+    ), signal)
   } else {
     const field = prepared.fieldById.get(item.source.sort.fieldId)!
     const expression = searchSortExpression(item.source.sort.fieldId, searchDataTypeForKind(field.kind)!)
     rows = await d1Gate.run(async () => await rowsQuery.orderBy(
       direction === 'desc' ? desc(expression) : asc(expression),
       direction === 'desc' ? desc(contentListingTable.contentId) : asc(contentListingTable.contentId)
-    ))
+    ), signal)
   }
 
   let labelValueById = new Map<string, string | number | null>()
@@ -525,7 +556,7 @@ async function resolveSchemaSource(
       eq(contentSearchData.projectionScope, 'published'),
       eq(contentSearchData.fieldId, labelFieldId),
       inArray(contentSearchData.contentId, rows.map(row => row.id))
-    )))
+    )), signal)
     labelValueById = new Map(values.map(value => [value.contentId, value.text ?? value.value]))
   }
 
@@ -572,7 +603,8 @@ async function resolvePageSource(
   db: Db,
   item: SiteMenuDynamicItem & { source: Extract<SiteMenuSource, { type: 'pagePrefix' }> },
   context: { documentKind: string, canonicalPath: string | null },
-  d1Gate: SiteMenuD1Gate
+  d1Gate: SiteMenuD1Gate,
+  signal: AbortSignal
 ): Promise<SiteMenuSourceCandidate[]> {
   const prefix = pageSourcePrefix(item.source, context)
   if (prefix == null) return []
@@ -597,7 +629,10 @@ async function resolvePageSource(
   query = item.source.sort === 'path'
     ? query.orderBy(asc(publicRouteTable.path), asc(pageTable.id))
     : query.orderBy(asc(titleOrder), asc(publicRouteTable.path), asc(pageTable.id))
-  const rows: Array<{ id: string, title: string | null, path: string }> = await d1Gate.run(async () => await query)
+  const rows: Array<{ id: string, title: string | null, path: string }> = await d1Gate.run(
+    async () => await query,
+    signal
+  )
   return rows.map(row => ({
     sourceId: item.id,
     documentKind: 'page' as const,
@@ -608,13 +643,21 @@ async function resolvePageSource(
   }))
 }
 
-async function withSourceTimeout<T>(loader: () => Promise<T>, timeoutMs: number): Promise<T> {
+export async function withSourceTimeout<T>(
+  loader: (signal: AbortSignal) => Promise<T>,
+  timeoutMs: number
+): Promise<T> {
+  const controller = new AbortController()
+  const timeoutError = new SiteMenuSourceTimeoutError()
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
     return await Promise.race([
-      loader(),
+      loader(controller.signal),
       new Promise<T>((_resolve, reject) => {
-        timer = setTimeout(() => reject(new SiteMenuSourceTimeoutError()), timeoutMs)
+        timer = setTimeout(() => {
+          controller.abort(timeoutError)
+          reject(timeoutError)
+        }, timeoutMs)
       })
     ])
   } finally {
@@ -686,7 +729,7 @@ export async function resolveSiteMenuDynamicSources(args: {
         ? SITE_MENU_SOURCE_TIMEOUT_MS
         : Math.min(SITE_MENU_SOURCE_TIMEOUT_MS, args.deadlineAt - Date.now())
       if (remainingBudget <= 0) throw new SiteMenuSourceTimeoutError()
-      const candidates = await withSourceTimeout(async () => {
+      const candidates = await withSourceTimeout(async (signal) => {
         const loadCandidates = async () => (
           item.source.type === 'schemaQuery'
             ? resolveSchemaSource(
@@ -694,13 +737,15 @@ export async function resolveSiteMenuDynamicSources(args: {
                 item as SiteMenuDynamicItem & { source: Extract<SiteMenuSource, { type: 'schemaQuery' }> },
                 preparedSchemaByKey.get(item.source.schemaKey)
                 ?? unavailablePreparedSchema(item.source.schemaKey, new Error('Dynamic Menu source metadata is unavailable')),
-                d1Gate
+                d1Gate,
+                signal
               )
             : resolvePageSource(
                 args.db,
                 item as SiteMenuDynamicItem & { source: Extract<SiteMenuSource, { type: 'pagePrefix' }> },
                 args.context,
-                d1Gate
+                d1Gate,
+                signal
               )
         )
         if (!hasDistributedWidgetCache(args.event)) {
