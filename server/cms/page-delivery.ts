@@ -3,7 +3,7 @@ import { eq, sql, type SQLWrapper } from 'drizzle-orm'
 import type { Db } from '../db/db'
 import { page } from '../db/schema'
 import { notFound } from '../utils/http'
-import { normalizePageContent } from './page-content'
+import { parseStoredPageContent } from './page-content'
 import { getPublicationRevision } from './publication'
 
 export async function hasStandalonePageRouteClaim(db: Db, id: string) {
@@ -24,7 +24,7 @@ export async function getPublishedPage(db: Db, id: string) {
     id: row.id,
     title: revision.title,
     status: 'published' as const,
-    content: normalizePageContent(revision.contentJson),
+    content: parseStoredPageContent(revision.contentJson),
     publishedAt: row.publishedAt
   }
 }

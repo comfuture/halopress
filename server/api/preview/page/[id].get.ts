@@ -1,12 +1,13 @@
 import { eq } from 'drizzle-orm'
 
-import { normalizePageContent } from '../../../cms/page-content'
+import { parseStoredPageContent } from '../../../cms/page-content'
 import { publicationMetadata } from '../../../cms/publication'
 import { getDb } from '../../../db/db'
 import { page as pageTable } from '../../../db/schema'
 import { requireAdmin } from '../../../utils/auth'
 import { applyPreviewDeliveryHeaders } from '../../../utils/delivery-policy'
 import { notFound, sendH3Error } from '../../../utils/http'
+import { createPortablePageRenderingForEvent } from '../../../utils/portable-content-delivery'
 
 export default defineEventHandler(async (event) => {
   applyPreviewDeliveryHeaders(event)
@@ -20,11 +21,13 @@ export default defineEventHandler(async (event) => {
   const db = await getDb(event)
   const row = await db.select().from(pageTable).where(eq(pageTable.id, id)).get()
   if (!row || row.status === 'deleted') return sendH3Error(event, notFound('Page not found'))
+  const content = parseStoredPageContent(row.contentJson)
   return {
     id: row.id,
     title: row.title,
     status: row.status,
-    content: normalizePageContent(row.contentJson),
+    content,
+    rendering: createPortablePageRenderingForEvent(event, content),
     updatedAt: row.updatedAt,
     ...publicationMetadata(row)
   }

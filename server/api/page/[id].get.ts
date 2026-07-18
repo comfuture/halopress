@@ -7,6 +7,7 @@ import { notFound } from '../../utils/http'
 import { publicationMetadata } from '../../cms/publication'
 import { getCanonicalPublicPath } from '../../cms/public-routes'
 import { parsePublicSeoJson } from '../../../shared/public-seo'
+import { parseStoredPageContent } from '../../cms/page-content'
 
 const emptyDoc = { type: 'doc', content: [{ type: 'paragraph' }] }
 
@@ -43,13 +44,7 @@ export default defineEventHandler(async (event) => {
 
   if (!row) throw notFound('Page not found')
 
-  let content = emptyDoc
-  try {
-    const parsed = JSON.parse(row.contentJson)
-    if (parsed && typeof parsed === 'object') content = parsed
-  } catch {
-    content = emptyDoc
-  }
+  const content = parseStoredPageContent(row.contentJson) ?? emptyDoc
 
   const { publishedRevisionId: _publishedRevisionId, firstPublishedAt: _firstPublishedAt, ...safeRow } = row
   const { currentRevision, ...rest } = safeRow

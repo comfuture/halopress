@@ -34,6 +34,7 @@ vi.mock('../server/utils/schema-permission', () => ({
 }))
 
 vi.stubGlobal('defineEventHandler', (handler: EndpointHandler) => handler)
+vi.stubGlobal('useRuntimeConfig', () => ({ canonicalOrigin: 'http://preview.example.com' }))
 
 let fixture: Awaited<ReturnType<typeof createTestSqliteDb>>
 let contentPreview: EndpointHandler

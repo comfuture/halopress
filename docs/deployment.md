@@ -43,21 +43,24 @@ pnpm exec nuxt build --preset node-server
 NODE_ENV=production HOST=0.0.0.0 PORT=3000 node .output/server/index.mjs
 ```
 
-Set a strong `NUXT_AUTH_SECRET` and the public authentication origin in the
-runtime environment. The origin must include `/api/auth`:
+Set a strong `NUXT_AUTH_SECRET`, the public authentication origin, and the
+canonical site origin in the runtime environment. The auth origin includes
+`/api/auth`; the canonical origin is origin-only:
 
 ```bash
 export NUXT_AUTH_SECRET="replace-with-a-strong-random-secret"
 export NUXT_AUTH_ORIGIN="https://cms.example.com/api/auth"
+export NUXT_CANONICAL_ORIGIN="https://cms.example.com"
 ```
 
 Put TLS and any public routing in front of the Node process with the hosting
-platform or a reverse proxy. Preserve the external `Host` or forwarded-host
-information so HaloPress can recognize that the current request uses a public
-site URL. A provider-assigned hostname and a custom domain are both valid public
-origins; loopback, private-address, single-label, and internal-only hosts remain
-incomplete because they are not public deployment URLs. This is an advisory
-completion check, not a security boundary or proof of DNS ownership.
+platform or a reverse proxy. The proxy must overwrite `Host`, forwarded host,
+and forwarded protocol with the canonical external authority instead of passing
+caller-supplied values. Production Node delivery fails closed without
+`NUXT_CANONICAL_ORIGIN`; mismatched requests cannot influence absolute API,
+asset, or stylesheet URLs. A provider-assigned hostname and a custom domain are both valid public
+origins; loopback, private-address, single-label, and
+internal-only hosts remain incomplete in the advisory Desk checklist.
 
 Node uses the same SQLite and filesystem asset adapters as local development.
 Mount persistent storage for `.data/halopress.sqlite` and `.data/r2/`; an
@@ -80,7 +83,9 @@ Cloudflare-specific recommendations:
 
 Cloudflare-looking request hostnames do not activate these recommendations on
 Node or local runtimes. Worker request context—not a caller-controlled header—is
-the platform authority.
+the platform authority. `NUXT_CANONICAL_ORIGIN` is optional on Cloudflare when
+the platform Request URL is the intended public origin; configure it to require
+a specific custom domain and reject alternate workers.dev authority.
 
 ## Checklist completion and dismissal
 

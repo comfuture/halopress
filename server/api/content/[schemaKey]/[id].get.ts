@@ -13,6 +13,10 @@ import { hasStandalonePageRouteClaim, standalonePageRouteIsUnclaimed } from '../
 import { PUBLIC_PAGE_ROUTE_PREFIX } from '../../../../shared/public-routing'
 import { parsePublicSeoJson } from '../../../../shared/public-seo'
 import { getCanonicalPublicRoute } from '../../../cms/public-routes'
+import {
+  applyPortablePublicEnvelopeHeaders,
+  createPortableStructuredRenderingForEvent
+} from '../../../utils/portable-content-delivery'
 
 export default defineEventHandler(async (event) => {
   const schemaKey = event.context.params?.schemaKey as string
@@ -87,6 +91,11 @@ export default defineEventHandler(async (event) => {
   }
 
   if (includeSchema && !sourceSchema) {
+    sourceSchema = await getSchemaVersion(db, schemaKey, sourceSchemaVersion)
+    if (!sourceSchema) throw notFound('Content not found')
+  }
+
+  if (!sourceSchema) {
     sourceSchema = await getSchemaVersion(db, schemaKey, sourceSchemaVersion)
     if (!sourceSchema) throw notFound('Content not found')
   }
@@ -195,6 +204,11 @@ export default defineEventHandler(async (event) => {
     ...(includeSchema ? { schema: sourceSchema } : {}),
     createdAt: row.createdAt,
     updatedAt: sourceUpdatedAt,
+    rendering: createPortableStructuredRenderingForEvent(
+      event,
+      content,
+      sourceSchema.registry?.fields ?? []
+    ),
     ...(policy.isPublic
       ? {
           publicationState: 'published',
@@ -213,5 +227,7 @@ export default defineEventHandler(async (event) => {
           publishedBy: row.publishedBy ?? null
         })
   }
-  return includeSurroundings ? { ...response, surroundings } : response
+  const result = includeSurroundings ? { ...response, surroundings } : response
+  if (policy.isPublic && applyPortablePublicEnvelopeHeaders(event, result)) return
+  return result
 })

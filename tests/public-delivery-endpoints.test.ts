@@ -44,6 +44,7 @@ vi.mock('../server/utils/schema-permission', () => ({
 }))
 
 vi.stubGlobal('defineEventHandler', (handler: EndpointHandler) => handler)
+vi.stubGlobal('useRuntimeConfig', () => ({ canonicalOrigin: 'http://delivery.example.com' }))
 
 const handlers = {} as Record<
   'active' | 'collection' | 'detail' | 'search' | 'recent' | 'curation',

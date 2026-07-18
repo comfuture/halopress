@@ -81,11 +81,11 @@ if (!isAlias) {
   <UContainer v-if="standalonePage" class="py-8">
     <UPage>
       <UPageHeader :title="standalonePage.title || 'Untitled page'" />
-      <UPageBody><PageDocumentRenderer :document="standalonePage.content" /></UPageBody>
+      <UPageBody><PageDocumentRenderer :document="standalonePage.content" :rendering="standalonePage.rendering" /></UPageBody>
     </UPage>
   </UContainer>
 
   <UContainer v-else class="py-10 sm:py-14">
-    <PublicContentDetailRenderer :schema="schema" :content="content" :fallback-title="doc?.title || doc?.id || id" />
+    <PublicContentDetailRenderer :schema="schema" :content="content" :rendering="doc?.rendering" :fallback-title="doc?.title || doc?.id || id" />
   </UContainer>
 </template>

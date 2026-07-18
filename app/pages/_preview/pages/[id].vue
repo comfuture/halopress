@@ -39,7 +39,7 @@ if (pageState === 'not-found' && import.meta.server) {
         </template>
       </UPageHeader>
       <UPageBody>
-        <PageDocumentRenderer :document="page?.content" />
+        <PageDocumentRenderer :document="page?.content" :rendering="page?.rendering" />
       </UPageBody>
     </UPage>
   </UContainer>

@@ -6,6 +6,7 @@ import { asset as assetTable } from '../../db/schema'
 import { getObject } from '../../storage/assets'
 import { notFound } from '../../utils/http'
 import { requireAssetDelivery } from '../../utils/asset-delivery'
+import { applyPortableMutableAssetHeaders } from '../../utils/portable-content-delivery'
 
 function normalizeSegments(value: unknown): string[] {
   if (Array.isArray(value)) return value.map(String)
@@ -22,7 +23,7 @@ export default defineEventHandler(async (event) => {
   const parts = normalizeSegments(rawParam)
   const assetId = parts[0]
   if (!assetId) throw notFound('Asset not found')
-  await requireAssetDelivery(event, assetId)
+  const delivery = await requireAssetDelivery(event, assetId)
 
   const filename = parts.length > 1 ? parts[parts.length - 1] : null
 
@@ -40,7 +41,8 @@ export default defineEventHandler(async (event) => {
   const obj = await getObject(event, row.objectKey)
   if (!obj) throw notFound('Asset object not found')
 
-  setHeader(event, 'content-type', row.mimeType || obj.contentType || 'application/octet-stream')
+  const contentType = row.mimeType || obj.contentType || 'application/octet-stream'
+  setHeader(event, 'content-type', contentType)
 
   if (filename) {
     const safeName = sanitizeFilename(filename)
@@ -49,6 +51,8 @@ export default defineEventHandler(async (event) => {
       setHeader(event, 'x-asset-filename', safeName)
     }
   }
+
+  if (delivery.isPublic && applyPortableMutableAssetHeaders(event, obj.identity, contentType)) return
 
   return obj.bytes
 })

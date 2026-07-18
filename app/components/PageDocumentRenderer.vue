@@ -1,34 +1,67 @@
 <script setup lang="ts">
-import { buildPageDocumentSegments } from '~/editor/page/render-document'
-import PageBlockView from '~/editor/page/PageBlockView.vue'
+import {
+  createPortablePageRendering,
+  createPortableStandaloneDocument,
+  type PortableDocumentRendering
+} from '~~/shared/portable-content'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   document: unknown
-}>()
+  rendering?: PortableDocumentRendering | null
+  isolated?: boolean
+}>(), {
+  rendering: null,
+  isolated: false
+})
 
-const segments = computed(() => buildPageDocumentSegments(props.document))
+const requestUrl = useRequestURL()
+const localRendering = computed(() => createPortablePageRendering(props.document, {
+  origin: requestUrl.origin
+}))
+const activeRendering = computed(() => props.rendering?.contractVersion === 1
+  && typeof props.rendering.html === 'string'
+  && Array.isArray(props.rendering.stylesheets)
+  ? props.rendering
+  : localRendering.value)
+
+const standaloneDocument = computed(() => createPortableStandaloneDocument(activeRendering.value))
+
+useHead(() => ({
+  link: props.isolated
+    ? []
+    : activeRendering.value.stylesheets.map(href => ({
+        key: `halo-portable-content-${activeRendering.value.contractVersion}-${href}`,
+        rel: 'stylesheet',
+        href
+      }))
+}))
 </script>
 
 <template>
-  <div class="page-document space-y-6" data-page-document-renderer>
-    <template v-for="segment in segments" :key="segment.key">
-      <div
-        v-if="segment.kind === 'html'"
-        class="page-document-richtext"
-        data-page-document-richtext
-        v-html="segment.html"
-      />
-      <PageBlockView
-        v-else-if="segment.kind === 'block'"
-        :attrs="segment.attrs"
-      />
-      <div
-        v-else
-        class="rounded-lg border border-dashed border-muted p-6 text-sm text-muted"
-        data-page-document-fallback
-      >
-        {{ segment.message }}
-      </div>
-    </template>
-  </div>
+  <iframe
+    v-if="isolated"
+    class="halo-preview-frame"
+    :srcdoc="standaloneDocument"
+    sandbox=""
+    referrerpolicy="no-referrer"
+    title="Portable page preview"
+    data-portable-content-isolated
+  />
+  <div
+    v-else
+    data-page-document-renderer
+    data-portable-content-renderer
+    v-html="activeRendering.html"
+  />
 </template>
+
+<style scoped>
+.halo-preview-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 32rem;
+  border: 0;
+  background: #ffffff;
+}
+</style>

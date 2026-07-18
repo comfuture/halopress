@@ -1,13 +1,45 @@
 <script setup lang="ts">
 import type { Content } from '@tiptap/core'
+import {
+  createPortableRichTextRendering,
+  type PortableRichTextFieldRendering
+} from '~~/shared/portable-content'
 import { formatPresentationDate, safePresentationLink } from '~/utils/schema-presentation'
-const props = defineProps<{ field: any; value: unknown }>()
+
+const props = defineProps<{
+  field: any
+  value: unknown
+  rendering?: PortableRichTextFieldRendering | null
+  stylesheets?: string[]
+}>()
+const requestUrl = useRequestURL()
 const safeLink = computed(() => safePresentationLink(props.value))
 const formattedDate = computed(() => formatPresentationDate(props.value, props.field.renderer === 'datetime'))
+const localRendering = computed(() => createPortableRichTextRendering(props.value as Content, {
+  origin: requestUrl.origin
+}))
+const richTextHtml = computed(() => props.rendering?.html ?? localRendering.value.html)
+const portableStylesheets = computed(() => props.stylesheets?.length
+  ? props.stylesheets
+  : localRendering.value.stylesheets)
+
+useHead(() => ({
+  link: props.field.renderer === 'rich_text'
+    ? portableStylesheets.value.map(href => ({
+        key: `halo-portable-richtext-${href}`,
+        rel: 'stylesheet',
+        href
+      }))
+    : []
+}))
 </script>
 
 <template>
-  <CmsRichEditor v-if="field.renderer === 'rich_text'" :model-value="value as Content" :editable="false" class="min-h-0 w-full" />
+  <div
+    v-if="field.renderer === 'rich_text'"
+    data-portable-richtext-renderer
+    v-html="richTextHtml"
+  />
   <PublicAssetGallery v-else-if="field.renderer === 'asset_gallery'" :value="value" :label="field.title" />
   <AssetImage v-else-if="field.renderer === 'asset' && typeof value === 'string'" :src="`/assets/${value}/raw`" :alt="field.title || ''" preset="content" sizes="(max-width: 768px) 100vw, 960px" class="max-h-[70vh] w-full rounded-xl bg-elevated object-contain" />
   <a v-else-if="field.renderer === 'link' && safeLink" :href="safeLink" class="text-primary underline underline-offset-4" rel="noopener noreferrer">{{ value }}</a>

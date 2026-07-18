@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { resolvePageBlock } from '~~/shared/page-blocks'
+import { pageBlockIconKeys, resolvePageBlock } from '~~/shared/page-blocks'
 
 import {
   commitPageBlockLink,
@@ -45,16 +45,8 @@ const linkColorOptions = ['primary', 'secondary', 'success', 'info', 'warning', 
   .map(value => ({ label: value[0]!.toUpperCase() + value.slice(1), value }))
 const linkVariantOptions = ['solid', 'outline', 'soft', 'subtle', 'ghost', 'naked']
   .map(value => ({ label: value[0]!.toUpperCase() + value.slice(1), value }))
-const iconOptions = [
-  'i-lucide-arrow-right',
-  'i-lucide-badge-check',
-  'i-lucide-book-open',
-  'i-lucide-circle-help',
-  'i-lucide-external-link',
-  'i-lucide-heart',
-  'i-lucide-sparkles',
-  'i-lucide-star'
-].map(value => ({ label: value.replace('i-lucide-', ''), value, icon: value }))
+const iconOptions: Array<{ label: string, value: string, icon: string }> = pageBlockIconKeys
+  .map(value => ({ label: value.replace('i-lucide-', ''), value, icon: value }))
 
 function samePageBlockAttrs(attrs: PageBlockAttrs) {
   return editing.component === attrs.component
@@ -269,6 +261,7 @@ function resetAdvanced() {
         <UFormField v-for="field in fields" :key="field.key" :label="field.label" :help="field.help">
           <UInput v-if="field.type === 'text'" v-model="editing.props[field.key]" :placeholder="field.placeholder" class="w-full" />
           <UInput v-else-if="field.type === 'url'" v-model="editing.props[field.key]" type="url" :placeholder="field.placeholder || 'https://'" class="w-full" />
+          <UInput v-else-if="field.type === 'asset-path'" v-model="editing.props[field.key]" type="text" :placeholder="field.placeholder || '/assets/id/raw'" class="w-full" />
           <UTextarea v-else-if="field.type === 'textarea'" v-model="editing.props[field.key]" :placeholder="field.placeholder" class="w-full" />
           <USelect v-else-if="['select', 'color-token', 'spacing'].includes(field.type)" v-model="editing.props[field.key]" :items="field.options || []" class="w-full" />
           <USwitch v-else-if="field.type === 'boolean'" v-model="editing.props[field.key]" />
@@ -315,6 +308,7 @@ function resetAdvanced() {
               <UFormField v-for="itemField in field.itemFields || []" :key="itemField.key" :label="itemField.label" :help="itemField.help">
                 <UInput v-if="itemField.type === 'text'" v-model="item[itemField.key]" :placeholder="itemField.placeholder" class="w-full" />
                 <UInput v-else-if="itemField.type === 'url'" v-model="item[itemField.key]" type="url" :placeholder="itemField.placeholder || 'https://'" class="w-full" />
+                <UInput v-else-if="itemField.type === 'asset-path'" v-model="item[itemField.key]" type="text" :placeholder="itemField.placeholder || '/assets/id/raw'" class="w-full" />
                 <UTextarea v-else-if="itemField.type === 'textarea'" v-model="item[itemField.key]" :placeholder="itemField.placeholder" class="w-full" />
                 <USelect v-else-if="['select', 'color-token', 'spacing'].includes(itemField.type)" v-model="item[itemField.key]" :items="itemField.options || []" class="w-full" />
                 <USwitch v-else-if="itemField.type === 'boolean'" v-model="item[itemField.key]" />

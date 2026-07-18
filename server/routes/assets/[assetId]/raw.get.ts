@@ -6,10 +6,11 @@ import { asset as assetTable } from '../../../db/schema'
 import { getObject } from '../../../storage/assets'
 import { notFound } from '../../../utils/http'
 import { requireAssetDelivery } from '../../../utils/asset-delivery'
+import { applyPortableMutableAssetHeaders } from '../../../utils/portable-content-delivery'
 
 export default defineEventHandler(async (event) => {
   const assetId = event.context.params?.assetId as string
-  await requireAssetDelivery(event, assetId)
+  const delivery = await requireAssetDelivery(event, assetId)
   const db = await getDb(event)
   const row = await db
     .select({
@@ -24,6 +25,8 @@ export default defineEventHandler(async (event) => {
   const obj = await getObject(event, row.objectKey)
   if (!obj) throw notFound('Asset object not found')
 
-  setHeader(event, 'content-type', row.mimeType || obj.contentType || 'application/octet-stream')
+  const contentType = row.mimeType || obj.contentType || 'application/octet-stream'
+  setHeader(event, 'content-type', contentType)
+  if (delivery.isPublic && applyPortableMutableAssetHeaders(event, obj.identity, contentType)) return
   return obj.bytes
 })

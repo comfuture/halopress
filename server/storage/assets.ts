@@ -1,4 +1,5 @@
 import { mkdir, readFile, stat, unlink, writeFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
 import { dirname, join } from 'node:path'
 import type { H3Event } from 'h3'
 
@@ -35,20 +36,30 @@ export async function putObject(event: H3Event, objectKey: string, bytes: Uint8A
   await writeFile(path, bytes)
 }
 
-export async function getObject(event: H3Event, objectKey: string): Promise<{ bytes: Uint8Array; contentType?: string } | null> {
+export async function getObject(event: H3Event, objectKey: string): Promise<{
+  bytes: Uint8Array
+  contentType?: string
+  identity: string
+} | null> {
   const bucket = getR2Bucket(event)
   if (bucket) {
     const obj = await bucket.get(objectKey)
     if (!obj) return null
     const bytes = new Uint8Array(await obj.arrayBuffer())
     const ct = (obj as any).httpMetadata?.contentType
-    return { bytes, contentType: ct }
+    const identity = typeof (obj as any).httpEtag === 'string' && (obj as any).httpEtag
+      ? (obj as any).httpEtag
+      : createHash('sha256').update(bytes).digest('hex')
+    return { bytes, contentType: ct, identity }
   }
 
   const path = localPathForObjectKey(objectKey)
   try {
     const bytes = new Uint8Array(await readFile(path))
-    return { bytes }
+    return {
+      bytes,
+      identity: createHash('sha256').update(bytes).digest('hex')
+    }
   } catch {
     return null
   }
