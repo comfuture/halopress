@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import type { TabsItem } from '@nuxt/ui'
 
+import PageBlockInspector from '~/components/page-editor/PageBlockInspector.vue'
+import PageBlockPalette from '~/components/page-editor/PageBlockPalette.vue'
+import PagePropertiesInspector from '~/components/page-editor/PagePropertiesInspector.vue'
 import type { PagePaletteItem } from '~/editor/page/palette'
 import type { PageBlockAttrs, PageBlockField } from '~/editor/page/types'
 
