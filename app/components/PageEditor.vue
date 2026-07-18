@@ -1,15 +1,12 @@
 <script setup lang="ts">
-import type { DropdownMenuItem, TabsItem } from '@nuxt/ui'
+import type { DropdownMenuItem } from '@nuxt/ui'
 import { mapEditorItems } from '@nuxt/ui/utils/editor'
-import type { DragHandleProps } from '@tiptap/extension-drag-handle-vue-3'
 import type { Editor, JSONContent } from '@tiptap/vue-3'
 import { VueNodeViewRenderer } from '@tiptap/vue-3'
 import { markRaw } from 'vue'
 import { clonePagePatternContent, pagePatternRegistry, type PagePatternKey } from '~~/shared/page-patterns'
 
-import PageBlockPalette from '~/components/page-editor/PageBlockPalette.vue'
-import PageBlockInspector from '~/components/page-editor/PageBlockInspector.vue'
-import PagePropertiesInspector from '~/components/page-editor/PagePropertiesInspector.vue'
+import PageEditorPanel from '~/components/page-editor/PageEditorPanel.vue'
 import RichEditorLinkPopover from '~/components/cms/RichEditorLinkPopover.vue'
 import PageBlock from '~/editor/page/PageBlock'
 import PageBlockNodeView from '~/editor/page/PageBlockNodeView.vue'
@@ -80,10 +77,6 @@ const viewportItems = [
   { label: 'Desktop', value: 'desktop', icon: 'i-lucide-monitor' },
   { label: 'Tablet', value: 'tablet', icon: 'i-lucide-tablet' },
   { label: 'Mobile', value: 'mobile', icon: 'i-lucide-smartphone' }
-]
-const panelTabs: TabsItem[] = [
-  { label: 'Block Library', value: 'library', slot: 'library' },
-  { label: 'Inspector', value: 'inspector', slot: 'inspector' }
 ]
 const canvasStyle = computed(() => ({
   width: '100%',
@@ -202,18 +195,13 @@ function onDragNodeChange(event: { node: JSONContent | null, pos: number }) {
 
 function selectDragNode(editor: Editor) {
   const selected = selectedDragNode.value
-  if (selected?.node && Number.isInteger(selected.pos)) {
-    const result = editor.commands.setNodeSelection(selected.pos)
-    if (result) syncSelection(editor)
-  }
+  if (selected?.node && Number.isInteger(selected.pos)) editor.commands.setNodeSelection(selected.pos)
 }
 
 function setDragMenuOpen(editor: Editor, open: boolean) {
   if (open) selectDragNode(editor)
   editor.chain().setMeta('lockDragHandle', open).run()
 }
-
-const dragHandleNestedOptions = undefined as unknown as DragHandleProps['nestedOptions']
 
 function startPaletteDrag(event: DragEvent, item: PagePaletteItem) {
   if (!isEditing.value || !event.dataTransfer) return
@@ -370,7 +358,6 @@ watch(mode, (nextMode) => {
                 v-if="isEditing"
                 v-slot="{ ui }"
                 :editor="editor"
-                :nested-options="dragHandleNestedOptions"
                 :plugin-key="editorProfile.pluginKeys.dragHandle"
                 class="inline-flex"
                 @node-change="onDragNodeChange"
@@ -410,101 +397,52 @@ watch(mode, (nextMode) => {
           <UButton aria-label="Expand page editor panel" icon="i-lucide-panel-right-open" color="neutral" variant="ghost" class="m-2" @click="panelCollapsed = false;" />
         </template>
         <template v-else>
-          <UTabs
-            v-model="activePanel"
-            :items="panelTabs"
-            class="flex h-full min-h-0 flex-1 flex-col"
-            :ui="{
-              root: 'gap-0',
-              list: 'shrink-0 rounded-none border-b border-muted',
-              content: 'min-h-0 flex-1 overflow-hidden rounded-none p-0'
-            }"
-          >
-            <template #list-trailing>
-              <UButton aria-label="Collapse page editor panel" icon="i-lucide-panel-right-close" color="neutral" variant="ghost" size="xs" @click="panelCollapsed = true;" />
-            </template>
-            <template #library>
-              <PageBlockPalette class="h-full min-h-0" :editable="isEditing" @insert="insertPaletteItem" @dragstart="startPaletteDrag" />
-            </template>
-            <template #inspector>
-              <div class="flex h-full min-h-0 flex-col">
-                <div v-if="selectedBlock" class="shrink-0 border-b border-muted px-2 py-1">
-                  <UButton label="Page properties" icon="i-lucide-file-cog" color="neutral" variant="link" size="sm" @click="showPageProperties" />
-                </div>
-                <PageBlockInspector
-                  v-if="selectedBlock"
-                  class="min-h-0 flex-1"
-                  :attrs="selectedBlock"
-                  :fields="activeFields"
-                  :label="activeComponent?.label"
-                  :editable="isEditing"
-                  @update="updateSelectedBlock"
-                />
-                <PagePropertiesInspector
-                  v-else
-                  v-model:page-title="pageTitle"
-                  v-model:public-path="publicPath"
-                  v-model:seo-title="seoTitle"
-                  v-model:seo-description="seoDescription"
-                  v-model:seo-image-asset-id="seoImageAssetId"
-                  v-model:structured-data-type="structuredDataType"
-                  class="min-h-0 flex-1"
-                  :disabled="!editable"
-                  :description="pageDescription"
-                  :validation-message="pageValidationMessage"
-                />
-              </div>
-            </template>
-          </UTabs>
+          <PageEditorPanel
+            v-model:active-tab="activePanel"
+            v-model:page-title="pageTitle"
+            v-model:public-path="publicPath"
+            v-model:seo-title="seoTitle"
+            v-model:seo-description="seoDescription"
+            v-model:seo-image-asset-id="seoImageAssetId"
+            v-model:structured-data-type="structuredDataType"
+            :selected-block="selectedBlock"
+            :active-fields="activeFields"
+            :active-label="activeComponent?.label"
+            :editable="isEditing"
+            :page-description="pageDescription"
+            :page-validation-message="pageValidationMessage"
+            collapsible
+            @collapse="panelCollapsed = true"
+            @insert="insertPaletteItem"
+            @dragstart="startPaletteDrag"
+            @update-block="updateSelectedBlock"
+            @show-page-properties="showPageProperties"
+          />
         </template>
       </aside>
     </div>
 
     <USlideover v-if="isEditMode" v-model:open="mobilePanelOpen" title="Page editor" side="right" :ui="{ body: 'p-0 sm:p-0 min-h-0' }">
       <template #body>
-        <UTabs
-          v-model="activePanel"
-          :items="panelTabs"
-          class="flex h-full min-h-0 flex-col"
-          :ui="{
-            root: 'gap-0',
-            list: 'shrink-0 rounded-none border-b border-muted',
-            content: 'min-h-0 flex-1 overflow-hidden rounded-none p-0'
-          }"
-        >
-          <template #library>
-            <PageBlockPalette class="h-full min-h-0" :editable="isEditing" @insert="insertPaletteItem" @dragstart="startPaletteDrag" />
-          </template>
-          <template #inspector>
-            <div class="flex h-full min-h-0 flex-col">
-              <div v-if="selectedBlock" class="shrink-0 border-b border-muted px-2 py-1">
-                <UButton label="Page properties" icon="i-lucide-file-cog" color="neutral" variant="link" size="sm" @click="showPageProperties" />
-              </div>
-              <PageBlockInspector
-                v-if="selectedBlock"
-                class="min-h-0 flex-1"
-                :attrs="selectedBlock"
-                :fields="activeFields"
-                :label="activeComponent?.label"
-                :editable="isEditing"
-                @update="updateSelectedBlock"
-              />
-              <PagePropertiesInspector
-                v-else
-                v-model:page-title="pageTitle"
-                v-model:public-path="publicPath"
-                v-model:seo-title="seoTitle"
-                v-model:seo-description="seoDescription"
-                v-model:seo-image-asset-id="seoImageAssetId"
-                v-model:structured-data-type="structuredDataType"
-                class="min-h-0 flex-1"
-                :disabled="!editable"
-                :description="pageDescription"
-                :validation-message="pageValidationMessage"
-              />
-            </div>
-          </template>
-        </UTabs>
+        <PageEditorPanel
+          v-model:active-tab="activePanel"
+          v-model:page-title="pageTitle"
+          v-model:public-path="publicPath"
+          v-model:seo-title="seoTitle"
+          v-model:seo-description="seoDescription"
+          v-model:seo-image-asset-id="seoImageAssetId"
+          v-model:structured-data-type="structuredDataType"
+          :selected-block="selectedBlock"
+          :active-fields="activeFields"
+          :active-label="activeComponent?.label"
+          :editable="isEditing"
+          :page-description="pageDescription"
+          :page-validation-message="pageValidationMessage"
+          @insert="insertPaletteItem"
+          @dragstart="startPaletteDrag"
+          @update-block="updateSelectedBlock"
+          @show-page-properties="showPageProperties"
+        />
       </template>
     </USlideover>
   </div>

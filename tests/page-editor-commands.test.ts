@@ -253,8 +253,26 @@ describe('page block transaction commands', () => {
     expect(clearPageBlockSelection(editor)).toBe(false)
   })
 
+  it('emits selectionUpdate synchronously when a page block is selected', () => {
+    const editor = createEditor()
+    selectAt(editor, 1)
+    expect(clearPageBlockSelection(editor)).toBe(true)
+    let selectionUpdates = 0
+    editor.on('selectionUpdate', () => selectionUpdates++)
+
+    expect(editor.commands.setNodeSelection(positionAt(editor, 1))).toBe(true)
+    expect(selectionUpdates).toBe(1)
+    expect(editor.state.selection).toBeInstanceOf(NodeSelection)
+  })
+
   it('targets the clicked drag-handle position with one built-in action each', () => {
     const duplicateEditor = createEditor()
+    const pageBlockItems = dragMenuItems(duplicateEditor, 1).flat()
+    expect(pageBlockItems.map(item => item.label)).not.toContain('Turn into')
+    expect(pageBlockItems.map(item => item.label)).not.toContain('Reset formatting')
+    expect(pageBlockItems.map(item => item.label)).toEqual(expect.arrayContaining([
+      'Duplicate', 'Copy to clipboard', 'Move up', 'Move down', 'Delete'
+    ]))
     selectAt(duplicateEditor, 0)
     dragMenuAction(duplicateEditor, 1, 'Duplicate').onSelect()
     expect(components(duplicateEditor)).toEqual(['pageHero', 'pageCard', 'pageCard', 'pageCTA'])

@@ -44,7 +44,7 @@ const structuredDataTypes = [
         v-if="showPath"
         label="Custom public path"
         description="Optional. Use a path such as /about or /company/about. Previous published paths remain redirects."
-        :class="!compact && 'md:col-span-2'"
+        :class="{ 'md:col-span-2': !compact }"
       >
         <UInput v-model="publicPath" placeholder="Generated from the page title" class="w-full" :disabled="disabled" />
       </UFormField>
@@ -64,7 +64,7 @@ const structuredDataTypes = [
         />
       </UFormField>
 
-      <UFormField label="SEO description" :class="!compact && 'md:col-span-2'">
+      <UFormField label="SEO description" :class="{ 'md:col-span-2': !compact }">
         <UTextarea
           v-model="description"
           maxlength="320"
@@ -79,7 +79,7 @@ const structuredDataTypes = [
       <UFormField
         label="Social image asset ID"
         description="Optional asset ID used for Open Graph, Twitter cards, and structured data."
-        :class="!compact && 'md:col-span-2'"
+        :class="{ 'md:col-span-2': !compact }"
       >
         <UInput v-model="imageAssetId" placeholder="Asset ID" class="w-full" :disabled="disabled" />
       </UFormField>
