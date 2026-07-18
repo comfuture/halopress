@@ -6,6 +6,9 @@ import {
   SITE_MENU_NO_ICON_VALUE,
   afterSiteMenuOverlayFocusRestored,
   commitSiteMenuItemCreation,
+  countSiteMenuDynamicSources,
+  createSiteMenuOverlayFinalizationFallback,
+  createSiteMenuItemDraft,
   findSiteMenuItemSelection,
   focusAfterSiteMenuRemoval,
   focusFirstSiteMenuValidationIssue,
@@ -19,19 +22,22 @@ import {
   restoreSiteMenuRowFocusAfterOverlay,
   siteMenuRemovalFocusId,
   shouldInitializeSiteMenuSelection,
+  shouldApplySiteMenuPreviewResult,
   shouldApplySiteMenuSaveResult,
   shouldAcceptSiteMenuCreateOpenChange,
   shouldAcceptSiteMenuItemCreateOpenChange,
   shouldApplySiteMenuCreateNavigation,
   shouldEmitDeferredSiteMenuCreation,
   siteMenuIconFromEditorValue,
+  siteMenuAuthoredItemLabel,
+  siteMenuDestinationSummary,
   siteMenuItemIdForValidationPath,
   siteMenuMoveAnnouncement,
   siteMenuUsageFromFetchError,
   siteMenuValidationIssuesFromFetchError,
   validationMessageForPath
 } from '../app/utils/site-menu-editor'
-import { SITE_MENU_ICONS } from '../shared/site-menu'
+import { SITE_MENU_ICONS, type SiteMenuItem } from '../shared/site-menu'
 
 describe('Site menu rendered editor behavior', () => {
   it('commits detached parent and child modal drafts once by stable identity', () => {
@@ -84,6 +90,53 @@ describe('Site menu rendered editor behavior', () => {
       label: 'Orphan',
       destination: { type: 'home' }
     }, 'missing-parent')).toBeNull()
+  })
+
+  it('creates only typed static, content-query, and Page-list drafts and preserves source placement', () => {
+    const options = {
+      schemas: [{ schemaKey: 'article', label: 'Articles', fields: [] }],
+      pages: []
+    }
+    const staticDraft = createSiteMenuItemDraft('static', 'static-one', options)
+    const queryDraft = createSiteMenuItemDraft('schemaQuery', 'query-one', options)
+    const pageDraft = createSiteMenuItemDraft('pagePrefix', 'pages-one', options)
+
+    expect(staticDraft).toEqual({ id: 'static-one', label: '', destination: { type: 'home' } })
+    expect(queryDraft).toEqual({
+      kind: 'dynamic',
+      id: 'query-one',
+      source: expect.objectContaining({
+        version: 1,
+        type: 'schemaQuery',
+        schemaKey: 'article',
+        filters: [],
+        limit: 10
+      })
+    })
+    expect(pageDraft).toEqual({
+      kind: 'dynamic',
+      id: 'pages-one',
+      source: expect.objectContaining({
+        version: 1,
+        type: 'pagePrefix',
+        scope: { type: 'fixed', prefix: '/' },
+        limit: 10
+      })
+    })
+    expect(JSON.stringify([queryDraft, pageDraft])).not.toMatch(/queryText|expression|sql|javascript|regex/i)
+
+    const items: SiteMenuItem[] = []
+    expect(commitSiteMenuItemCreation(items, queryDraft)).toMatchObject({ position: 1 })
+    expect(commitSiteMenuItemCreation(items, {
+      id: 'parent',
+      label: 'Parent',
+      destination: { type: 'home' }
+    })).toMatchObject({ position: 2 })
+    expect(commitSiteMenuItemCreation(items, pageDraft, 'parent')).toMatchObject({ position: 1 })
+    expect(countSiteMenuDynamicSources(items)).toBe(2)
+    expect(siteMenuAuthoredItemLabel(queryDraft)).toBe('article query')
+    expect(siteMenuDestinationSummary(queryDraft)).toContain('Content query · article')
+    expect(siteMenuDestinationSummary(pageDraft)).toContain('Page list · Direct children of /')
   })
 
   it('keeps malformed fallback documents repairable and initializes a successful retry once', () => {
@@ -168,6 +221,75 @@ describe('Site menu rendered editor behavior', () => {
       working.id,
       working.name
     )).toBe(true)
+  })
+
+  it('rejects late preview success and error after the editor route changes', async () => {
+    let latestToken = 1
+    let routeMenuId = 'menu-a'
+    let workingMenuId = 'menu-a'
+    let snapshot = 'menu-a-document'
+    let rendered = 'menu-a-existing-preview'
+    let message = ''
+
+    let resolvePreview!: (value: string) => void
+    const delayedSuccess = new Promise<string>((resolve) => {
+      resolvePreview = resolve
+    })
+    const successRequest = { token: 1, menuId: 'menu-a', snapshot }
+    const applySuccess = delayedSuccess.then((value) => {
+      if (shouldApplySiteMenuPreviewResult(
+        successRequest,
+        latestToken,
+        routeMenuId,
+        workingMenuId,
+        snapshot
+      )) rendered = value
+    })
+
+    routeMenuId = 'menu-b'
+    workingMenuId = 'menu-b'
+    snapshot = 'menu-b-document'
+    resolvePreview('menu-a-late-success')
+    await applySuccess
+    expect(rendered).toBe('menu-a-existing-preview')
+
+    latestToken = 2
+    const errorRequest = { token: 2, menuId: 'menu-b', snapshot }
+    let rejectPreview!: (reason: Error) => void
+    const delayedError = new Promise<string>((_resolve, reject) => {
+      rejectPreview = reject
+    })
+    const applyError = delayedError.catch((error: Error) => {
+      if (shouldApplySiteMenuPreviewResult(
+        errorRequest,
+        latestToken,
+        routeMenuId,
+        workingMenuId,
+        snapshot
+      )) message = error.message
+    })
+
+    routeMenuId = 'menu-c'
+    workingMenuId = 'menu-c'
+    snapshot = 'menu-c-document'
+    rejectPreview(new Error('menu-b-late-error'))
+    await applyError
+    expect(message).toBe('')
+
+    expect(shouldApplySiteMenuPreviewResult(
+      { token: 3, menuId: 'menu-c', snapshot },
+      3,
+      routeMenuId,
+      workingMenuId,
+      snapshot
+    )).toBe(true)
+    expect(shouldApplySiteMenuPreviewResult(
+      { token: 2, menuId: 'menu-c', snapshot },
+      3,
+      routeMenuId,
+      workingMenuId,
+      snapshot
+    )).toBe(false)
   })
 
   it.each(['pointer', 'touch', 'keyboard'] as const)(
@@ -401,6 +523,65 @@ describe('Site menu rendered editor behavior', () => {
     active = false
     generation++
     expect(shouldEmitDeferredSiteMenuCreation(active, scheduledGeneration, generation)).toBe(false)
+  })
+
+  it('finalizes one item create when a breakpoint swaps the overlay during close', () => {
+    let scheduled: (() => void) | undefined
+    const fallback = createSiteMenuOverlayFinalizationFallback((callback) => {
+      scheduled = callback
+      return 'item-close-fallback'
+    }, () => {})
+    let pending = { id: 'created-item' } as { id: string } | null
+    let deliveryPending = true
+    const emitted: string[] = []
+    const finalize = () => {
+      const created = pending
+      if (!created) return
+      pending = null
+      fallback.cancel()
+      deliveryPending = false
+      emitted.push(created.id)
+    }
+
+    fallback.schedule(finalize)
+    // The responsive v-if swaps UModal for USlideover before after:leave.
+    scheduled?.()
+    expect(emitted).toEqual(['created-item'])
+    expect(deliveryPending).toBe(false)
+    expect(shouldAcceptSiteMenuItemCreateOpenChange(deliveryPending, true)).toBe(true)
+
+    // A late leave event from either host still cannot commit a second time.
+    finalize()
+    expect(emitted).toEqual(['created-item'])
+  })
+
+  it('finalizes one menu-list create when a breakpoint swaps the overlay during close', () => {
+    let scheduled: (() => void) | undefined
+    const fallback = createSiteMenuOverlayFinalizationFallback((callback) => {
+      scheduled = callback
+      return 'menu-close-fallback'
+    }, () => {})
+    let pending = { id: 'created-menu', name: 'Created menu' } as { id: string; name: string } | null
+    let draftName = 'Created menu'
+    const navigated: string[] = []
+    const finalize = () => {
+      const created = pending
+      if (!created) return
+      pending = null
+      fallback.cancel()
+      draftName = ''
+      navigated.push(created.id)
+    }
+
+    fallback.schedule(finalize)
+    // No after:leave arrives after the desktop/mobile overlay host changes.
+    scheduled?.()
+    expect(navigated).toEqual(['created-menu'])
+    expect(draftName).toBe('')
+    expect(pending).toBeNull()
+
+    finalize()
+    expect(navigated).toEqual(['created-menu'])
   })
 
   it('focuses the exact created/deleted menu target with an empty-list fallback', () => {

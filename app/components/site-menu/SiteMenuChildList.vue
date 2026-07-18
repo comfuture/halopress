@@ -2,9 +2,9 @@
 import type { MoveEvent, SortableEvent } from 'sortablejs'
 import { moveArrayElement, useSortable } from '@vueuse/integrations/useSortable'
 
-import type { SiteMenuLeaf, SiteMenuValidationIssue } from '~~/shared/site-menu'
+import type { SiteMenuChild, SiteMenuValidationIssue } from '~~/shared/site-menu'
 
-const model = defineModel<SiteMenuLeaf[]>({ required: true })
+const model = defineModel<SiteMenuChild[]>({ required: true })
 const emit = defineEmits<{
   announce: [message: string]
   select: [itemId: string]
@@ -22,7 +22,8 @@ const dropTarget = ref<{ id: string, after: boolean } | null>(null)
 const draggedLabel = ref('Child menu item')
 
 function labelAt(index: number) {
-  return model.value[index]?.label || `Child link ${index + 1}`
+  const item = model.value[index]
+  return item ? siteMenuAuthoredItemLabel(item) : `Child item ${index + 1}`
 }
 
 function issueCount(index: number) {
@@ -40,7 +41,7 @@ function moveWithControls(index: number, direction: -1 | 1) {
   const item = model.value[index]
   if (!item) return
   model.value = moveSiteMenuArrayItem(model.value, index, next)
-  emit('announce', siteMenuMoveAnnouncement(item.label, next + 1, model.value.length, 'child'))
+  emit('announce', siteMenuMoveAnnouncement(siteMenuAuthoredItemLabel(item), next + 1, model.value.length, 'child'))
   nextTick(() => focusSiteMenuMoveControl(item.id, direction === -1 ? 'up' : 'down'))
 }
 
@@ -48,7 +49,7 @@ function removeItem(index: number) {
   const nextFocusId = siteMenuRemovalFocusId(model.value, index)
   const [removed] = model.value.splice(index, 1)
   if (!removed) return
-  emit('announce', `Removed ${removed.label}.`)
+  emit('announce', `Removed ${siteMenuAuthoredItemLabel(removed)}.`)
   emit('remove', removed.id, nextFocusId ?? props.parentItemId)
   nextTick(() => focusAfterSiteMenuRemoval(nextFocusId, props.parentItemId))
 }
@@ -99,7 +100,7 @@ useSortable(listRef, model, {
       v-for="(item, index) in model"
       :key="item.id"
       :data-item-id="item.id"
-      :data-item-label="item.label"
+      :data-item-label="siteMenuAuthoredItemLabel(item)"
       class="hp-menu-child-sort-item"
     >
       <div
@@ -122,7 +123,7 @@ useSortable(listRef, model, {
           square
           class="hp-menu-child-drag-handle min-h-11 min-w-11 touch-none cursor-grab active:cursor-grabbing"
           :data-menu-row-focus="item.id"
-          :aria-label="`Drag ${item.label || `child link ${index + 1}`}`"
+          :aria-label="`Drag ${siteMenuAuthoredItemLabel(item) || `child item ${index + 1}`}`"
         />
         <button
           type="button"
@@ -132,7 +133,7 @@ useSortable(listRef, model, {
           @click="emit('select', item.id)"
         >
           <span class="flex items-center gap-2">
-            <span class="truncate text-sm font-medium text-highlighted">{{ item.label || `Child link ${index + 1}` }}</span>
+            <span class="truncate text-sm font-medium text-highlighted">{{ siteMenuAuthoredItemLabel(item) || `Child item ${index + 1}` }}</span>
             <UBadge v-if="issueCount(index)" color="error" variant="soft" size="sm">
               {{ issueCount(index) }}
             </UBadge>
@@ -149,7 +150,7 @@ useSortable(listRef, model, {
           :data-menu-item-id="item.id"
           data-menu-move="up"
           :disabled="index === 0"
-          :aria-label="`Move ${item.label || `child link ${index + 1}`} up`"
+          :aria-label="`Move ${siteMenuAuthoredItemLabel(item) || `child item ${index + 1}`} up`"
           @click="moveWithControls(index, -1)"
         />
         <UButton
@@ -162,7 +163,7 @@ useSortable(listRef, model, {
           :data-menu-item-id="item.id"
           data-menu-move="down"
           :disabled="index === model.length - 1"
-          :aria-label="`Move ${item.label || `child link ${index + 1}`} down`"
+          :aria-label="`Move ${siteMenuAuthoredItemLabel(item) || `child item ${index + 1}`} down`"
           @click="moveWithControls(index, 1)"
         />
         <UButton
@@ -172,7 +173,7 @@ useSortable(listRef, model, {
           variant="ghost"
           square
           class="min-h-11 min-w-11"
-          :aria-label="`Remove ${item.label || `child link ${index + 1}`}`"
+          :aria-label="`Remove ${siteMenuAuthoredItemLabel(item) || `child item ${index + 1}`}`"
           @click="removeItem(index)"
         />
       </div>

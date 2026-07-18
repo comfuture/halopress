@@ -171,9 +171,9 @@ export default defineEventHandler(async (event) => {
     await syncContentListing({ db, schemaKey, onlyMissing: false })
   }
 
-  if (listingChanged || migrated > 0) {
-    queueWidgetCacheInvalidation(event, `schema:${schemaKey}`)
-  }
+  // Dynamic Menu sources depend on the exact active search configuration,
+  // including changes that do not alter listing fields or migrate content.
+  queueWidgetCacheInvalidation(event, `schema:${schemaKey}`)
 
   return { ok: true, schemaKey, version: nextVersion, migrated, searchIndexed: searchIndex.indexed }
 })

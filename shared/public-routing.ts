@@ -118,6 +118,13 @@ export function publicPathToHref(path: string) {
   return `/${path.split('/').filter(Boolean).map(segment => encodeURIComponent(segment)).join('/')}`
 }
 
+export function publicParentPath(path: string | null) {
+  if (!path || path === '/') return '/'
+  const normalized = path.replace(/\/+$/, '')
+  const separator = normalized.lastIndexOf('/')
+  return separator <= 0 ? '/' : normalized.slice(0, separator)
+}
+
 export function legacyContentPath(schemaKey: string, contentId: string) {
   return publicPathLookupKey(`/${schemaKey.normalize('NFKC').toLocaleLowerCase('en-US')}/${String(contentId).normalize('NFKC').toLocaleLowerCase('en-US')}`, { allowReserved: true })
 }

@@ -202,6 +202,17 @@ function seedSql() {
         label: 'Built SSR Home Child',
         destination: { type: 'home' },
         value: 'built-ssr-home-child'
+      }, {
+        kind: 'dynamic',
+        id: 'ssr-fixed-pages',
+        source: {
+          version: 1,
+          type: 'pagePrefix',
+          scope: { type: 'fixed', prefix: '/menu-pages' },
+          sort: 'path',
+          limit: 12,
+          badge: 'Page'
+        }
       }]
     }, {
       id: 'ssr-external',
@@ -213,6 +224,53 @@ function seedSql() {
       },
       value: 'built-ssr-external',
       children: []
+    }, {
+      kind: 'dynamic',
+      id: 'ssr-recent-articles',
+      source: {
+        version: 1,
+        type: 'schemaQuery',
+        schemaKey: 'article',
+        filters: [],
+        sort: { type: 'system', field: 'createdAt', direction: 'desc' },
+        label: { type: 'systemTitle' },
+        limit: 3,
+        badge: 'Recent'
+      }
+    }, {
+      kind: 'dynamic',
+      id: 'ssr-tagged-articles',
+      source: {
+        version: 1,
+        type: 'schemaQuery',
+        schemaKey: 'article',
+        filters: [{ fieldId: 'tag-id', operator: 'exactSet', values: ['a', 'b'] }],
+        sort: { type: 'system', field: 'createdAt', direction: 'desc' },
+        label: { type: 'systemTitle' },
+        limit: 2,
+        badge: 'Tagged'
+      }
+    }, {
+      kind: 'dynamic',
+      id: 'ssr-contextual-pages',
+      source: {
+        version: 1,
+        type: 'pagePrefix',
+        scope: { type: 'currentParent' },
+        sort: 'path',
+        limit: 12,
+        badge: 'Sibling'
+      }
+    }, {
+      kind: 'dynamic',
+      id: 'ssr-empty-pages',
+      source: {
+        version: 1,
+        type: 'pagePrefix',
+        scope: { type: 'fixed', prefix: '/empty-menu-pages' },
+        sort: 'path',
+        limit: 1
+      }
     }]
   })
   const pageDocument = JSON.stringify({
@@ -306,6 +364,7 @@ function seedSql() {
     title: 'Built Articles',
     fields: [
       { id: 'title-id', key: 'title', kind: 'string', title: 'Title', required: true },
+      { id: 'tag-id', key: 'tag', kind: 'string', title: 'Tag', search: { mode: 'exact_set', filterable: true, sortable: true } },
       { id: 'body-id', key: 'body', kind: 'richtext', title: 'Body' }
     ],
     presentation: {
@@ -325,6 +384,7 @@ function seedSql() {
     title: 'Built Articles',
     properties: {
       title: { title: 'Title', type: 'string' },
+      tag: { title: 'Tag', type: 'string' },
       body: { title: 'Body', type: ['object', 'array', 'string', 'null'], 'x-ui': { widget: 'u-editor' } }
     },
     required: ['title'],
@@ -355,6 +415,7 @@ function seedSql() {
     },
     fields: [
       { fieldId: 'title-id', key: 'title', kind: 'string', title: 'Title', required: true },
+      { fieldId: 'tag-id', key: 'tag', kind: 'string', title: 'Tag', search: { mode: 'exact_set', filterable: true, sortable: true } },
       { fieldId: 'body-id', key: 'body', kind: 'richtext', title: 'Body' }
     ],
     relations: []
@@ -475,6 +536,35 @@ INSERT INTO public_route (
    '{"title":"Built Layout Route Title","description":"Built Layout route description"}', unixepoch(), unixepoch()),
   ('/built-layout-alias', 'alias', 'page', 'built-layout-page', NULL, NULL, unixepoch(), unixepoch());
 
+INSERT INTO page (
+  id, title, status, content_json, public_path, current_revision,
+  published_revision_id, first_published_at, published_at,
+  created_by, updated_by, created_at, updated_at
+) VALUES
+  ('built-menu-page-alpha', 'Working Menu Alpha', 'published', '{}', '/menu-pages/alpha', 1,
+   'built-menu-page-alpha-revision', unixepoch(), unixepoch(),
+   'test:built-ssr', 'test:built-ssr', unixepoch(), unixepoch()),
+  ('built-menu-page-beta', 'Working Menu Beta', 'published', '{}', '/menu-pages/beta', 1,
+   'built-menu-page-beta-revision', unixepoch(), unixepoch(),
+   'test:built-ssr', 'test:built-ssr', unixepoch(), unixepoch()),
+  ('built-menu-page-deep', 'Working Menu Deep', 'published', '{}', '/menu-pages/deep/hidden', 1,
+   'built-menu-page-deep-revision', unixepoch(), unixepoch(),
+   'test:built-ssr', 'test:built-ssr', unixepoch(), unixepoch());
+
+INSERT INTO publication_revision (
+  id, document_kind, document_id, title, content_json, created_by, created_at
+) VALUES
+  ('built-menu-page-alpha-revision', 'page', 'built-menu-page-alpha', 'Published Menu Alpha', '{}', 'test:built-ssr', unixepoch()),
+  ('built-menu-page-beta-revision', 'page', 'built-menu-page-beta', 'Published Menu Beta', '{}', 'test:built-ssr', unixepoch()),
+  ('built-menu-page-deep-revision', 'page', 'built-menu-page-deep', 'Published Menu Deep', '{}', 'test:built-ssr', unixepoch());
+
+INSERT INTO public_route (
+  path, route_kind, document_kind, document_id, schema_key, seo_json, created_at, updated_at
+) VALUES
+  ('/menu-pages/alpha', 'canonical', 'page', 'built-menu-page-alpha', NULL, NULL, unixepoch(), unixepoch()),
+  ('/menu-pages/beta', 'canonical', 'page', 'built-menu-page-beta', NULL, NULL, unixepoch(), unixepoch()),
+  ('/menu-pages/deep/hidden', 'canonical', 'page', 'built-menu-page-deep', NULL, NULL, unixepoch(), unixepoch());
+
 INSERT INTO schema (
   schema_key, version, title, ast_json, json_schema, ui_schema, registry_json,
   created_by, created_at, note
@@ -491,36 +581,62 @@ INSERT INTO schema_role (
   schema_key, role_key, can_read, can_write, can_publish, can_archive, can_delete, can_admin
 ) VALUES ('article', 'anonymous', 1, 0, 0, 0, 0, 0);
 
+INSERT INTO search_config (
+  schema_key, field_id, field_key, kind, search_mode, filterable, sortable
+) VALUES ('article', 'tag-id', 'tag', 'string', 'exact_set', 1, 1);
+
 INSERT INTO content (
   id, schema_key, schema_version, status, content_json, public_path, current_revision,
   published_revision_id, first_published_at, published_at,
   created_by, updated_by, created_at, updated_at
-) VALUES (
-  'built-content', 'article', 1, 'published', ${sqlString(contentWorkingDocument)},
-  '/article/built-content', 1, 'built-content-revision', unixepoch(), unixepoch(),
-  'test:built-ssr', 'test:built-ssr', unixepoch(), unixepoch()
-);
+) VALUES
+  ('built-content-newest', 'article', 1, 'published', ${sqlString(contentWorkingDocument)},
+   '/article/built-content-newest', 1, 'built-content-newest-revision',
+   unixepoch('2026-07-18 03:00:00'), unixepoch('2026-07-18 03:00:00'),
+   'test:built-ssr', 'test:built-ssr', unixepoch('2026-07-18 03:00:00'), unixepoch('2026-07-18 03:00:00')),
+  ('built-content', 'article', 1, 'published', ${sqlString(contentWorkingDocument)},
+   '/article/built-content', 1, 'built-content-revision',
+   unixepoch('2026-07-18 02:00:00'), unixepoch('2026-07-18 02:00:00'),
+   'test:built-ssr', 'test:built-ssr', unixepoch('2026-07-18 02:00:00'), unixepoch('2026-07-18 02:00:00')),
+  ('built-content-oldest', 'article', 1, 'published', ${sqlString(contentWorkingDocument)},
+   '/article/built-content-oldest', 1, 'built-content-oldest-revision',
+   unixepoch('2026-07-18 01:00:00'), unixepoch('2026-07-18 01:00:00'),
+   'test:built-ssr', 'test:built-ssr', unixepoch('2026-07-18 01:00:00'), unixepoch('2026-07-18 01:00:00'));
 
 INSERT INTO publication_revision (
   id, document_kind, document_id, schema_key, schema_version, title, content_json,
   created_by, created_at
-) VALUES (
-  'built-content-revision', 'content', 'built-content', 'article', 1,
-  'Published Content Detail', ${sqlString(contentPublishedDocument)}, 'test:built-ssr', unixepoch()
-);
+) VALUES
+  ('built-content-newest-revision', 'content', 'built-content-newest', 'article', 1,
+   'Published Recent Newest', ${sqlString(contentPublishedDocument)}, 'test:built-ssr', unixepoch('2026-07-18 03:00:00')),
+  ('built-content-revision', 'content', 'built-content', 'article', 1,
+   'Published Content Detail', ${sqlString(contentPublishedDocument)}, 'test:built-ssr', unixepoch('2026-07-18 02:00:00')),
+  ('built-content-oldest-revision', 'content', 'built-content-oldest', 'article', 1,
+   'Published Tagged Oldest', ${sqlString(contentPublishedDocument)}, 'test:built-ssr', unixepoch('2026-07-18 01:00:00'));
 
 INSERT INTO content_listing (
   content_id, projection_scope, schema_key, schema_version, title, description,
   image, status, created_at, updated_at
 ) VALUES
-  ('built-content', 'working', 'article', 1, 'Working Content Detail', 'Working content description', NULL, 'published', unixepoch(), unixepoch()),
-  ('built-content', 'published', 'article', 1, 'Published Content Detail', 'Published content description', NULL, 'published', unixepoch(), unixepoch());
+  ('built-content-newest', 'published', 'article', 1, 'Published Recent Newest', 'Published newest description', NULL, 'published', unixepoch('2026-07-18 03:00:00'), unixepoch('2026-07-18 03:00:00')),
+  ('built-content', 'working', 'article', 1, 'Working Content Detail', 'Working content description', NULL, 'published', unixepoch('2026-07-18 02:00:00'), unixepoch('2026-07-18 02:00:00')),
+  ('built-content', 'published', 'article', 1, 'Published Content Detail', 'Published content description', NULL, 'published', unixepoch('2026-07-18 02:00:00'), unixepoch('2026-07-18 02:00:00')),
+  ('built-content-oldest', 'published', 'article', 1, 'Published Tagged Oldest', 'Published oldest description', NULL, 'published', unixepoch('2026-07-18 01:00:00'), unixepoch('2026-07-18 01:00:00'));
+
+INSERT INTO content_search_data (
+  content_id, projection_scope, field_id, data_type, text, value
+) VALUES
+  ('built-content-newest', 'published', 'tag-id', 'text', 'c', NULL),
+  ('built-content', 'published', 'tag-id', 'text', 'b', NULL),
+  ('built-content-oldest', 'published', 'tag-id', 'text', 'a', NULL);
 
 INSERT INTO public_route (
   path, route_kind, document_kind, document_id, schema_key, seo_json, created_at, updated_at
 ) VALUES
   ('/article', 'canonical', 'schema', 'article', 'article', NULL, unixepoch(), unixepoch()),
-  ('/article/built-content', 'canonical', 'content', 'built-content', 'article', NULL, unixepoch(), unixepoch());
+  ('/article/built-content-newest', 'canonical', 'content', 'built-content-newest', 'article', NULL, unixepoch(), unixepoch()),
+  ('/article/built-content', 'canonical', 'content', 'built-content', 'article', NULL, unixepoch(), unixepoch()),
+  ('/article/built-content-oldest', 'canonical', 'content', 'built-content-oldest', 'article', NULL, unixepoch(), unixepoch());
 
 INSERT INTO site_menu_set (
   id, name, name_key, document_json, bootstrap_owned,
@@ -734,7 +850,29 @@ async function assertLayoutRouteDelivery(origin) {
   assert.equal(route.layout.layoutId, 'built-runtime-layout')
   assert.match(route.layout.revision, /^[0-9a-f]{64}$/)
   assert.equal(route.layout.elements.length, 7)
-  assert.equal(route.layout.elements.find(element => element.type === 'menu')?.props.menu.status, 'ready')
+  const resolvedMenu = route.layout.elements.find(element => element.type === 'menu')?.props.menu
+  assert.equal(resolvedMenu?.status, 'ready')
+  assert.deepEqual(
+    resolvedMenu.document.items
+      .filter(item => item.badge === 'Recent')
+      .map(item => ({ label: item.label, to: item.to })),
+    [
+      { label: 'Published Recent Newest', to: '/article/built-content-newest' },
+      { label: 'Published Content Detail', to: '/article/built-content' },
+      { label: 'Published Tagged Oldest', to: '/article/built-content-oldest' }
+    ],
+    'Expected recent Schema source results in exact descending created-at order'
+  )
+  assert.deepEqual(
+    resolvedMenu.document.items
+      .filter(item => item.badge === 'Tagged')
+      .map(item => ({ label: item.label, to: item.to })),
+    [
+      { label: 'Published Content Detail', to: '/article/built-content' },
+      { label: 'Published Tagged Oldest', to: '/article/built-content-oldest' }
+    ],
+    'Expected exact-set Schema source to include tags a/b, exclude tag c, and preserve descending order'
+  )
   assert.equal(route.layout.elements.find(element => element.type === 'table-of-contents')?.props.items[0]?.text, 'Runtime outline')
 
   const stable = await fetch(`${origin}/api/delivery/route?path=${path}&includeLayout=1`, {
@@ -763,6 +901,8 @@ async function assertPersistedLayoutSurfaces(origin) {
   assert.ok(pageHtml.includes('target="_blank"') && pageHtml.includes('rel="noopener noreferrer"'), 'Expected safe external Menu attributes')
   assert.ok(pageHtml.includes('Published Page marker'), 'Expected public Page SSR to use the exact published revision')
   assert.ok(!pageHtml.includes('Working Page marker'), 'Public Page SSR must not expose working Page content')
+  assert.ok(pageHtml.includes('Sibling'), 'Expected contextual current-parent Page results in persisted Layout SSR')
+  assert.ok(pageHtml.includes('Built Theme Page'), 'Expected the contextual root sibling Page in persisted Layout SSR')
 
   for (const [path, label, expected] of [
     ['/article', 'public collection', 'Published Content Detail'],
@@ -841,6 +981,51 @@ async function assertPersistedLayoutSurfaces(origin) {
   return pageHtml
 }
 
+async function assertDynamicMenuPreview(origin) {
+  const cookie = await authenticatedCookie('127.0.0.1')
+  const menuResponse = await fetch(`${origin}/api/site/menus`, { headers: { Cookie: cookie } })
+  assert.equal(menuResponse.status, 200, 'Expected authenticated Menu resources for preview smoke')
+  const menus = await menuResponse.json()
+  const globalMenu = menus.items.find(menu => menu.id === 'global-navigation')
+  assert.ok(globalMenu, 'Expected seeded Global Menu for preview smoke')
+
+  const previewResponse = await fetch(`${origin}/api/site/menus/global-navigation/preview`, {
+    method: 'POST',
+    headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ document: globalMenu.document, examplePageId: 'built-layout-page' })
+  })
+  assert.equal(previewResponse.status, 200, 'Expected authenticated contextual Menu preview')
+  assert.equal(previewResponse.headers.get('cache-control'), 'private, no-store')
+  assert.match(previewResponse.headers.get('vary') ?? '', /Cookie/i)
+  assert.match(previewResponse.headers.get('x-robots-tag') ?? '', /noindex/i)
+  const preview = await previewResponse.json()
+  assert.deepEqual(preview.context, { pageId: 'built-layout-page', canonicalPath: '/built-layout-page' })
+  assert.match(preview.digest, /^[0-9a-f]{64}$/)
+  const previewJson = JSON.stringify(preview.menu.document)
+  for (const marker of ['Recent', 'Tagged', 'Page', 'Sibling']) {
+    assert.ok(previewJson.includes(marker), `Expected ${marker} dynamic source output in authenticated preview`)
+  }
+  assert.ok(previewJson.includes('/menu-pages/alpha') && previewJson.includes('/menu-pages/beta'))
+  assert.ok(!previewJson.includes('/menu-pages/deep/hidden'), 'Fixed Page prefix must exclude deeper descendants')
+  assert.ok(previewJson.includes('/built-theme-page'), 'Contextual Page source must include root siblings')
+  assert.ok(
+    preview.diagnostics.filter(item => item.sourceId !== 'ssr-empty-pages').every(item => item.status === 'ready'),
+    'Expected every populated seeded dynamic source to resolve'
+  )
+  assert.ok(
+    preview.diagnostics.some(item => item.sourceId === 'ssr-empty-pages' && item.status === 'empty'),
+    'Expected an isolated empty dynamic source result'
+  )
+
+  const anonymous = await fetch(`${origin}/api/site/menus/global-navigation/preview`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ document: globalMenu.document, examplePageId: 'built-layout-page' })
+  })
+  assert.ok([401, 403, 404].includes(anonymous.status), 'Anonymous Menu preview must not resolve')
+  assert.equal(anonymous.headers.get('cache-control'), 'private, no-store')
+}
+
 async function assertCompiledSiteThemeAdapter(origin, html) {
   const hrefs = [...html.matchAll(/<link[^>]+href="([^"]+\.css)"/g)].map(match => match[1])
   const stylesheets = await Promise.all(hrefs.map(async href => fetch(new URL(href, origin)).then(response => response.text())))
@@ -910,6 +1095,10 @@ function assertRenderedMenu(html) {
     /<button(?=[^>]*data-navigation-menu-trigger)(?=[^>]*aria-expanded="false")[^>]*>[\s\S]{0,800}?Built SSR Parent/.test(html),
     'Expected the child-bearing item to SSR as a closed horizontal Nuxt UI trigger'
   )
+  assert.ok(html.includes('Recent'), 'Expected recent Schema source output in built SSR')
+  assert.ok(html.includes('Tagged'), 'Expected exact-set/tag Schema source output in built SSR')
+  assert.ok(html.includes('Published Content Detail'), 'Expected canonical published Schema result label in built SSR')
+  assert.ok(!html.includes('Published Menu Deep'), 'Fixed Page source must not leak deeper descendants')
 }
 
 function assertRenderedNuxtFixture(html) {
@@ -939,6 +1128,9 @@ function assertRenderedNuxtFixture(html) {
     /<a(?=[^>]*href="\/")(?=[^>]*data-slot="childLink")(?=[^>]*site-menu-horizontal-fixture-child-link)[^>]*>[\s\S]{0,1200}?Built SSR Home Child/.test(horizontalContent),
     'Expected the fixture-owned child link in open teleported horizontal Nuxt UI content'
   )
+  assert.ok(horizontalContent.includes('/menu-pages/alpha'), 'Expected fixed-prefix Page Alpha in the open horizontal source')
+  assert.ok(horizontalContent.includes('/menu-pages/beta'), 'Expected fixed-prefix Page Beta in the open horizontal source')
+  assert.ok(!horizontalContent.includes('/menu-pages/deep/hidden'), 'Expected fixed-prefix Page source to keep direct-child depth')
 
   const start = html.indexOf('<section data-site-menu-vertical-fixture')
   const end = html.indexOf('</section>', start)
@@ -962,6 +1154,18 @@ function assertRenderedNuxtFixture(html) {
   assert.ok(
     /<a(?=[^>]*href="\/")(?=[^>]*data-slot="link")[^>]*>[\s\S]{0,800}?Built SSR Home Child/.test(fixture),
     'Expected the active child link inside the open vertical Accordion'
+  )
+  assert.ok(
+    /<a(?=[^>]*href="\/menu-pages\/alpha")(?=[^>]*data-slot="link")[^>]*>[\s\S]{0,800}?Published Menu Alpha/.test(fixture),
+    'Expected fixed-prefix Page Alpha as a dynamic child in vertical Nuxt UI navigation'
+  )
+  assert.ok(
+    /<a(?=[^>]*href="\/menu-pages\/beta")(?=[^>]*data-slot="link")[^>]*>[\s\S]{0,800}?Published Menu Beta/.test(fixture),
+    'Expected fixed-prefix Page Beta as a dynamic child in vertical Nuxt UI navigation'
+  )
+  assert.ok(
+    !fixture.includes('/menu-pages/deep/hidden'),
+    'Expected vertical fixed-prefix Page source to keep direct-child depth'
   )
 }
 
@@ -1021,6 +1225,7 @@ async function main() {
     await assertCompiledSiteThemeAdapter(origin, html)
 
     await assertLayoutRouteDelivery(origin)
+    await assertDynamicMenuPreview(origin)
 
     await assertBuiltPageMode(origin, 'dark')
     await setPersistedThemeMode(stateDirectory, stateArgs, 'light')
@@ -1036,7 +1241,14 @@ async function main() {
     const verticalHtml = await verticalResponse.text()
     assert.equal(verticalResponse.status, 200, `Expected vertical fixture SSR to succeed, received ${verticalResponse.status}`)
     assertRenderedNuxtFixture(verticalHtml)
-    console.log('Built Site/Layout/Theme SSR smoke passed: ready/fallback public routes, collection/detail, authenticated previews, isolated Page editor, responsive CSS, ETags, immutable CSS, root modes, and Nuxt menus rendered correctly.')
+    console.log('Built Site/Layout/Theme SSR smoke passed: typed recent/tag/fixed/contextual Menus, both orientations, private previews, ready/fallback public routes, collection/detail, isolated Page editor, responsive CSS, ETags, immutable CSS, root modes, and Nuxt menus rendered correctly.')
+    if (process.env.HALOPRESS_SITE_MENU_BROWSER_HOLD === '1') {
+      console.log(`Browser acceptance fixture ready at ${origin}`)
+      await new Promise(resolveStop => {
+        process.once('SIGINT', resolveStop)
+        process.once('SIGTERM', resolveStop)
+      })
+    }
   } finally {
     if (worker) await stopWorker(worker)
     await rm(stateDirectory, { recursive: true, force: true })

@@ -1,10 +1,18 @@
 import { z } from 'zod'
 import { caseFold } from 'unicode-case-folding'
 
+import { publicPathLookupKey } from './public-routing'
 import { publicNavigationDestinationSchema } from './site-presentation'
 
 export const GLOBAL_SITE_MENU_ID = 'global-navigation'
 export const GLOBAL_SITE_MENU_NAME = 'Global navigation'
+export const SITE_MENU_MAX_ITEMS = 12
+export const SITE_MENU_MAX_CHILDREN = 8
+export const SITE_MENU_MAX_DYNAMIC_SOURCES = 8
+export const SITE_MENU_MAX_SOURCE_FILTERS = 4
+export const SITE_MENU_MAX_EXACT_SET_VALUES = 10
+export const SITE_MENU_MIN_SOURCE_RESULTS = 1
+export const SITE_MENU_MAX_SOURCE_RESULTS = 12
 
 export const SITE_MENU_ICONS = [
   'i-lucide-book-open',
@@ -50,6 +58,104 @@ export const siteMenuBadgeSchema = z.union([
   z.number().finite()
 ])
 
+export const siteMenuFilterValueSchema = z.union([
+  z.string().trim().min(1).max(256),
+  z.number().finite(),
+  z.boolean()
+])
+
+export const siteMenuSchemaKeySchema = z.string().trim().min(1).max(128).regex(
+  /^[a-z0-9][a-z0-9_]*$/,
+  'Use a stable lowercase Schema key'
+)
+
+export const siteMenuFieldIdSchema = siteMenuIdSchema
+
+export const siteMenuSchemaFilterSchema = z.discriminatedUnion('operator', [
+  z.object({
+    fieldId: siteMenuFieldIdSchema,
+    operator: z.literal('exact'),
+    value: siteMenuFilterValueSchema
+  }).strict(),
+  z.object({
+    fieldId: siteMenuFieldIdSchema,
+    operator: z.literal('exactSet'),
+    values: z.array(siteMenuFilterValueSchema)
+      .min(1)
+      .max(SITE_MENU_MAX_EXACT_SET_VALUES)
+  }).strict()
+])
+
+export const siteMenuSchemaSortSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('system'),
+    field: z.enum(['createdAt', 'updatedAt']),
+    direction: z.enum(['asc', 'desc'])
+  }).strict(),
+  z.object({
+    type: z.literal('field'),
+    fieldId: siteMenuFieldIdSchema,
+    direction: z.enum(['asc', 'desc'])
+  }).strict()
+])
+
+export const siteMenuSchemaLabelSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('systemTitle') }).strict(),
+  z.object({ type: z.literal('field'), fieldId: siteMenuFieldIdSchema }).strict()
+])
+
+function normalizeSiteMenuPagePrefix(value: string) {
+  const input = value.normalize('NFKC').trim()
+  if (!input || input.split('/').filter(Boolean).length === 0) return '/'
+  return publicPathLookupKey(input, { allowReserved: true })
+}
+
+export const siteMenuPagePrefixSchema = z.string().trim().min(1).max(512).refine((value) => {
+  try {
+    normalizeSiteMenuPagePrefix(value)
+    return true
+  } catch {
+    return false
+  }
+}, 'Use a normalized Site path prefix').transform(normalizeSiteMenuPagePrefix)
+
+export const siteMenuPageScopeSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('fixed'),
+    prefix: siteMenuPagePrefixSchema
+  }).strict(),
+  z.object({ type: z.literal('currentParent') }).strict()
+])
+
+export const siteMenuSourceSchema = z.discriminatedUnion('type', [
+  z.object({
+    version: z.literal(1),
+    type: z.literal('schemaQuery'),
+    schemaKey: siteMenuSchemaKeySchema,
+    filters: z.array(siteMenuSchemaFilterSchema).max(SITE_MENU_MAX_SOURCE_FILTERS).default([]),
+    sort: siteMenuSchemaSortSchema,
+    label: siteMenuSchemaLabelSchema,
+    limit: z.number().int().min(SITE_MENU_MIN_SOURCE_RESULTS).max(SITE_MENU_MAX_SOURCE_RESULTS),
+    icon: z.enum(SITE_MENU_ICONS).optional(),
+    badge: siteMenuBadgeSchema.optional()
+  }).strict(),
+  z.object({
+    version: z.literal(1),
+    type: z.literal('pagePrefix'),
+    scope: siteMenuPageScopeSchema,
+    sort: z.enum(['title', 'path']).default('title'),
+    limit: z.number().int().min(SITE_MENU_MIN_SOURCE_RESULTS).max(SITE_MENU_MAX_SOURCE_RESULTS),
+    icon: z.enum(SITE_MENU_ICONS).optional(),
+    badge: siteMenuBadgeSchema.optional()
+  }).strict()
+])
+
+export const siteMenuDynamicItemSchema = z.object({
+  kind: z.literal('dynamic'),
+  id: siteMenuIdSchema,
+  source: siteMenuSourceSchema
+}).strict()
+
 export const siteMenuLeafSchema = z.object({
   id: siteMenuIdSchema,
   label: z.string().trim().min(1, 'Enter a label').max(80, 'Use 80 characters or fewer'),
@@ -59,26 +165,44 @@ export const siteMenuLeafSchema = z.object({
   badge: siteMenuBadgeSchema.optional()
 }).strict()
 
-export const siteMenuItemSchema = siteMenuLeafSchema.extend({
-  children: z.array(siteMenuLeafSchema).max(8).default([])
+export const siteMenuChildSchema = z.union([
+  siteMenuLeafSchema,
+  siteMenuDynamicItemSchema
+])
+
+export const siteMenuStaticItemSchema = siteMenuLeafSchema.extend({
+  children: z.array(siteMenuChildSchema).max(SITE_MENU_MAX_CHILDREN).default([])
 }).strict()
+
+export const siteMenuItemSchema = z.union([
+  siteMenuStaticItemSchema,
+  siteMenuDynamicItemSchema
+])
+
+function hasDynamicMenuKind(value: unknown): value is { kind: 'dynamic' } {
+  return Boolean(value && typeof value === 'object' && 'kind' in value && value.kind === 'dynamic')
+}
 
 export const siteMenuDocumentSchema = z.object({
   version: z.literal(1),
-  items: z.array(siteMenuItemSchema).max(12)
+  items: z.array(siteMenuItemSchema).max(SITE_MENU_MAX_ITEMS)
 }).strict().superRefine((document, context) => {
   const ids = new Set<string>()
   const values = new Set<string>()
+  let sourceCount = 0
 
   for (const [itemIndex, item] of document.items.entries()) {
     const candidates = [
       { candidate: item, path: ['items', itemIndex] },
-      ...item.children.map((candidate, childIndex) => ({
-        candidate,
-        path: ['items', itemIndex, 'children', childIndex]
-      }))
+      ...(hasDynamicMenuKind(item)
+        ? []
+        : item.children.map((candidate, childIndex) => ({
+            candidate,
+            path: ['items', itemIndex, 'children', childIndex]
+          })))
     ]
     for (const { candidate, path } of candidates) {
+      if (hasDynamicMenuKind(candidate)) sourceCount++
       if (ids.has(candidate.id)) {
         context.addIssue({
           code: 'custom',
@@ -88,7 +212,9 @@ export const siteMenuDocumentSchema = z.object({
       }
       ids.add(candidate.id)
 
-      const effectiveValue = candidate.value || candidate.id
+      const effectiveValue = hasDynamicMenuKind(candidate)
+        ? candidate.id
+        : candidate.value || candidate.id
       if (values.has(effectiveValue)) {
         context.addIssue({
           code: 'custom',
@@ -98,6 +224,14 @@ export const siteMenuDocumentSchema = z.object({
       }
       values.add(effectiveValue)
     }
+  }
+
+  if (sourceCount > SITE_MENU_MAX_DYNAMIC_SOURCES) {
+    context.addIssue({
+      code: 'custom',
+      message: `Menus may contain at most ${SITE_MENU_MAX_DYNAMIC_SOURCES} dynamic sources`,
+      path: ['items']
+    })
   }
 })
 
@@ -136,12 +270,12 @@ export const resolvedSiteMenuLeafSchema = z.object({
 })
 
 export const resolvedSiteMenuItemSchema = resolvedSiteMenuLeafSchema.extend({
-  children: z.array(resolvedSiteMenuLeafSchema).max(8).default([])
+  children: z.array(resolvedSiteMenuLeafSchema).max(SITE_MENU_MAX_CHILDREN).default([])
 }).strict()
 
 export const resolvedSiteMenuDocumentSchema = z.object({
   version: z.literal(1),
-  items: z.array(resolvedSiteMenuItemSchema).max(12)
+  items: z.array(resolvedSiteMenuItemSchema).max(SITE_MENU_MAX_ITEMS)
 }).strict().superRefine((document, context) => {
   const ids = new Set<string>()
   const values = new Set<string>()
@@ -174,8 +308,14 @@ export const siteMenuUpdateSchema = z.object({
 }).strict()
 
 export type SiteMenuLeaf = z.output<typeof siteMenuLeafSchema>
+export type SiteMenuDynamicItem = z.output<typeof siteMenuDynamicItemSchema>
+export type SiteMenuChild = z.output<typeof siteMenuChildSchema>
+export type SiteMenuStaticItem = z.output<typeof siteMenuStaticItemSchema>
 export type SiteMenuItem = z.output<typeof siteMenuItemSchema>
 export type SiteMenuDocument = z.output<typeof siteMenuDocumentSchema>
+export type SiteMenuSource = z.output<typeof siteMenuSourceSchema>
+export type SiteMenuSchemaFilter = z.output<typeof siteMenuSchemaFilterSchema>
+export type SiteMenuSchemaSort = z.output<typeof siteMenuSchemaSortSchema>
 export type SiteMenuCreate = z.output<typeof siteMenuCreateSchema>
 export type SiteMenuUpdate = z.output<typeof siteMenuUpdateSchema>
 export type ResolvedSiteMenuLeaf = z.output<typeof resolvedSiteMenuLeafSchema>
@@ -212,6 +352,50 @@ export type SiteMenuListResponse = {
   items: SiteMenuAdminResource[]
 }
 
+export type SiteMenuSourceFieldOption = {
+  fieldId: string
+  fieldKey: string
+  label: string
+  kind: string
+  searchMode: 'off' | 'exact' | 'exact_set' | 'range'
+  filterable: boolean
+  sortable: boolean
+  labelEligible: boolean
+  enumValues: Array<{ label: string, value: string }>
+}
+
+export type SiteMenuSourceSchemaOption = {
+  schemaKey: string
+  label: string
+  fields: SiteMenuSourceFieldOption[]
+}
+
+export type SiteMenuSourcePageOption = {
+  id: string
+  title: string
+  path: string
+}
+
+export type SiteMenuSourceOptionsResponse = {
+  schemas: SiteMenuSourceSchemaOption[]
+  pages: SiteMenuSourcePageOption[]
+}
+
+export type SiteMenuSourceDiagnostic = {
+  sourceId: string
+  sourceType: SiteMenuSource['type']
+  status: 'ready' | 'empty' | 'context-unavailable' | 'invalid' | 'timeout' | 'error'
+  count: number
+  message: string
+}
+
+export type SiteMenuPreviewResponse = {
+  menu: PublicSiteMenu
+  digest: string
+  context: { pageId: string, canonicalPath: string } | null
+  diagnostics: SiteMenuSourceDiagnostic[]
+}
+
 export type PublicSiteMenu = {
   id: string
   name: string
@@ -224,4 +408,12 @@ export function defaultSiteMenuDocument(): SiteMenuDocument {
 
 export function siteMenuItemValue(item: SiteMenuLeaf) {
   return item.value || item.id
+}
+
+export function isSiteMenuDynamicItem(item: SiteMenuItem | SiteMenuChild): item is SiteMenuDynamicItem {
+  return hasDynamicMenuKind(item)
+}
+
+export function isSiteMenuStaticItem(item: SiteMenuItem): item is SiteMenuStaticItem {
+  return !hasDynamicMenuKind(item)
 }

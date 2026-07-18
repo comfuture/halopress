@@ -2,7 +2,7 @@
 import type { FormErrorEvent, FormSubmitEvent } from '@nuxt/ui'
 
 import {
-  siteMenuCreateSchema,
+  isSiteMenuStaticItem,
   type SiteMenuAdminResource,
   type SiteMenuCreate
 } from '~~/shared/site-menu'
@@ -24,6 +24,7 @@ const {
 } = useSiteMenus()
 
 const createOpen = ref(false)
+const wideCreateOverlay = ref(false)
 const createState = reactive<SiteMenuCreate>({ name: '' })
 const createErrorMessage = ref('')
 const pendingCreatedMenu = ref<{
@@ -34,9 +35,26 @@ const createFormId = 'site-menu-set-create-form'
 const deletingId = ref('')
 let failedCreateName = ''
 let latestCreateToken = 0
+let createMediaQuery: MediaQueryList | null = null
+const createFinalizationFallback = createSiteMenuOverlayFinalizationFallback()
 
 watch(() => createState.name, (name) => {
   if (createErrorMessage.value && name !== failedCreateName) createErrorMessage.value = ''
+})
+
+function handleCreateBreakpoint(event: MediaQueryListEvent) {
+  wideCreateOverlay.value = event.matches
+}
+
+onMounted(() => {
+  createMediaQuery = window.matchMedia('(min-width: 640px)')
+  wideCreateOverlay.value = createMediaQuery.matches
+  createMediaQuery.addEventListener('change', handleCreateBreakpoint)
+})
+
+onBeforeUnmount(() => {
+  createFinalizationFallback.cancel()
+  createMediaQuery?.removeEventListener('change', handleCreateBreakpoint)
 })
 
 async function focusCreateName(_event?: FormErrorEvent) {
@@ -45,8 +63,13 @@ async function focusCreateName(_event?: FormErrorEvent) {
 }
 
 function handleCreateOpenChange(nextOpen: boolean) {
+  if (nextOpen && pendingCreatedMenu.value) return
   if (!shouldAcceptSiteMenuCreateOpenChange(creating.value, nextOpen)) return
   createOpen.value = nextOpen
+}
+
+function openCreate() {
+  handleCreateOpenChange(true)
 }
 
 async function createSet(event: FormSubmitEvent<SiteMenuCreate>) {
@@ -62,6 +85,7 @@ async function createSet(event: FormSubmitEvent<SiteMenuCreate>) {
       request
     }
     createOpen.value = false
+    createFinalizationFallback.schedule(finalizeCreatedMenu)
   } catch (createError: any) {
     const issue = siteMenuValidationIssuesFromFetchError(createError)
       .find(item => item.path === 'name')
@@ -79,9 +103,10 @@ async function createSet(event: FormSubmitEvent<SiteMenuCreate>) {
   }
 }
 
-async function handleCreateAfterLeave() {
+function finalizeCreatedMenu() {
   const pendingCreation = pendingCreatedMenu.value
   pendingCreatedMenu.value = null
+  createFinalizationFallback.cancel()
   createState.name = ''
   createErrorMessage.value = ''
   failedCreateName = ''
@@ -104,6 +129,10 @@ async function handleCreateAfterLeave() {
       query: { created: pendingCreation.resource.id }
     })
   })
+}
+
+function handleCreateAfterLeave() {
+  finalizeCreatedMenu()
 }
 
 async function removeMenu(resource: SiteMenuAdminResource) {
@@ -146,79 +175,92 @@ async function removeMenu(resource: SiteMenuAdminResource) {
     title="Menus"
     description="Manage named navigation sets, then open one to arrange and edit its links."
   >
-    <template #actions>
+    <div class="space-y-6">
+      <UDashboardToolbar :ui="{ right: 'ml-auto' }" data-menu-list-toolbar>
+        <template #left>
+          <p class="text-sm text-muted">{{ data?.items.length ?? 0 }} saved {{ data?.items.length === 1 ? 'menu' : 'menus' }}</p>
+        </template>
+        <template #right>
+          <UButton
+            icon="i-lucide-plus"
+            :disabled="pending || Boolean(error) || creating || Boolean(pendingCreatedMenu)"
+            data-menu-create-trigger
+            @click="openCreate"
+          >
+            Add menu set
+          </UButton>
+        </template>
+      </UDashboardToolbar>
+
       <UModal
+        v-if="wideCreateOverlay"
         :open="createOpen"
         title="Add menu set"
         description="Create a named menu set that Site layouts can reference by its stable ID."
         :dismissible="!creating"
         :close="creating ? false : true"
         :ui="{ footer: 'justify-end' }"
+        data-menu-create-modal
         @update:open="handleCreateOpenChange"
         @after:leave="handleCreateAfterLeave"
       >
-        <UButton
-          icon="i-lucide-plus"
-          :disabled="pending || Boolean(error)"
-          data-menu-create-trigger
-        >
-          Add menu set
-        </UButton>
-
         <template #body>
-          <UForm
-            :id="createFormId"
-            :schema="siteMenuCreateSchema"
+          <SiteMenuCreateForm
+            :form-id="createFormId"
             :state="createState"
-            :loading-auto="false"
+            :error-message="createErrorMessage || undefined"
+            @update-name="createState.name = $event"
             @submit="createSet"
             @error="focusCreateName"
-          >
-            <UFormField
-              name="name"
-              label="Menu name"
-              description="Names are Unicode-aware and unique regardless of case."
-              required
-              :error="createErrorMessage || undefined"
-            >
-              <UInput
-                v-model="createState.name"
-                class="w-full"
-                placeholder="Footer links"
-                maxlength="80"
-                autocomplete="off"
-                autofocus
-                data-menu-create-name
-              />
-            </UFormField>
-          </UForm>
+          />
         </template>
-
         <template #footer>
           <div class="flex w-full justify-end gap-2">
-            <UButton
-              type="button"
-              color="neutral"
-              variant="outline"
-              :disabled="creating"
-              @click="handleCreateOpenChange(false)"
-            >
+            <UButton type="button" color="neutral" variant="outline" :disabled="creating" @click="handleCreateOpenChange(false)">
               Cancel
             </UButton>
-            <UButton
-              type="submit"
-              :form="createFormId"
-              icon="i-lucide-plus"
-              :loading="creating"
-            >
+            <UButton type="submit" :form="createFormId" icon="i-lucide-plus" :loading="creating">
               Create menu set
             </UButton>
           </div>
         </template>
       </UModal>
-    </template>
 
-    <div class="space-y-6">
+      <USlideover
+        v-else
+        :open="createOpen"
+        title="Add menu set"
+        description="Create a named menu set that Site layouts can reference by its stable ID."
+        side="right"
+        :dismissible="!creating"
+        :close="creating ? false : true"
+        :ui="{ content: 'w-full max-w-none', footer: 'justify-end' }"
+        data-menu-create-slideover
+        @update:open="handleCreateOpenChange"
+        @after:leave="handleCreateAfterLeave"
+      >
+        <template #body>
+          <SiteMenuCreateForm
+            :form-id="createFormId"
+            :state="createState"
+            :error-message="createErrorMessage || undefined"
+            @update-name="createState.name = $event"
+            @submit="createSet"
+            @error="focusCreateName"
+          />
+        </template>
+        <template #footer>
+          <div class="flex w-full justify-end gap-2">
+            <UButton type="button" color="neutral" variant="outline" :disabled="creating" @click="handleCreateOpenChange(false)">
+              Cancel
+            </UButton>
+            <UButton type="submit" :form="createFormId" icon="i-lucide-plus" :loading="creating">
+              Create menu set
+            </UButton>
+          </div>
+        </template>
+      </USlideover>
+
       <div v-if="pending" class="space-y-3" aria-busy="true" aria-label="Loading menu sets">
         <USkeleton class="h-32 w-full" />
         <USkeleton class="h-56 w-full" />
@@ -277,8 +319,9 @@ async function removeMenu(resource: SiteMenuAdminResource) {
                     </UBadge>
                   </div>
                   <p class="text-sm text-muted">
-                    {{ menu.document.items.length }} top-level {{ menu.document.items.length === 1 ? 'link' : 'links' }}
-                    · {{ menu.document.items.reduce((count, item) => count + item.children.length, 0) }} child links
+                    {{ menu.document.items.length }} top-level {{ menu.document.items.length === 1 ? 'item' : 'items' }}
+                    · {{ menu.document.items.reduce((count, item) => count + (isSiteMenuStaticItem(item) ? item.children.length : 0), 0) }} child items
+                    · {{ countSiteMenuDynamicSources(menu.document.items) }} dynamic sources
                   </p>
                   <p class="break-all text-xs text-dimmed">Stable ID: {{ menu.id }}</p>
                 </div>

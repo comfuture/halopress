@@ -4,6 +4,7 @@ import {
   applyWidgetCacheHeaders,
   buildWidgetCacheKey,
   queueWidgetCacheInvalidation,
+  resolveWidgetCacheKey,
   withWidgetCache
 } from '../server/utils/widget-cache'
 
@@ -44,6 +45,31 @@ describe('widget cache background work', () => {
     expect(() => queueWidgetCacheInvalidation(event as any, 'schema:article')).not.toThrow()
     expect(workerContext.waitUntil).toHaveBeenCalledOnce()
     await expect(backgroundTask).resolves.toBeDefined()
+  })
+
+  it('re-reads configured distributed scope revisions across isolate-style requests', async () => {
+    let distributedRevision = 'scope-v1'
+    const kv = {
+      get: vi.fn(async () => distributedRevision),
+      put: vi.fn(async (_key: string, value: string) => {
+        distributedRevision = value
+      })
+    }
+    const event = {
+      context: { cloudflare: { env: { WIDGET_CACHE: kv } } },
+      node: { req: { headers: { host: 'acme-news.example.com' } } }
+    }
+
+    const first = await resolveWidgetCacheKey(event as any, 'site-menu-source', 'v1', {
+      sourceId: 'recent'
+    }, 'schema:article')
+    distributedRevision = 'scope-v2-from-another-isolate'
+    const second = await resolveWidgetCacheKey(event as any, 'site-menu-source', 'v1', {
+      sourceId: 'recent'
+    }, 'schema:article')
+
+    expect(second).not.toBe(first)
+    expect(kv.get).toHaveBeenCalledTimes(2)
   })
 })
 

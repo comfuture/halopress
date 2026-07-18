@@ -144,7 +144,7 @@ describe('Site reactive composables', () => {
     vi.stubGlobal('ref', ref)
     vi.stubGlobal('useFetch', useFetch)
 
-    const { useSiteMenus } = await import('../app/composables/useSiteMenus')
+    const { useSiteMenus, useSiteMenusEditor } = await import('../app/composables/useSiteMenus')
     const editor = useSiteMenus()
 
     expect(editor).not.toBeInstanceOf(Promise)
@@ -166,6 +166,14 @@ describe('Site reactive composables', () => {
       createMenu: expect.any(Function),
       saveMenu: expect.any(Function),
       deleteMenu: expect.any(Function)
+    })
+
+    const awaitedEditor = useSiteMenusEditor()
+    expect(awaitedEditor).toBeInstanceOf(Promise)
+    await expect(awaitedEditor).resolves.toMatchObject({
+      data: state.data,
+      pending: state.pending,
+      previewMenu: expect.any(Function)
     })
   })
 

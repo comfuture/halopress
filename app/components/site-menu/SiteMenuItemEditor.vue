@@ -2,11 +2,12 @@
 import {
   SITE_MENU_ICONS,
   type SiteMenuLeaf,
+  type SiteMenuStaticItem,
   type SiteMenuValidationIssue
 } from '~~/shared/site-menu'
 import type { PublicNavigationDestination } from '~~/shared/site-presentation'
 
-const model = defineModel<SiteMenuLeaf>({ required: true })
+const model = defineModel<SiteMenuLeaf | SiteMenuStaticItem>({ required: true })
 const props = defineProps<{
   pathPrefix: string
   validationIssues?: SiteMenuValidationIssue[]

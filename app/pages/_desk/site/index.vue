@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { isSiteMenuStaticItem } from '~~/shared/site-menu'
+
 definePageMeta({ layout: 'desk' })
 
 const { data: presentation, pending, error, refresh } = useSitePresentationStatus()
@@ -12,7 +14,7 @@ const presentationStatus = computed(() => {
 
 const menuSetCount = computed(() => menuData.value?.items.length ?? 0)
 const menuLinkCount = computed(() => (menuData.value?.items ?? []).reduce((total, menu) => (
-  total + menu.document.items.reduce((count, item) => count + 1 + item.children.length, 0)
+  total + menu.document.items.reduce((count, item) => count + 1 + (isSiteMenuStaticItem(item) ? item.children.length : 0), 0)
 ), 0))
 </script>
 

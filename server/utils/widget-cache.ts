@@ -30,6 +30,10 @@ function getKvNamespace(event: H3Event) {
   return env?.WIDGET_CACHE ?? env?.CACHE ?? env?.KV ?? null
 }
 
+export function hasDistributedWidgetCache(event: H3Event) {
+  return Boolean(getKvNamespace(event))
+}
+
 function getWaitUntil(event: H3Event): ((promise: Promise<any>) => void) | null {
   const ctx = (event as any)?.context?.cloudflare
   const candidates = [ctx?.ctx, ctx?.context, ctx, event as any]
@@ -70,18 +74,20 @@ function scopeStorageKey(tenant: string, scope: string) {
 async function getScopeVersion(event: H3Event, scope: string) {
   const tenant = getTenantKey(event)
   const key = scopeStorageKey(tenant, scope)
-
-  const cached = scopeVersions.get(key)
-  if (cached) return cached
-
   const kv = getKvNamespace(event)
   if (kv) {
+    // A scope bump may have happened in another Worker isolate. Re-read the
+    // distributed revision for every scoped key instead of pinning an isolate's
+    // first observation for its entire lifetime.
     const stored = await kv.get(key)
     if (stored) {
       scopeVersions.set(key, stored)
       return stored
     }
   }
+
+  const cached = scopeVersions.get(key)
+  if (cached) return cached
 
   const next = makeScopeVersion()
   scopeVersions.set(key, next)
@@ -179,7 +185,10 @@ async function refreshCache<T>(event: H3Event, key: string, policy: CachePolicy,
   })()
 
   inflight.set(key, task)
-  task.finally(() => inflight.delete(key))
+  void task.then(
+    () => inflight.delete(key),
+    () => inflight.delete(key)
+  )
   return task
 }
 

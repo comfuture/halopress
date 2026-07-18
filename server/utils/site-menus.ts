@@ -5,10 +5,15 @@ import { and, asc, eq, inArray, isNull, notExists, sql } from 'drizzle-orm'
 import {
   GLOBAL_SITE_MENU_ID,
   GLOBAL_SITE_MENU_NAME,
+  SITE_MENU_MAX_CHILDREN,
+  SITE_MENU_MAX_ITEMS,
   defaultSiteMenuDocument,
+  isSiteMenuDynamicItem,
   publicSiteMenuDocumentSchema,
+  resolvedSiteMenuLeafSchema,
   siteMenuCreateSchema,
   siteMenuDocumentSchema,
+  siteMenuDynamicItemSchema,
   siteMenuIdSchema,
   siteMenuNameKey,
   siteMenuUpdateSchema,
@@ -16,8 +21,10 @@ import {
   type ResolvedSiteMenuLeaf,
   type SiteMenuAdminResource,
   type SiteMenuDocument,
+  type SiteMenuDynamicItem,
   type SiteMenuLeaf,
   type SiteMenuListResponse,
+  type SiteMenuSourceDiagnostic,
   type SiteMenuUsage,
   type SiteMenuValidationIssue
 } from '../../shared/site-menu'
@@ -33,7 +40,8 @@ import {
 } from '../../shared/site-presentation'
 import {
   listCanonicalPublicRoutesByIdentity,
-  type PublicDocumentKind
+  type PublicDocumentKind,
+  type PublicRouteRow
 } from '../cms/public-routes'
 import type { Db } from '../db/db'
 import { getDb } from '../db/db'
@@ -44,6 +52,15 @@ import {
 } from '../db/schema'
 import { executeDbStatement, withDbTransaction } from '../db/transaction'
 import { newId } from './ids'
+import {
+  SITE_MENU_RENDER_BUDGET_MS,
+  createSiteMenuD1Gate,
+  mapWithSiteMenuConcurrency,
+  prepareSiteMenuDynamicSourceMetadata,
+  resolveSiteMenuDynamicSources,
+  validateSiteMenuDynamicSources,
+  type SiteMenuSourceCandidate
+} from './site-menu-sources'
 
 type SiteMenuRow = typeof siteMenuSetTable.$inferSelect
 
@@ -143,14 +160,51 @@ function legacyDocument(items: PublicNavigationItem[]): SiteMenuDocument {
 
 export function parseStoredSiteMenu(row: SiteMenuRow) {
   try {
-    const parsed = siteMenuDocumentSchema.safeParse(JSON.parse(row.documentJson))
+    const stored = JSON.parse(row.documentJson)
+    const parsed = siteMenuDocumentSchema.safeParse(stored)
     if (parsed.success) {
-      return { document: parsed.data, malformedStoredValue: false }
+      return { document: parsed.data, malformedStoredValue: false, omittedInvalidSources: false }
+    }
+    const recovered = recoverStaticMenuSiblings(stored)
+    if (recovered) {
+      return { document: recovered, malformedStoredValue: true, omittedInvalidSources: true }
     }
   } catch {
     // Fall through to a safe empty document that an administrator can repair.
   }
-  return { document: defaultSiteMenuDocument(), malformedStoredValue: true }
+  return { document: defaultSiteMenuDocument(), malformedStoredValue: true, omittedInvalidSources: false }
+}
+
+function recoverStaticMenuSiblings(value: unknown): SiteMenuDocument | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const input = value as { version?: unknown, items?: unknown }
+  if (input.version !== 1 || !Array.isArray(input.items)) return null
+  let omittedInvalidSource = false
+
+  const recoverNode = (node: unknown, allowChildren: boolean): unknown | null => {
+    const sourceShaped = typeof node !== 'object' || node === null || Array.isArray(node)
+      || 'source' in node || ('kind' in node && node.kind === 'dynamic')
+    if (sourceShaped) {
+      const dynamic = siteMenuDynamicItemSchema.safeParse(node)
+      if (dynamic.success) return dynamic.data
+      omittedInvalidSource = true
+      return null
+    }
+    if (!allowChildren || !('children' in node) || !Array.isArray(node.children)) return node
+    const children = node.children.flatMap((child) => {
+      const recovered = recoverNode(child, false)
+      return recovered == null ? [] : [recovered]
+    })
+    return { ...node, children }
+  }
+
+  const items = input.items.flatMap((item) => {
+    const recovered = recoverNode(item, true)
+    return recovered == null ? [] : [recovered]
+  })
+  if (!omittedInvalidSource) return null
+  const recovered = siteMenuDocumentSchema.safeParse({ version: 1, items })
+  return recovered.success ? recovered.data : null
 }
 
 /**
@@ -524,6 +578,8 @@ export async function updateSiteMenu(
     throw error
   }
   if (!existing) throw new SiteMenuNotFoundError()
+  const sourceIssues = await validateSiteMenuDynamicSources(db, parsed.data.document)
+  if (sourceIssues.length) throw new SiteMenuValidationError(sourceIssues)
   await assertSiteMenuNameAvailable(db, parsed.data.name, menuId.data)
 
   const next: SiteMenuRow = {
@@ -618,47 +674,19 @@ export async function resolvePublicSiteMenu(
   legacyItems: PublicNavigationItem[]
 ): Promise<PublicSiteMenu> {
   const document = await getGlobalSiteMenuDocument(event, legacyItems)
-  const destinations = document.items.flatMap(item => [
-    item.destination,
-    ...item.children.map(child => child.destination)
-  ])
-  const targets = await resolveAnonymousReadableNavigationTargets(event, destinations)
-  const targetByDestination = new Map(destinations.map((destination, index) => [destination, targets[index] ?? null]))
-  const resolveLeaf = (item: SiteMenuLeaf): ResolvedSiteMenuLeaf | null => {
-    const to = targetByDestination.get(item.destination)
-    if (!to) return null
-    const externalWindow = item.destination.type === 'external' && item.destination.newWindow
-    return {
-      id: item.id,
-      label: item.label,
-      to,
-      value: item.value || item.id,
-      icon: item.icon,
-      badge: item.badge,
-      target: externalWindow ? '_blank' : undefined,
-      rel: externalWindow ? 'noopener noreferrer' : undefined
-    }
-  }
-
-  const publicDocument = publicSiteMenuDocumentSchema.parse({
-    version: 1,
-    items: document.items.flatMap((item) => {
-      const parent = resolveLeaf(item)
-      if (!parent) return []
-      return [{
-        ...parent,
-        children: item.children.flatMap(child => {
-          const resolved = resolveLeaf(child)
-          return resolved ? [resolved] : []
-        })
-      }]
-    })
+  const resolved = await resolvePublicMenuDocument(event, document, {
+    visibility: 'public',
+    documentKind: 'schema',
+    documentId: GLOBAL_SITE_MENU_ID,
+    schemaKey: null,
+    schemaVersion: null,
+    canonicalPath: null
   })
 
   return {
     id: GLOBAL_SITE_MENU_ID,
     name: GLOBAL_SITE_MENU_NAME,
-    document: publicDocument
+    document: resolved.document
   }
 }
 
@@ -702,17 +730,249 @@ type ParsedLayoutMenu = {
   row?: SiteMenuRow
   document?: SiteMenuDocument
   malformed?: true
+  omittedInvalidSources?: true
 }
 
-function layoutMenuIdentities(document: SiteMenuDocument) {
+function routeIdentityKey(documentKind: PublicDocumentKind, documentId: string) {
+  return `${documentKind}:${documentId}`
+}
+
+function staticMenuIdentities(document: SiteMenuDocument) {
   const identities: Array<{ documentKind: PublicDocumentKind, documentId: string }> = []
-  for (const item of document.items.flatMap(item => [item, ...item.children])) {
+  const staticItems: SiteMenuLeaf[] = []
+  for (const item of document.items) {
+    if (isSiteMenuDynamicItem(item)) continue
+    staticItems.push(item)
+    for (const child of item.children) if (!isSiteMenuDynamicItem(child)) staticItems.push(child)
+  }
+  for (const item of staticItems) {
     const destination = item.destination
     if (destination.type === 'page') identities.push({ documentKind: 'page', documentId: destination.pageId })
     else if (destination.type === 'collection') identities.push({ documentKind: 'schema', documentId: destination.schemaKey })
     else if (destination.type === 'content') identities.push({ documentKind: 'content', documentId: destination.contentId })
   }
   return identities
+}
+
+function sourceCandidateIdentities(candidatesBySourceId: Map<string, SiteMenuSourceCandidate[]>) {
+  return [...candidatesBySourceId.values()].flatMap(candidates => candidates.map(candidate => ({
+    documentKind: candidate.documentKind,
+    documentId: candidate.documentId
+  })))
+}
+
+function staticMenuClaims(document: SiteMenuDocument) {
+  const ids = new Set<string>()
+  const values = new Set<string>()
+  for (const item of document.items) {
+    if (isSiteMenuDynamicItem(item)) continue
+    ids.add(item.id)
+    values.add(item.value || item.id)
+    for (const child of item.children) {
+      if (isSiteMenuDynamicItem(child)) continue
+      ids.add(child.id)
+      values.add(child.value || child.id)
+    }
+  }
+  return { ids, values }
+}
+
+function dynamicResultIdentity(sourceId: string, documentKind: string, documentId: string) {
+  const fingerprint = createHash('sha256')
+    .update(`${sourceId}\0${documentKind}\0${documentId}`)
+    .digest('hex')
+    .slice(0, 48)
+  return `dynamic:${fingerprint}`
+}
+
+function resolveStaticLeaf(
+  item: SiteMenuLeaf,
+  publicRouteMap: Map<string, PublicRouteRow>
+): ResolvedSiteMenuLeaf | null {
+  const destination = item.destination
+  let to: string | null
+  if (destination.type === 'home') to = '/'
+  else if (destination.type === 'external') to = resolvePublicNavigationTarget(destination)
+  else {
+    const documentKind = destination.type === 'page'
+      ? 'page'
+      : destination.type === 'collection' ? 'schema' : 'content'
+    const documentId = destination.type === 'page'
+      ? destination.pageId
+      : destination.type === 'collection' ? destination.schemaKey : destination.contentId
+    const route = publicRouteMap.get(routeIdentityKey(documentKind, documentId))
+    to = route && (destination.type !== 'content' || route.schemaKey === destination.schemaKey)
+      ? route.path
+      : null
+  }
+  if (!to) return null
+  const externalWindow = destination.type === 'external' && destination.newWindow
+  return {
+    id: item.id,
+    label: item.label,
+    to,
+    value: item.value || item.id,
+    icon: item.icon,
+    badge: item.badge,
+    target: externalWindow ? '_blank' : undefined,
+    rel: externalWindow ? 'noopener noreferrer' : undefined
+  }
+}
+
+function resolveDynamicLeaves(args: {
+  item: SiteMenuDynamicItem
+  candidatesBySourceId: Map<string, SiteMenuSourceCandidate[]>
+  publicRouteMap: Map<string, PublicRouteRow>
+  staticIds: Set<string>
+  staticValues: Set<string>
+  usedIds: Set<string>
+  usedValues: Set<string>
+  limit: number
+}) {
+  const leaves: ResolvedSiteMenuLeaf[] = []
+  for (const candidate of args.candidatesBySourceId.get(args.item.id) ?? []) {
+    if (leaves.length >= args.limit) break
+    const route = args.publicRouteMap.get(routeIdentityKey(candidate.documentKind, candidate.documentId))
+    if (!route || (candidate.documentKind === 'content' && route.schemaKey !== candidate.schemaKey)) continue
+    const identity = dynamicResultIdentity(args.item.id, candidate.documentKind, candidate.documentId)
+    if (args.staticIds.has(identity) || args.staticValues.has(identity)
+      || args.usedIds.has(identity) || args.usedValues.has(identity)) continue
+    const parsed = resolvedSiteMenuLeafSchema.safeParse({
+      id: identity,
+      label: candidate.label,
+      to: route.path,
+      value: identity,
+      icon: candidate.icon,
+      badge: candidate.badge
+    })
+    if (!parsed.success) continue
+    args.usedIds.add(identity)
+    args.usedValues.add(identity)
+    leaves.push(parsed.data)
+  }
+  return leaves
+}
+
+function compilePublicMenuDocument(args: {
+  document: SiteMenuDocument
+  candidatesBySourceId: Map<string, SiteMenuSourceCandidate[]>
+  publicRouteMap: Map<string, PublicRouteRow>
+}) {
+  const staticClaims = staticMenuClaims(args.document)
+  const usedIds = new Set<string>()
+  const usedValues = new Set<string>()
+  const items: Array<ResolvedSiteMenuLeaf & { children: ResolvedSiteMenuLeaf[] }> = []
+  const resolvedStaticTopItems = args.document.items.map(item => (
+    isSiteMenuDynamicItem(item) ? null : resolveStaticLeaf(item, args.publicRouteMap)
+  ))
+  const remainingResolvedStaticTopItems = resolvedStaticTopItems.map((_item, index) => (
+    resolvedStaticTopItems.slice(index + 1).filter(Boolean).length
+  ))
+  const claimStatic = (leaf: ResolvedSiteMenuLeaf | null) => {
+    if (!leaf || usedIds.has(leaf.id) || usedValues.has(leaf.value)) return null
+    usedIds.add(leaf.id)
+    usedValues.add(leaf.value)
+    return leaf
+  }
+
+  for (const [itemIndex, item] of args.document.items.entries()) {
+    if (items.length >= SITE_MENU_MAX_ITEMS) break
+    if (isSiteMenuDynamicItem(item)) {
+      const leaves = resolveDynamicLeaves({
+        item,
+        candidatesBySourceId: args.candidatesBySourceId,
+        publicRouteMap: args.publicRouteMap,
+        staticIds: staticClaims.ids,
+        staticValues: staticClaims.values,
+        usedIds,
+        usedValues,
+        limit: Math.max(
+          0,
+          SITE_MENU_MAX_ITEMS - items.length - remainingResolvedStaticTopItems[itemIndex]!
+        )
+      })
+      items.push(...leaves.map(leaf => ({ ...leaf, children: [] })))
+      continue
+    }
+
+    const parent = claimStatic(resolvedStaticTopItems[itemIndex]!)
+    if (!parent) continue
+    const children: ResolvedSiteMenuLeaf[] = []
+    const resolvedStaticChildren = item.children.map(child => (
+      isSiteMenuDynamicItem(child) ? null : resolveStaticLeaf(child, args.publicRouteMap)
+    ))
+    const remainingResolvedStaticChildren = resolvedStaticChildren.map((_child, index) => (
+      resolvedStaticChildren.slice(index + 1).filter(Boolean).length
+    ))
+    for (const [childIndex, child] of item.children.entries()) {
+      if (children.length >= SITE_MENU_MAX_CHILDREN) break
+      if (isSiteMenuDynamicItem(child)) {
+        children.push(...resolveDynamicLeaves({
+          item: child,
+          candidatesBySourceId: args.candidatesBySourceId,
+          publicRouteMap: args.publicRouteMap,
+          staticIds: staticClaims.ids,
+          staticValues: staticClaims.values,
+          usedIds,
+          usedValues,
+          limit: Math.max(
+            0,
+            SITE_MENU_MAX_CHILDREN - children.length - remainingResolvedStaticChildren[childIndex]!
+          )
+        }))
+      } else {
+        const resolved = claimStatic(resolvedStaticChildren[childIndex]!)
+        if (resolved) children.push(resolved)
+      }
+    }
+    items.push({ ...parent, children })
+  }
+  return publicSiteMenuDocumentSchema.parse({ version: 1, items })
+}
+
+export async function resolvePublicMenuDocument(
+  event: H3Event,
+  document: SiteMenuDocument,
+  context: LayoutRenderContext
+): Promise<{
+  document: ReturnType<typeof compilePublicMenuDocument>
+  diagnostics: SiteMenuSourceDiagnostic[]
+  digest: string
+}> {
+  const db = await getDb(event)
+  const d1Gate = createSiteMenuD1Gate()
+  const preparedSchemaByKey = await prepareSiteMenuDynamicSourceMetadata({
+    db,
+    documents: [document],
+    d1Gate
+  })
+  const sourceResolution = await resolveSiteMenuDynamicSources({
+    event,
+    db,
+    document,
+    context,
+    deadlineAt: Date.now() + SITE_MENU_RENDER_BUDGET_MS,
+    preparedSchemaByKey,
+    d1Gate
+  })
+  const publicRoutes = await listCanonicalPublicRoutesByIdentity(db, [
+    ...staticMenuIdentities(document),
+    ...sourceCandidateIdentities(sourceResolution.candidatesBySourceId)
+  ])
+  const publicRouteMap = new Map(publicRoutes.map(route => [
+    routeIdentityKey(route.documentKind as PublicDocumentKind, route.documentId),
+    route
+  ]))
+  const publicDocument = compilePublicMenuDocument({
+    document,
+    candidatesBySourceId: sourceResolution.candidatesBySourceId,
+    publicRouteMap
+  })
+  return {
+    document: publicDocument,
+    diagnostics: sourceResolution.diagnostics,
+    digest: publicMenuDigest({ source: document, context, document: publicDocument })
+  }
 }
 
 /**
@@ -735,20 +995,48 @@ export async function resolvePublicLayoutMenus(
   const parsedMenus: ParsedLayoutMenu[] = menuSetIds.map((menuSetId) => {
     const row = rowById.get(menuSetId)
     if (!row) return { menuSetId }
-    try {
-      const parsed = siteMenuDocumentSchema.safeParse(JSON.parse(row.documentJson))
-      return parsed.success
-        ? { menuSetId, row, document: parsed.data }
-        : { menuSetId, row, malformed: true }
-    } catch {
-      return { menuSetId, row, malformed: true }
-    }
+    const parsed = parseStoredSiteMenu(row)
+    if (!parsed.malformedStoredValue) return { menuSetId, row, document: parsed.document }
+    return parsed.omittedInvalidSources
+      ? { menuSetId, row, document: parsed.document, omittedInvalidSources: true }
+      : { menuSetId, row, malformed: true }
   })
+  const d1Gate = createSiteMenuD1Gate()
+  const preparedSchemaByKey = await prepareSiteMenuDynamicSourceMetadata({
+    db,
+    documents: parsedMenus.flatMap(menu => menu.document ? [menu.document] : []),
+    d1Gate
+  })
+  const sourceDeadlineAt = Date.now() + SITE_MENU_RENDER_BUDGET_MS
+  const sourceResolutionPairs = (await mapWithSiteMenuConcurrency(parsedMenus, 2, async (menu) => {
+    if (!menu.document) return []
+    const resolution = await resolveSiteMenuDynamicSources({
+      event,
+      db,
+      document: menu.document,
+      context: options.context,
+      deadlineAt: sourceDeadlineAt,
+      preparedSchemaByKey,
+      d1Gate
+    })
+    return [[menu.menuSetId, resolution] as const]
+  })).flat()
+  const sourceResolutionByMenuId = new Map(sourceResolutionPairs)
   const publicRoutes = await listCanonicalPublicRoutesByIdentity(
     db,
-    parsedMenus.flatMap(menu => menu.document ? layoutMenuIdentities(menu.document) : [])
+    parsedMenus.flatMap((menu) => {
+      if (!menu.document) return []
+      const sourceResolution = sourceResolutionByMenuId.get(menu.menuSetId)
+      return [
+        ...staticMenuIdentities(menu.document),
+        ...sourceCandidateIdentities(sourceResolution?.candidatesBySourceId ?? new Map())
+      ]
+    })
   )
-  const publicRouteMap = new Map(publicRoutes.map(route => [`${route.documentKind}:${route.documentId}`, route]))
+  const publicRouteMap = new Map(publicRoutes.map(route => [
+    routeIdentityKey(route.documentKind as PublicDocumentKind, route.documentId),
+    route
+  ]))
 
   const projections = new Map<string, LayoutMenuProjection>()
   for (const parsedMenu of parsedMenus) {
@@ -778,50 +1066,10 @@ export async function resolvePublicLayoutMenus(
       continue
     }
 
-    const resolveLeaf = (item: SiteMenuLeaf): ResolvedSiteMenuLeaf | null => {
-      const destination = item.destination
-      let to: string | null
-      if (destination.type === 'home') to = '/'
-      else if (destination.type === 'external') to = resolvePublicNavigationTarget(destination)
-      else {
-        const documentKind = destination.type === 'page'
-          ? 'page'
-          : destination.type === 'collection' ? 'schema' : 'content'
-        const documentId = destination.type === 'page'
-          ? destination.pageId
-          : destination.type === 'collection' ? destination.schemaKey : destination.contentId
-        const route = publicRouteMap.get(`${documentKind}:${documentId}`)
-        to = route && (destination.type !== 'content' || route.schemaKey === destination.schemaKey)
-          ? route.path
-          : null
-      }
-      if (!to) return null
-      const externalWindow = destination.type === 'external' && destination.newWindow
-      return {
-        id: item.id,
-        label: item.label,
-        to,
-        value: item.value || item.id,
-        icon: item.icon,
-        badge: item.badge,
-        target: externalWindow ? '_blank' : undefined,
-        rel: externalWindow ? 'noopener noreferrer' : undefined
-      }
-    }
-
-    const publicDocument = publicSiteMenuDocumentSchema.parse({
-      version: 1,
-      items: document.items.flatMap((item) => {
-        const parent = resolveLeaf(item)
-        if (!parent) return []
-        return [{
-          ...parent,
-          children: item.children.flatMap(child => {
-            const resolved = resolveLeaf(child)
-            return resolved ? [resolved] : []
-          })
-        }]
-      })
+    const publicDocument = compilePublicMenuDocument({
+      document,
+      candidatesBySourceId: sourceResolutionByMenuId.get(menuSetId)?.candidatesBySourceId ?? new Map(),
+      publicRouteMap
     })
     projections.set(menuSetId, layoutMenuProjectionSchema.parse({
       status: 'ready',

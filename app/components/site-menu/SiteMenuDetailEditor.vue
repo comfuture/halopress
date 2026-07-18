@@ -1,12 +1,21 @@
 <script setup lang="ts">
-import type { SiteMenuLeaf, SiteMenuValidationIssue } from '~~/shared/site-menu'
+import {
+  isSiteMenuDynamicItem,
+  type SiteMenuChild,
+  type SiteMenuItem,
+  type SiteMenuSourceOptionsResponse,
+  type SiteMenuValidationIssue
+} from '~~/shared/site-menu'
 
-const model = defineModel<SiteMenuLeaf>({ required: true })
+const model = defineModel<SiteMenuItem | SiteMenuChild>({ required: true })
 defineProps<{
   pathPrefix: string
   isParent: boolean
   hasChildren?: boolean
   validationIssues?: SiteMenuValidationIssue[]
+  sourceOptions?: SiteMenuSourceOptionsResponse | null
+  sourceOptionsPending?: boolean
+  sourceOptionsError?: boolean
 }>()
 </script>
 
@@ -15,17 +24,17 @@ defineProps<{
     <div class="space-y-1">
       <div class="flex flex-wrap items-center gap-2">
         <h3 class="text-base font-semibold text-highlighted" data-menu-detail-heading tabindex="-1">
-          Edit {{ model.label || 'menu item' }}
+          Edit {{ siteMenuAuthoredItemLabel(model) || 'menu item' }}
         </h3>
         <UBadge color="neutral" variant="soft">
-          {{ isParent ? 'Top-level link' : 'Child link' }}
+          {{ isSiteMenuDynamicItem(model) ? 'Dynamic source' : isParent ? 'Top-level link' : 'Child link' }}
         </UBadge>
       </div>
       <p class="text-xs text-muted">Stable item ID: {{ model.id }}</p>
     </div>
 
     <UAlert
-      v-if="isParent && hasChildren"
+      v-if="!isSiteMenuDynamicItem(model) && isParent && hasChildren"
       title="This link opens a submenu"
       description="Its destination remains saved and becomes active again if all child links are removed."
       color="info"
@@ -33,7 +42,17 @@ defineProps<{
       icon="i-lucide-list-tree"
     />
 
+    <SiteMenuSourceEditor
+      v-if="isSiteMenuDynamicItem(model)"
+      v-model="model"
+      :path-prefix="pathPrefix"
+      :options="sourceOptions"
+      :options-pending="sourceOptionsPending"
+      :options-error="sourceOptionsError"
+      :validation-issues="validationIssues"
+    />
     <SiteMenuItemEditor
+      v-else
       v-model="model"
       :path-prefix="pathPrefix"
       :validation-issues="validationIssues"
