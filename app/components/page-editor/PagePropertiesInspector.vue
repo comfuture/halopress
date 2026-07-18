@@ -1,28 +1,23 @@
 <script setup lang="ts">
 const pageTitle = defineModel<string>('pageTitle', { default: '' })
 const publicPath = defineModel<string>('publicPath', { default: '' })
-const seoTitle = defineModel<string>('seoTitle', { default: '' })
-const seoDescription = defineModel<string>('seoDescription', { default: '' })
-const seoImageAssetId = defineModel<string>('seoImageAssetId', { default: '' })
-const structuredDataType = defineModel<string>('structuredDataType', { default: '' })
+const description = defineModel<string>('description', { default: '' })
+const socialImageAssetId = defineModel<string>('socialImageAssetId', { default: '' })
 
 defineProps<{
   disabled?: boolean
-  description?: string
   validationMessage?: string
 }>()
+
+const socialImageAsset = computed<string | null>({
+  get: () => socialImageAssetId.value || null,
+  set: value => { socialImageAssetId.value = value || '' }
+})
 </script>
 
 <template>
   <section aria-label="Page properties" class="flex h-full min-h-0 flex-col">
-    <div class="border-b border-muted px-4 py-3">
-      <h2 class="text-sm font-semibold text-highlighted">Page properties</h2>
-      <p class="mt-1 text-xs text-muted">
-        {{ description || 'Edit page details, its public route, and search metadata.' }}
-      </p>
-    </div>
-
-    <div class="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
+    <div class="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
       <UAlert
         v-if="validationMessage"
         title="This page is not ready to publish"
@@ -36,16 +31,38 @@ defineProps<{
         <UInput v-model="pageTitle" placeholder="Page title" class="w-full" :disabled="disabled" />
       </UFormField>
 
-      <CmsPublicMetadataFields
-        v-model:public-path="publicPath"
-        v-model:title="seoTitle"
-        v-model:description="seoDescription"
-        v-model:image-asset-id="seoImageAssetId"
-        v-model:structured-data-type="structuredDataType"
-        show-path
-        compact
-        :disabled="disabled"
-      />
+      <UFormField
+        label="Description"
+        help="Used by search engines and social previews when available."
+      >
+        <UTextarea
+          v-model="description"
+          placeholder="Describe this page"
+          class="w-full"
+          :rows="3"
+          :maxlength="320"
+          autoresize
+          :disabled="disabled"
+        />
+      </UFormField>
+
+      <UFormField
+        label="Canonical path"
+        help="Optional canonical route for this page, such as /about."
+      >
+        <UInput v-model="publicPath" placeholder="/page-path" class="w-full" :disabled="disabled" />
+      </UFormField>
+
+      <div class="space-y-1">
+        <CmsAssetPicker
+          v-model="socialImageAsset"
+          label="Social image"
+          :disabled="disabled"
+        />
+        <p class="text-xs text-muted">
+          Used for link previews such as og:image.
+        </p>
+      </div>
     </div>
   </section>
 </template>

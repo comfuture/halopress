@@ -40,9 +40,8 @@ const state = reactive({
   title: '',
   status: 'draft',
   publicPath: '',
-  seoTitle: '',
-  seoDescription: '',
-  seoImageAssetId: '',
+  description: '',
+  socialImageAssetId: '',
   structuredDataType: '',
   content: emptyDoc as JSONContent
 })
@@ -51,9 +50,8 @@ function publicMetadataPayload() {
   return {
     publicPath: state.publicPath,
     seo: {
-      title: state.seoTitle || undefined,
-      description: state.seoDescription || undefined,
-      imageAssetId: state.seoImageAssetId || undefined,
+      description: state.description || undefined,
+      imageAssetId: state.socialImageAssetId || undefined,
       structuredDataType: state.structuredDataType || undefined
     }
   }
@@ -130,9 +128,8 @@ watch(
     state.title = next.title || ''
     state.status = next.status || 'draft'
     state.publicPath = next.publicPath || ''
-    state.seoTitle = next.seo?.title || ''
-    state.seoDescription = next.seo?.description || ''
-    state.seoImageAssetId = next.seo?.imageAssetId || ''
+    state.description = next.seo?.description || ''
+    state.socialImageAssetId = next.seo?.imageAssetId || ''
     state.structuredDataType = next.seo?.structuredDataType || ''
     state.content = next.content || emptyDoc
     lastSavedJson.value = stableStringify(buildSnapshot())
@@ -387,12 +384,9 @@ const actionMenuItems = computed<DropdownMenuItem[][]>(() => {
           v-model="state.content"
           v-model:page-title="state.title"
           v-model:public-path="state.publicPath"
-          v-model:seo-title="state.seoTitle"
-          v-model:seo-description="state.seoDescription"
-          v-model:seo-image-asset-id="state.seoImageAssetId"
-          v-model:structured-data-type="state.structuredDataType"
+          v-model:description="state.description"
+          v-model:social-image-asset-id="state.socialImageAssetId"
           :editable="!isDeleted"
-          page-description="Update the page, then save a draft or publish."
           :page-validation-message="publishValidationIssues[0]?.message"
           class="min-h-0 flex-1"
         />

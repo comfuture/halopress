@@ -25,7 +25,6 @@ defineOptions({ inheritAttrs: false })
 const props = withDefaults(defineProps<{
   editable?: boolean
   profile?: EditorProfileCustomization
-  pageDescription?: string
   pageValidationMessage?: string
 }>(), {
   editable: true,
@@ -35,10 +34,8 @@ const props = withDefaults(defineProps<{
 const value = defineModel<JSONContent | null>({ default: null })
 const pageTitle = defineModel<string>('pageTitle', { default: '' })
 const publicPath = defineModel<string>('publicPath', { default: '' })
-const seoTitle = defineModel<string>('seoTitle', { default: '' })
-const seoDescription = defineModel<string>('seoDescription', { default: '' })
-const seoImageAssetId = defineModel<string>('seoImageAssetId', { default: '' })
-const structuredDataType = defineModel<string>('structuredDataType', { default: '' })
+const description = defineModel<string>('description', { default: '' })
+const socialImageAssetId = defineModel<string>('socialImageAssetId', { default: '' })
 
 const PageBlockEditor = PageBlock.extend({
   addNodeView() {
@@ -471,15 +468,12 @@ watch(mode, (nextMode) => {
           v-model:active-tab="activePanel"
           v-model:page-title="pageTitle"
           v-model:public-path="publicPath"
-          v-model:seo-title="seoTitle"
-          v-model:seo-description="seoDescription"
-          v-model:seo-image-asset-id="seoImageAssetId"
-          v-model:structured-data-type="structuredDataType"
+          v-model:description="description"
+          v-model:social-image-asset-id="socialImageAssetId"
           :selected-block="selectedBlock"
           :active-fields="activeFields"
           :active-label="activeComponent?.label"
           :editable="isEditing"
-          :page-description="pageDescription"
           :page-validation-message="pageValidationMessage"
           @insert="insertPaletteItem"
           @dragstart="startPaletteDrag"
@@ -495,15 +489,12 @@ watch(mode, (nextMode) => {
           v-model:active-tab="activePanel"
           v-model:page-title="pageTitle"
           v-model:public-path="publicPath"
-          v-model:seo-title="seoTitle"
-          v-model:seo-description="seoDescription"
-          v-model:seo-image-asset-id="seoImageAssetId"
-          v-model:structured-data-type="structuredDataType"
+          v-model:description="description"
+          v-model:social-image-asset-id="socialImageAssetId"
           :selected-block="selectedBlock"
           :active-fields="activeFields"
           :active-label="activeComponent?.label"
           :editable="isEditing"
-          :page-description="pageDescription"
           :page-validation-message="pageValidationMessage"
           @insert="insertPaletteItem"
           @dragstart="startPaletteDrag"

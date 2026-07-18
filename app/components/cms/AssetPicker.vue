@@ -1,11 +1,16 @@
 <script setup lang="ts">
 import type { CommandPaletteGroup, CommandPaletteItem } from '@nuxt/ui'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   modelValue: string | null | undefined
   label?: string
   required?: boolean
-}>()
+  disabled?: boolean
+}>(), {
+  label: undefined,
+  required: false,
+  disabled: false
+})
 
 const emit = defineEmits<{
   (e: 'update:modelValue', v: string | null): void
@@ -59,11 +64,15 @@ const assetGroups = computed<CommandPaletteGroup<CommandPaletteItem>[]>(() => {
 })
 
 watch(paletteOpen, (open) => {
+  if (open && props.disabled) {
+    paletteOpen.value = false
+    return
+  }
   if (open) refreshAssets()
 })
 
 watch(file, async (f) => {
-  if (!f) return
+  if (!f || props.disabled) return
   uploading.value = true
   try {
     const form = new FormData()
@@ -89,7 +98,7 @@ function clear() {
 </script>
 
 <template>
-  <fieldset class="min-w-0 space-y-2">
+  <fieldset class="min-w-0 space-y-2" :disabled="disabled">
     <legend class="mb-2 text-sm font-medium text-highlighted">
       {{ label || 'Asset' }}<span v-if="required" class="ms-0.5 text-error" aria-hidden="true">*</span>
     </legend>
@@ -100,6 +109,7 @@ function clear() {
         color="neutral"
         variant="outline"
         icon="i-lucide-x"
+        :disabled="disabled"
         @click="clear"
       >
         Clear
@@ -118,8 +128,8 @@ function clear() {
     <UFileUpload
       v-model="file"
       accept="image/*"
-      :disabled="uploading"
-      :interactive="!uploading"
+      :disabled="disabled || uploading"
+      :interactive="!disabled && !uploading"
       label="Upload image"
       description="Drag & drop or click to select."
       class="w-full min-h-28"
@@ -137,7 +147,7 @@ function clear() {
           footer: 'p-3 sm:p-3 justify-end'
         }"
       >
-        <UButton color="neutral" variant="outline" size="xs" icon="i-lucide-image">
+        <UButton color="neutral" variant="outline" size="xs" icon="i-lucide-image" :disabled="disabled">
           Select existing
         </UButton>
         <template #body>
