@@ -12,12 +12,10 @@ const props = withDefaults(defineProps<{
   activeFields: PageBlockField[]
   activeLabel?: string
   editable?: boolean
-  pageDescription?: string
   pageValidationMessage?: string
 }>(), {
   activeLabel: undefined,
   editable: true,
-  pageDescription: undefined,
   pageValidationMessage: undefined
 })
 
@@ -31,15 +29,16 @@ const emit = defineEmits<{
 const activeTab = defineModel<'library' | 'inspector'>('activeTab', { default: 'inspector' })
 const pageTitle = defineModel<string>('pageTitle', { default: '' })
 const publicPath = defineModel<string>('publicPath', { default: '' })
-const seoTitle = defineModel<string>('seoTitle', { default: '' })
-const seoDescription = defineModel<string>('seoDescription', { default: '' })
-const seoImageAssetId = defineModel<string>('seoImageAssetId', { default: '' })
-const structuredDataType = defineModel<string>('structuredDataType', { default: '' })
+const description = defineModel<string>('description', { default: '' })
+const socialImageAssetId = defineModel<string>('socialImageAssetId', { default: '' })
+const inspectorTabLabel = computed(() => (
+  activeTab.value === 'inspector' && !props.selectedBlock ? 'Page properties' : 'Inspector'
+))
 
-const panelTabs: TabsItem[] = [
+const panelTabs = computed<TabsItem[]>(() => [
   { label: 'Block Library', value: 'library', slot: 'library' },
-  { label: 'Inspector', value: 'inspector', slot: 'inspector' }
-]
+  { label: inspectorTabLabel.value, value: 'inspector', slot: 'inspector' }
+])
 
 function forwardDragStart(event: DragEvent, item: PagePaletteItem) {
   emit('dragstart', event, item)
@@ -53,7 +52,8 @@ function forwardDragStart(event: DragEvent, item: PagePaletteItem) {
     class="flex h-full min-h-0 flex-1 flex-col"
     :ui="{
       root: 'gap-0',
-      list: 'shrink-0 rounded-none border-b border-muted',
+      list: 'min-h-12 shrink-0 rounded-none border-b border-muted',
+      trigger: 'min-h-10',
       content: 'min-h-0 flex-1 overflow-hidden rounded-none p-0'
     }"
   >
@@ -91,13 +91,10 @@ function forwardDragStart(event: DragEvent, item: PagePaletteItem) {
           v-else
           v-model:page-title="pageTitle"
           v-model:public-path="publicPath"
-          v-model:seo-title="seoTitle"
-          v-model:seo-description="seoDescription"
-          v-model:seo-image-asset-id="seoImageAssetId"
-          v-model:structured-data-type="structuredDataType"
+          v-model:description="description"
+          v-model:social-image-asset-id="socialImageAssetId"
           class="min-h-0 flex-1"
           :disabled="!props.editable"
-          :description="pageDescription"
           :validation-message="pageValidationMessage"
         />
       </div>

@@ -35,9 +35,8 @@ const emptyDoc: JSONContent = { type: 'doc', content: [{ type: 'paragraph' }] }
 const state = reactive({
   title: '',
   publicPath: '',
-  seoTitle: '',
-  seoDescription: '',
-  seoImageAssetId: '',
+  description: '',
+  socialImageAssetId: '',
   structuredDataType: '',
   content: emptyDoc as JSONContent
 })
@@ -46,9 +45,8 @@ function publicMetadataPayload() {
   return {
     publicPath: state.publicPath,
     seo: {
-      title: state.seoTitle || undefined,
-      description: state.seoDescription || undefined,
-      imageAssetId: state.seoImageAssetId || undefined,
+      description: state.description || undefined,
+      imageAssetId: state.socialImageAssetId || undefined,
       structuredDataType: state.structuredDataType || undefined
     }
   }
@@ -200,11 +198,8 @@ async function publish() {
           v-model="state.content"
           v-model:page-title="state.title"
           v-model:public-path="state.publicPath"
-          v-model:seo-title="state.seoTitle"
-          v-model:seo-description="state.seoDescription"
-          v-model:seo-image-asset-id="state.seoImageAssetId"
-          v-model:structured-data-type="state.structuredDataType"
-          page-description="Build the page, then save a draft or publish."
+          v-model:description="state.description"
+          v-model:social-image-asset-id="state.socialImageAssetId"
           :page-validation-message="publishValidationIssues[0]?.message"
           class="min-h-0 flex-1"
         />

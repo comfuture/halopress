@@ -60,16 +60,7 @@ const fuse = {
 </script>
 
 <template>
-  <section aria-labelledby="page-editor-block-library" class="flex h-full min-h-0 flex-col">
-    <div class="border-b border-muted px-4 py-3">
-      <h2 id="page-editor-block-library" class="text-sm font-semibold text-highlighted">
-        Block library
-      </h2>
-      <p class="mt-1 text-xs text-muted">
-        Search blocks and patterns, then tap, press Enter, or drag. Insertion follows the active selection.
-      </p>
-    </div>
-
+  <section aria-label="Block Library" class="flex h-full min-h-0 flex-col">
     <UCommandPalette
       :groups="paletteGroups"
       :fuse="fuse"
