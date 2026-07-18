@@ -852,13 +852,28 @@ export function createPortableStructuredContentRendering(
   const fields: Record<string, PortableRichTextFieldRendering> = Object.create(null)
   const limits = renderingLimits(options.limits)
   const budget = new PortableBudget(limits)
-  const scanLimit = Math.min(schemaFields.length, limits.maxSchemaFields)
-  let truncated = schemaFields.length > scanLimit
+  const runtimeFields: unknown[] = Array.isArray(schemaFields) ? schemaFields : []
+  const scanLimit = Math.min(runtimeFields.length, limits.maxSchemaFields)
+  let truncated = !Array.isArray(schemaFields) || runtimeFields.length > scanLimit
   for (let index = 0; index < scanLimit; index += 1) {
-    const field = schemaFields[index]!
-    if (field.kind !== 'richtext') continue
+    const candidate = runtimeFields[index]
+    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) {
+      truncated = true
+      continue
+    }
+    const field = candidate as Record<string, unknown>
+    const fieldId = field.fieldId
+    const fieldKey = field.key
+    const fieldKind = field.kind
+    if (typeof fieldId !== 'string' || !fieldId || fieldId.length > 256
+      || typeof fieldKey !== 'string' || !/^[A-Za-z][A-Za-z0-9_]{0,255}$/.test(fieldKey)
+      || typeof fieldKind !== 'string' || !/^[a-z][a-z0-9_]{0,63}$/.test(fieldKind)) {
+      truncated = true
+      continue
+    }
+    if (fieldKind !== 'richtext') continue
     try {
-      budget.claimField(field.fieldId, field.key)
+      budget.claimField(fieldId, fieldKey)
     } catch (error) {
       if (!(error instanceof PortableRenderBudgetError)) throw error
       truncated = true
@@ -867,12 +882,12 @@ export function createPortableStructuredContentRendering(
     const html = renderWithFallback(
       options,
       { className: 'halo-richtext', contentKind: 'richtext' },
-      (writer, origin) => writeRichTextDocumentContent(writer, content[field.key], origin, { allowPageBlocks: false }),
+      (writer, origin) => writeRichTextDocumentContent(writer, content[fieldKey], origin, { allowPageBlocks: false }),
       budget
     )
-    fields[field.key] = {
-      fieldId: field.fieldId,
-      fieldKey: field.key,
+    fields[fieldKey] = {
+      fieldId,
+      fieldKey,
       html
     }
     if (budget.exceeded) {

@@ -11,7 +11,12 @@ import {
   resolvePortableLinkUrl,
   resolvePortablePageAssetUrl
 } from '../shared/portable-content'
-import { pageBlockColors, pageBlockVariants, validatePageDocumentBlocks } from '../shared/page-blocks'
+import {
+  pageBlockColors,
+  pageBlockVariants,
+  resolvePageBlockForDelivery,
+  validatePageDocumentBlocks
+} from '../shared/page-blocks'
 import { portableContentFixture } from './fixtures/portable-content'
 
 const origin = 'https://press.example.com'
@@ -239,6 +244,23 @@ describe('portable authored-content renderer', () => {
     expect(html).toContain('<p class="halo-content-fallback" role="status">Unsupported content</p>')
   })
 
+  it('renders deterministic fallbacks for non-object Page block attributes', () => {
+    const malformedAttrs = [null, [], 'attrs', 42]
+    for (const attrs of malformedAttrs) {
+      expect(resolvePageBlockForDelivery(attrs)).toEqual({
+        status: 'unknown',
+        key: '',
+        reason: 'Unsupported page block'
+      })
+    }
+
+    const html = renderPortablePageDocument({
+      type: 'doc',
+      content: malformedAttrs.map(attrs => ({ type: 'pageBlock', attrs }))
+    }, { origin })
+    expect(html.match(/data-halo-block-status="unknown"/g)).toHaveLength(malformedAttrs.length)
+  })
+
   it('bounds recursive depth, node count, and serialized output', () => {
     let nested: any = { type: 'text', text: 'deep' }
     for (let index = 0; index < 40; index += 1) nested = { type: 'blockquote', content: [nested] }
@@ -343,6 +365,35 @@ describe('portable authored-content renderer', () => {
     })
     expect(scanLimited.fields.body).toBeUndefined()
     expect(scanLimited.truncated).toBe(true)
+  })
+
+  it('skips malformed runtime schema entries without dereferencing or rendering them', () => {
+    const content = {
+      body: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Safe body' }] }] }
+    }
+    const malformedFields = [
+      null,
+      [],
+      42,
+      { fieldId: '', key: 'body', kind: 'richtext' },
+      { fieldId: 'field-id', key: '__proto__', kind: 'richtext' },
+      { fieldId: 'x'.repeat(257), key: 'body', kind: 'richtext' },
+      { fieldId: 'field-id', key: 'body', kind: 'R'.repeat(65) },
+      { fieldId: 'body-id', key: 'body', kind: 'richtext' }
+    ]
+
+    const rendering = createPortableStructuredContentRendering(
+      content,
+      malformedFields as any,
+      { origin }
+    )
+    expect(Object.keys(rendering.fields)).toEqual(['body'])
+    expect(rendering.fields.body?.html).toContain('Safe body')
+    expect(rendering.truncated).toBe(true)
+
+    const invalidRegistry = createPortableStructuredContentRendering(content, null as any, { origin })
+    expect(Object.keys(invalidRegistry.fields)).toEqual([])
+    expect(invalidRegistry.truncated).toBe(true)
   })
 
   it('preserves block order, feature orientation, and CTA defaults without invented copy', () => {
