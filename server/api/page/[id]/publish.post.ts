@@ -10,7 +10,11 @@ import { badRequest, notFound } from '../../../utils/http'
 import { requireExpectedRevision } from '../../../cms/document-revisions'
 import { normalizePublicPath } from '../../../../shared/public-routing'
 import { normalizePublicSeoOverrides, parsePublicSeoJson } from '../../../../shared/public-seo'
-import { layoutAssignmentHttpError, prepareLayoutAssignmentChange } from '../../../utils/layout-assignments'
+import {
+  assertReadyLayoutAssignment,
+  layoutAssignmentHttpError,
+  prepareLayoutAssignmentChange
+} from '../../../utils/layout-assignments'
 
 export default defineEventHandler(async (event) => {
   const session = await requireAdmin(event)
@@ -35,6 +39,8 @@ export default defineEventHandler(async (event) => {
   }
   try {
     const layoutId = await prepareLayoutAssignmentChange({ event, db, body, currentLayoutId: existing.layoutId })
+    // Revalidate unchanged working metadata before it becomes a public snapshot.
+    await assertReadyLayoutAssignment(db, layoutId)
     return {
       ok: true,
       ...(await publishPageWorking({

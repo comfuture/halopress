@@ -44,4 +44,15 @@ describe('Layout assignment API security ordering', () => {
       expectOrdered(value, 'requireAdmin(event)', bodyToken, databaseToken)
     }
   })
+
+  it('revalidates an unchanged Page Layout before publishing its snapshot', async () => {
+    const value = await source('server/api/page/[id]/publish.post.ts')
+
+    expectOrdered(
+      value,
+      'const layoutId = await prepareLayoutAssignmentChange',
+      'await assertReadyLayoutAssignment(db, layoutId)',
+      'await publishPageWorking'
+    )
+  })
 })
