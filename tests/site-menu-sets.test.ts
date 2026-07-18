@@ -530,6 +530,83 @@ describe('Global navigation compatibility and cache revision', () => {
     }
   })
 
+  it('reconciles legacy Global navigation before resolving a persisted Layout menu', async () => {
+    const fixture = await createTestSqliteDb()
+    dbState.current = fixture.db
+    try {
+      await runMigrations(fixture.db)
+      const staleAt = new Date('2026-07-18T00:00:00.000Z')
+      const legacyAt = new Date('2026-07-18T00:30:00.000Z')
+      const staleDocument = document([{
+        id: 'stale-layout-home',
+        label: 'Stale Layout home',
+        destination: { type: 'home' },
+        children: []
+      }])
+      const legacyDocument = document([{
+        id: 'fresh-layout-home',
+        label: 'Fresh legacy home',
+        destination: { type: 'home' },
+        children: []
+      }])
+      await fixture.db.insert(siteMenuSet).values({
+        id: GLOBAL_SITE_MENU_ID,
+        name: 'Global navigation',
+        nameKey: siteMenuNameKey('Global navigation'),
+        documentJson: JSON.stringify(staleDocument),
+        bootstrapOwned: true,
+        bootstrapSourceUpdatedAt: staleAt,
+        createdBy: 'migration',
+        updatedBy: 'migration',
+        createdAt: staleAt,
+        updatedAt: staleAt
+      })
+      await fixture.db.insert(settings).values({
+        scope: 'global',
+        key: 'site.presentation',
+        value: JSON.stringify({
+          ...defaultSitePresentation(),
+          navigation: { items: legacyDocument.items }
+        }),
+        valueType: 'json',
+        isEncrypted: false,
+        groupKey: 'site.presentation',
+        updatedBy: 'old-worker-admin',
+        updatedAt: legacyAt
+      })
+
+      const { parseStoredSiteMenu, resolvePublicLayoutMenus } = await import('../server/utils/site-menus')
+      const projection = (await resolvePublicLayoutMenus({} as any, [GLOBAL_SITE_MENU_ID], {
+        context: {
+          visibility: 'public',
+          documentKind: 'page',
+          documentId: 'layout-home-page',
+          schemaKey: null,
+          schemaVersion: null,
+          canonicalPath: '/'
+        }
+      })).get(GLOBAL_SITE_MENU_ID)
+
+      expect(projection).toMatchObject({
+        status: 'ready',
+        document: {
+          items: [{ label: 'Fresh legacy home', to: '/' }]
+        }
+      })
+      const stored = await fixture.db.select().from(siteMenuSet)
+        .where(eq(siteMenuSet.id, GLOBAL_SITE_MENU_ID)).get()
+      expect(stored).toMatchObject({
+        bootstrapOwned: true,
+        bootstrapSourceUpdatedAt: legacyAt,
+        updatedBy: 'old-worker-admin'
+      })
+      expect(parseStoredSiteMenu(stored! as any).document).toEqual(legacyDocument)
+    } finally {
+      fixture.close()
+      dbState.current = null
+    }
+  })
+
   it('reconciles a newer legacy save across the read/commit interleaving until the first named-menu save', async () => {
     const fixture = await createTestSqliteDb()
     dbState.current = fixture.db

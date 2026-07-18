@@ -727,6 +727,7 @@ export async function resolvePublicLayoutMenus(
 ): Promise<Map<string, LayoutMenuProjection>> {
   const menuSetIds = [...new Set(menuSetIdInputs.map(value => siteMenuIdSchema.parse(value)))]
   const db = await getDb(event)
+  if (menuSetIds.includes(GLOBAL_SITE_MENU_ID)) await ensureGlobalSiteMenu(event, db)
   const rows = menuSetIds.length
     ? await db.select().from(siteMenuSetTable).where(inArray(siteMenuSetTable.id, menuSetIds)) as SiteMenuRow[]
     : []
