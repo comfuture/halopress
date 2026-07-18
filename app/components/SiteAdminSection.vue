@@ -49,12 +49,21 @@ const navigationItems = computed<NavigationMenuItem[]>(() => SITE_ADMIN_SECTIONS
   to: section.to,
   active: isSiteAdminRouteActive(route.path, section)
 })))
+
+defineSlots<{
+  actions?: () => unknown
+  default?: () => unknown
+}>()
 </script>
 
 <template>
   <UDashboardPanel :id="`desk-site-${section}`">
     <template #header>
-      <DeskNavbar :title="title" :description="description" />
+      <DeskNavbar :title="title" :description="description">
+        <template v-if="enabled && !verifyingMode && !error && $slots.actions" #actions>
+          <slot name="actions" />
+        </template>
+      </DeskNavbar>
     </template>
 
     <template #body>

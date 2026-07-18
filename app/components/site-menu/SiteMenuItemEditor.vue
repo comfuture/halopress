@@ -10,6 +10,7 @@ const model = defineModel<SiteMenuLeaf>({ required: true })
 const props = defineProps<{
   pathPrefix: string
   validationIssues?: SiteMenuValidationIssue[]
+  autofocusLabel?: boolean
 }>()
 
 function errorAt(suffix: string) {
@@ -79,15 +80,18 @@ const badge = computed({
 
 <template>
   <div class="grid min-w-0 gap-3 sm:grid-cols-2">
-    <UFormField label="Label" required class="min-w-0" :error="errorAt('label')">
+    <UFormField name="label" label="Label" required class="min-w-0" :error="errorAt('label')">
       <UInput
         v-model="model.label"
         class="w-full"
         placeholder="About"
+        maxlength="80"
+        :autofocus="autofocusLabel"
+        :data-menu-item-create-label="autofocusLabel ? '' : undefined"
         :data-validation-path="`${pathPrefix}.label`"
       />
     </UFormField>
-    <UFormField label="Destination" required class="min-w-0" :error="destinationError">
+    <UFormField name="destination.type" label="Destination" required class="min-w-0" :error="destinationError">
       <USelect
         v-model="destinationType"
         :items="destinationTypes"
@@ -98,6 +102,7 @@ const badge = computed({
     </UFormField>
 
     <UFormField
+      name="value"
       label="Stable value"
       description="Optional. When blank, the immutable item ID is used."
       class="min-w-0"
@@ -112,6 +117,7 @@ const badge = computed({
       />
     </UFormField>
     <UFormField
+      name="icon"
       label="Icon"
       description="Only the supported Lucide catalog is stored."
       class="min-w-0"
@@ -127,6 +133,7 @@ const badge = computed({
     </UFormField>
 
     <UFormField
+      name="badge"
       label="Badge"
       description="Optional short text or number."
       class="min-w-0 sm:col-span-2"
@@ -141,22 +148,22 @@ const badge = computed({
       />
     </UFormField>
 
-    <UFormField v-if="model.destination.type === 'page'" label="Page ID" required class="min-w-0 sm:col-span-2" :error="errorAt('destination.pageId')">
+    <UFormField v-if="model.destination.type === 'page'" name="destination.pageId" label="Page ID" required class="min-w-0 sm:col-span-2" :error="errorAt('destination.pageId')">
       <UInput v-model="model.destination.pageId" class="w-full" placeholder="about" :data-validation-path="`${pathPrefix}.destination.pageId`" />
     </UFormField>
-    <UFormField v-if="model.destination.type === 'collection'" label="Schema key" required class="min-w-0 sm:col-span-2" :error="errorAt('destination.schemaKey')">
+    <UFormField v-if="model.destination.type === 'collection'" name="destination.schemaKey" label="Schema key" required class="min-w-0 sm:col-span-2" :error="errorAt('destination.schemaKey')">
       <UInput v-model="model.destination.schemaKey" class="w-full" placeholder="article" :data-validation-path="`${pathPrefix}.destination.schemaKey`" />
     </UFormField>
     <template v-if="model.destination.type === 'content'">
-      <UFormField label="Schema key" required class="min-w-0" :error="errorAt('destination.schemaKey')">
+      <UFormField name="destination.schemaKey" label="Schema key" required class="min-w-0" :error="errorAt('destination.schemaKey')">
         <UInput v-model="model.destination.schemaKey" class="w-full" placeholder="article" :data-validation-path="`${pathPrefix}.destination.schemaKey`" />
       </UFormField>
-      <UFormField label="Content ID" required class="min-w-0" :error="errorAt('destination.contentId')">
+      <UFormField name="destination.contentId" label="Content ID" required class="min-w-0" :error="errorAt('destination.contentId')">
         <UInput v-model="model.destination.contentId" class="w-full" placeholder="welcome" :data-validation-path="`${pathPrefix}.destination.contentId`" />
       </UFormField>
     </template>
     <template v-if="model.destination.type === 'external'">
-      <UFormField label="External URL" required class="min-w-0 sm:col-span-2" :error="errorAt('destination.url')">
+      <UFormField name="destination.url" label="External URL" required class="min-w-0 sm:col-span-2" :error="errorAt('destination.url')">
         <UInput v-model="model.destination.url" type="url" class="w-full" placeholder="https://example.com" :data-validation-path="`${pathPrefix}.destination.url`" />
       </UFormField>
       <USwitch
