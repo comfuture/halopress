@@ -28,6 +28,7 @@ import {
 } from '../../shared/site-layout'
 import { GLOBAL_SITE_MENU_ID } from '../../shared/site-menu'
 import {
+  assertExpectedRevision,
   createInitialDocumentRevision,
   mutateWithDocumentRevision,
   revisionConflict,
@@ -440,6 +441,9 @@ async function saveLayoutDocument(
   const document = validated.document
   const db = await getDb(event)
   const existing = await requireLayoutRow(db, layoutId)
+  // Stale writers must receive the current resource metadata before any
+  // validation that depends on the current name or Menu state.
+  assertExpectedRevision(existing, expectedRevision)
   if (action === 'save' && document.name !== existing.name) {
     throw new LayoutValidationError([{
       path: 'document.name',

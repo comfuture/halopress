@@ -116,6 +116,26 @@ describe('Layout persistence', () => {
           eq(documentRevision.revision, 3)
         )).get()).toEqual({ action: 'rename', title: 'Marketing Layout', createdBy: 'renamer-3' })
 
+      const rowAfterRename = await fixture.db.select().from(layoutResource).where(eq(layoutResource.id, created.id)).get()
+      const refsAfterRename = await fixture.db.select().from(siteMenuReference).where(eq(siteMenuReference.ownerId, created.id))
+      const historyAfterRename = await fixture.db.select().from(documentRevision).where(and(
+        eq(documentRevision.documentKind, 'layout'),
+        eq(documentRevision.documentId, created.id)
+      ))
+      await expect(updateLayout({} as any, created.id, {
+        revision: 1,
+        document: created.document
+      }, 'stale-before-rename')).rejects.toMatchObject({
+        statusCode: 409,
+        data: expect.objectContaining({ currentRevision: 3, updatedBy: 'renamer-3' })
+      })
+      expect(await fixture.db.select().from(layoutResource).where(eq(layoutResource.id, created.id)).get()).toEqual(rowAfterRename)
+      expect(await fixture.db.select().from(siteMenuReference).where(eq(siteMenuReference.ownerId, created.id))).toEqual(refsAfterRename)
+      expect(await fixture.db.select().from(documentRevision).where(and(
+        eq(documentRevision.documentKind, 'layout'),
+        eq(documentRevision.documentId, created.id)
+      ))).toEqual(historyAfterRename)
+
       const duplicated = await duplicateLayout({} as any, created.id, { name: 'Marketing copy' }, 'duplicator-4')
       expect(duplicated).toMatchObject({ revision: 1, name: 'Marketing copy', createdBy: 'duplicator-4' })
       expect(duplicated.id).not.toBe(created.id)
