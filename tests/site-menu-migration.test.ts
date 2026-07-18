@@ -48,13 +48,13 @@ describe('site menu migration', () => {
         INSERT INTO site_menu_set
           (id, name, name_key, document_json, created_at, updated_at)
         VALUES (?, ?, ?, ?, 1, 1)
-      `).run('uppercase-menu', 'Älpha', 'älpha', emptyDocument)
+      `).run('uppercase-menu', 'Straße', 'strasse', emptyDocument)
 
       expect(() => sqlite.prepare(`
         INSERT INTO site_menu_set
           (id, name, name_key, document_json, created_at, updated_at)
         VALUES (?, ?, ?, ?, 1, 1)
-      `).run('lowercase-menu', 'älpha', 'älpha', emptyDocument))
+      `).run('lowercase-menu', 'STRASSE', 'strasse', emptyDocument))
         .toThrow(/UNIQUE constraint failed: site_menu_set\.name_key/)
     } finally {
       sqlite.close()

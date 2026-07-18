@@ -189,6 +189,63 @@ function assertRenderedMenu(html) {
     /data-slot="linkLabel"[^>]*>[\s\S]{0,400}?Built SSR Parent/.test(html),
     'Expected the child-bearing parent label in horizontal Nuxt UI navigation'
   )
+  assert.ok(
+    /<button(?=[^>]*data-navigation-menu-trigger)(?=[^>]*aria-expanded="false")[^>]*>[\s\S]{0,800}?Built SSR Parent/.test(html),
+    'Expected the child-bearing item to SSR as a closed horizontal Nuxt UI trigger'
+  )
+}
+
+function assertRenderedNuxtFixture(html) {
+  const horizontalStart = html.indexOf('<section data-site-menu-horizontal-fixture')
+  const horizontalEnd = html.indexOf('</section>', horizontalStart)
+  assert.ok(horizontalStart >= 0 && horizontalEnd > horizontalStart, 'Expected the build-only horizontal Site menu fixture')
+  const horizontalFixture = html.slice(horizontalStart, horizontalEnd + '</section>'.length)
+
+  assert.ok(horizontalFixture.includes('data-parent-value="built-ssr-parent"'), 'Expected the stable horizontal parent value')
+  assert.ok(horizontalFixture.includes('data-child-value="built-ssr-home-child"'), 'Expected the stable horizontal child value')
+  const horizontalRoot = /<[^>]+(?=[^>]*data-slot="root")(?=[^>]*data-orientation="horizontal")[^>]*>/
+  assert.ok(horizontalRoot.test(horizontalFixture), 'Expected real horizontal Nuxt UI fixture markup')
+  assert.ok(
+    /<button(?=[^>]*data-navigation-menu-trigger)(?=[^>]*aria-expanded="true")(?=[^>]*data-state="open")(?=[^>]*site-menu-horizontal-fixture-link)[^>]*>[\s\S]{0,800}?Built SSR Parent/.test(horizontalFixture),
+    'Expected Nuxt UI defaultValue to SSR the horizontal parent trigger open'
+  )
+  const childMarker = 'site-menu-horizontal-fixture-child-link'
+  // Prefer the fixture section when the renderer keeps content inline. Reka
+  // portals NavigationMenuContent outside that section in the current SSR
+  // build, so the fallback is bound to this fixture by a unique Nuxt UI
+  // childLink class rather than by a label shared with the public layout.
+  const horizontalContent = horizontalFixture.includes(childMarker) ? horizontalFixture : html
+  if (horizontalContent === html) {
+    assert.ok(html.includes(childMarker), 'Expected fixture-owned teleported horizontal child content')
+  }
+  assert.ok(
+    /<a(?=[^>]*href="\/")(?=[^>]*data-slot="childLink")(?=[^>]*site-menu-horizontal-fixture-child-link)[^>]*>[\s\S]{0,1200}?Built SSR Home Child/.test(horizontalContent),
+    'Expected the fixture-owned child link in open teleported horizontal Nuxt UI content'
+  )
+
+  const start = html.indexOf('<section data-site-menu-vertical-fixture')
+  const end = html.indexOf('</section>', start)
+  assert.ok(start >= 0 && end > start, 'Expected the build-only vertical Site menu fixture')
+  const fixture = html.slice(start, end + '</section>'.length)
+
+  assert.ok(fixture.includes('data-parent-value="built-ssr-parent"'), 'Expected the stable parent value')
+  assert.ok(fixture.includes('data-child-value="built-ssr-home-child"'), 'Expected the stable child value')
+  assert.ok(fixture.includes('data-parent-open="true"'), 'Expected the adapter to request the active parent open')
+
+  const verticalRoot = /<[^>]+(?=[^>]*data-slot="root")(?=[^>]*data-orientation="vertical")[^>]*>/
+  assert.ok(verticalRoot.test(fixture), 'Expected real vertical Nuxt UI navigation SSR markup')
+  assert.ok(
+    /<button(?=[^>]*aria-expanded="true")(?=[^>]*data-state="open")[^>]*>[\s\S]{0,800}?Built SSR Parent/.test(fixture),
+    'Expected Nuxt UI to SSR the active vertical Accordion parent open'
+  )
+  assert.ok(
+    !fixture.includes('href="https://example.com/built-ssr-parent"'),
+    'Expected a child-bearing vertical item to remain a trigger instead of rendering its saved parent target'
+  )
+  assert.ok(
+    /<a(?=[^>]*href="\/")(?=[^>]*data-slot="link")[^>]*>[\s\S]{0,800}?Built SSR Home Child/.test(fixture),
+    'Expected the active child link inside the open vertical Accordion'
+  )
 }
 
 async function main() {
@@ -227,7 +284,12 @@ async function main() {
     assert.equal(response.status, 200, `Expected public route SSR to succeed, received ${response.status}`)
     assert.equal(response.headers.get('x-powered-by'), 'Nuxt')
     assertRenderedMenu(html)
-    console.log('Built Site menu SSR smoke passed: Nuxt rendered the public horizontal navigation.')
+
+    const verticalResponse = await fetch(`http://127.0.0.1:${port}/_site-menu-ssr-fixture`)
+    const verticalHtml = await verticalResponse.text()
+    assert.equal(verticalResponse.status, 200, `Expected vertical fixture SSR to succeed, received ${verticalResponse.status}`)
+    assertRenderedNuxtFixture(verticalHtml)
+    console.log('Built Site menu SSR smoke passed: Nuxt rendered public and open horizontal navigation plus an open vertical Accordion.')
   } finally {
     if (worker) await stopWorker(worker)
     await rm(stateDirectory, { recursive: true, force: true })

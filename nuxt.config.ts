@@ -1,6 +1,9 @@
+import { fileURLToPath } from 'node:url'
+
 // https://nuxt.com/docs/api/configuration/nuxt-config
 const isCloudflareBuild = process.env.WORKERS_CI === '1'
   || Boolean(process.env.CF_PAGES || process.env.CF_PAGES_URL)
+const includeSiteMenuSsrFixture = process.env.HALOPRESS_SITE_MENU_SSR_FIXTURE === '1'
 const imageProvider = process.env.NUXT_IMAGE_PROVIDER
   || (isCloudflareBuild ? 'cloudflare' : 'ipx')
 const cloudflareBaseURL = process.env.NUXT_IMAGE_CLOUDFLARE_BASE_URL
@@ -59,6 +62,16 @@ export default defineNuxtConfig({
   },
 
   hooks: {
+    'pages:extend'(pages) {
+      // The CI-only route renders the real Nuxt UI vertical Accordion without
+      // exposing a test endpoint in normal development or production builds.
+      if (!includeSiteMenuSsrFixture) return
+      pages.push({
+        name: 'site-menu-ssr-fixture',
+        path: '/_site-menu-ssr-fixture',
+        file: fileURLToPath(new URL('./tests/fixtures/SiteMenuNuxtSsrFixture.vue', import.meta.url))
+      })
+    },
     'nitro:config'(nitroConfig) {
       // Sidebase's production origin assertion runs at Worker startup without a request.
       // On Cloudflare Workers the canonical origin is available from each request host.

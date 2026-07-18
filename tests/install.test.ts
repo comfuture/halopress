@@ -181,13 +181,22 @@ describe('installation state', () => {
         expect.objectContaining({ id: 'global-navigation', bootstrapOwned: true })
       ])
 
-      await completeInstallation(db, claim!.leaseToken, `user:${adminId}`)
+      const completionTime = new Date('2026-07-18T01:02:03.100Z')
+      await completeInstallation(db, claim!.leaseToken, `user:${adminId}`, undefined, completionTime)
       expect(await getInstallStatus(db)).toMatchObject({
         ready: true,
         canInstall: false,
         phase: 'complete',
         userCount: 1
       })
+      expect(await getInstallationSessionAccess(db, setupSessionHash)).toEqual({
+        owned: false,
+        locked: false,
+        state: 'complete'
+      })
+      expect(await db.select({ leaseToken: installation.leaseToken })
+        .from(installation).where(eq(installation.key, INSTALLATION_KEY)).get())
+        .toEqual({ leaseToken: claim!.leaseToken })
       expect(await db.select().from(siteMenuSet)).toEqual([
         expect.objectContaining({
           id: 'global-navigation',
@@ -206,8 +215,82 @@ describe('installation state', () => {
       await expect(updateSitePresentation({} as any, {
         navigation: { items: [] }
       }, 'legacy-client')).rejects.toBeInstanceOf(SitePresentationNavigationMigratedError)
-      await expect(completeInstallation(db, 'stale-after-complete', `user:${adminId}`, undefined, new Date('2099-01-01T00:00:00.000Z')))
+      // Owner and SQLite's stored timestamp second deliberately match the
+      // successful request; only the exact lease marker may authorize it.
+      await expect(completeInstallation(db, 'stale-after-complete', `user:${adminId}`, undefined, new Date('2026-07-18T01:02:03.900Z')))
         .rejects.toThrow('Installation lease is no longer owned by this request')
+    })
+  })
+
+  it('keeps the exact completion marker as an idempotent same-token fence', async () => {
+    await withDatabase(async (db) => {
+      await runMigrations(db)
+      const setupSessionHash = await createSetupSessionHash()
+      await reserveInstallationSession(db, setupSessionHash)
+      const claim = await beginInstallation(db, setupSessionHash, {
+        leaseToken: 'exact-retry-lease'
+      })
+      await seedRoles(db)
+      const adminId = await ensureAdminUser(db, {
+        email: 'retry@example.com',
+        password: 'correct horse battery staple'
+      })
+      const owner = `user:${adminId}`
+      const completedAt = new Date('2026-07-18T02:00:00.000Z')
+
+      // Simulate a process stopping after the atomic completion/finalization
+      // batch but before returning its response.
+      await db.update(installation).set({
+        state: 'complete',
+        owner,
+        setupSessionHash: null,
+        setupSessionExpiresAt: null,
+        leaseToken: claim!.leaseToken,
+        leaseExpiresAt: null,
+        completedAt,
+        updatedAt: completedAt,
+        lastError: null
+      }).where(eq(installation.key, INSTALLATION_KEY))
+      await db.insert(siteMenuSet).values({
+        id: 'global-navigation',
+        name: 'Global navigation',
+        nameKey: 'global navigation',
+        documentJson: '{"version":1,"items":[]}',
+        bootstrapOwned: false,
+        bootstrapSourceUpdatedAt: null,
+        createdBy: owner,
+        updatedBy: owner,
+        createdAt: completedAt,
+        updatedAt: completedAt
+      })
+
+      for (const retryTime of [
+        new Date('2026-07-18T02:05:00.000Z'),
+        new Date('2026-07-18T02:05:00.900Z')
+      ]) {
+        await expect(completeInstallation(
+          db,
+          claim!.leaseToken,
+          owner,
+          undefined,
+          retryTime
+        )).resolves.toBeUndefined()
+      }
+      expect(await db.select({
+        state: installation.state,
+        leaseToken: installation.leaseToken,
+        leaseExpiresAt: installation.leaseExpiresAt
+      }).from(installation).where(eq(installation.key, INSTALLATION_KEY)).get()).toEqual({
+        state: 'complete',
+        leaseToken: claim!.leaseToken,
+        leaseExpiresAt: null
+      })
+      expect(await getInstallStatus(db)).toMatchObject({ ready: true, phase: 'complete' })
+      expect(await getInstallationSessionAccess(db, setupSessionHash)).toEqual({
+        owned: false,
+        locked: false,
+        state: 'complete'
+      })
     })
   })
 
