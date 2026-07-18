@@ -1,7 +1,7 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'desk' })
 
-const { data: presentation, pending, error, refresh } = await useSitePresentationSettings()
+const { data: presentation, pending, error, refresh } = useSitePresentationStatus()
 
 const presentationStatus = computed(() => {
   if (presentation.value?.malformedStoredValue) return { label: 'Needs repair', color: 'warning' as const }
@@ -21,7 +21,19 @@ const presentationLinkCount = computed(() => {
     title="Site"
     description="Review Site status and manage Themes, Layouts, and Menus."
   >
-    <div class="space-y-6">
+    <div
+      v-if="pending"
+      class="space-y-4"
+      aria-busy="true"
+      aria-label="Loading Site overview"
+    >
+      <USkeleton class="h-24 w-full" />
+      <div class="grid gap-4 md:grid-cols-3">
+        <USkeleton v-for="index in 3" :key="index" class="h-44 w-full" />
+      </div>
+    </div>
+
+    <div v-else class="space-y-6">
       <UAlert
         title="Site administration is enabled"
         description="Desk tools are available. Public pages continue to use the current presentation contract until a HaloPress SiteLayout is explicitly created and selected."

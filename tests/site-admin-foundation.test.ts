@@ -59,11 +59,12 @@ describe('Site administration foundation', () => {
       'app/pages/_desk/site/layouts.vue',
       'app/pages/_desk/site/menus.vue'
     ]
-    const [component, deskLayout, settingsPage, composable, ...pages] = await Promise.all([
+    const [component, deskLayout, settingsPage, composable, presentationComposable, ...pages] = await Promise.all([
       readFile(resolve(root, 'app/components/SiteAdminSection.vue'), 'utf8'),
       readFile(resolve(root, 'app/layouts/desk.vue'), 'utf8'),
       readFile(resolve(root, 'app/pages/_desk/settings/site.vue'), 'utf8'),
       readFile(resolve(root, 'app/composables/useSiteModeSettings.ts'), 'utf8'),
+      readFile(resolve(root, 'app/composables/useSitePresentationSettings.ts'), 'utf8'),
       ...pagePaths.map(path => readFile(resolve(root, path), 'utf8'))
     ])
 
@@ -76,15 +77,27 @@ describe('Site administration foundation', () => {
     expect(component).toContain('Open Site settings')
     expect(component).toContain('aria-label="Site location"')
     expect(component).toContain('aria-label="Site sections"')
+    expect(component).toContain('v-if="verifyingMode"')
+    expect(component).not.toContain('await useSiteMode()')
     expect(deskLayout).toContain('buildSiteAdminNavigation(route.path, siteModeEnabled.value)')
+    expect(deskLayout).toContain('const { enabled: siteModeEnabled } = useSiteMode()')
+    expect(deskLayout).toContain('await useFetch<{ items: any[] }>(\'/api/schema/list\')')
+    expect(deskLayout).not.toContain('await Promise.all')
     expect(deskLayout).toContain('v-model="openNavItems"')
     expect(deskLayout).toContain('watch(siteModeEnabled, enabled => setNavigationOpen(\'site\', enabled), { immediate: true })')
     expect(deskLayout).toContain(':collapsed="collapsed"')
     expect(deskLayout).toContain(':popover="collapsed"')
     expect(settingsPage).toContain('v-model="modeState.enabled"')
     expect(settingsPage).toContain('Save Site mode')
+    expect(settingsPage).toContain(':disabled="modeControlsDisabled"')
+    expect(composable).toContain('export function useSiteMode()')
+    expect(composable).toContain('export function useSiteModeSettings()')
+    expect(composable).not.toContain('export async function useSiteMode')
+    expect(composable).not.toContain('await useFetch')
     expect(composable).toContain('const SITE_MODE_DATA_KEY = \'site-mode\'')
     expect(composable).toContain('result.data.value = response')
+    expect(presentationComposable).toContain('export function useSitePresentationStatus()')
+    expect(presentationComposable).toContain('export async function useSitePresentationSettings()')
   })
 
   it('provides useful, resilient status and compatibility links without resource mutation controls', async () => {
@@ -97,6 +110,9 @@ describe('Site administration foundation', () => {
     ])
 
     expect(overview).toContain('Active presentation')
+    expect(overview).toContain('aria-label="Loading Site overview"')
+    expect(overview).toContain('useSitePresentationStatus()')
+    expect(overview).not.toContain('await useSitePresentationSettings()')
     expect(overview).toContain('Default SiteLayout: none')
     expect(overview).toContain('Not available yet')
     expect(overview).toContain('/_desk/site/themes')

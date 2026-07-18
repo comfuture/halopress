@@ -5,10 +5,8 @@ import { buildSiteAdminNavigation } from '~~/shared/site-admin-sections'
 const route = useRoute()
 
 const { data, signOut } = useAuth()
-const [{ data: schemaList }, { enabled: siteModeEnabled }] = await Promise.all([
-  useFetch<{ items: any[] }>('/api/schema/list'),
-  useSiteMode()
-])
+const { enabled: siteModeEnabled } = useSiteMode()
+const { data: schemaList } = await useFetch<{ items: any[] }>('/api/schema/list')
 const openNavItems = ref<string[]>(['content'])
 
 function setNavigationOpen(value: string, open: boolean) {

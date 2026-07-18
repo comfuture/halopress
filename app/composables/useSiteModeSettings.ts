@@ -15,17 +15,29 @@ export type SiteModeAdminResponse = {
 
 const SITE_MODE_DATA_KEY = 'site-mode'
 
-export async function useSiteMode() {
-  const result = await useFetch<SiteModeAdminResponse>('/api/settings/site-mode', {
-    key: SITE_MODE_DATA_KEY
+export function useSiteMode() {
+  const {
+    data,
+    pending,
+    status,
+    error,
+    refresh,
+    execute,
+    clear
+  } = useFetch<SiteModeAdminResponse>('/api/settings/site-mode', {
+    key: SITE_MODE_DATA_KEY,
+    dedupe: 'defer'
   })
-  const enabled = computed(() => result.data.value?.value.enabled === true)
+  const enabled = computed(() => data.value?.value.enabled === true)
 
-  return { ...result, enabled }
+  // Nuxt still awaits this request during SSR. Keeping the wrapper synchronous
+  // lets client callers render pending/error state instead of suspending setup.
+  // Return only the reactive surface so the raw thenable methods do not leak.
+  return { data, pending, status, error, refresh, execute, clear, enabled }
 }
 
-export async function useSiteModeSettings() {
-  const result = await useSiteMode()
+export function useSiteModeSettings() {
+  const result = useSiteMode()
   const saving = ref(false)
 
   async function saveEnabled(enabled: boolean) {

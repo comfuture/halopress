@@ -10,20 +10,31 @@ const state = reactive({
   general: { ...defaults.general },
   shell: { ...defaults.shell }
 })
-const [
-  {
-    data: modeData,
-    pending: modePending,
-    error: modeError,
-    refresh: refreshMode,
-    saving: modeSaving,
-    saveEnabled
-  },
-  { data, pending, error, refresh, saving, savePatch }
-] = await Promise.all([
-  useSiteModeSettings(),
-  useSitePresentationSettings()
-])
+const {
+  data: modeData,
+  pending: modePending,
+  status: modeStatus,
+  error: modeError,
+  refresh: refreshMode,
+  saving: modeSaving,
+  saveEnabled
+} = useSiteModeSettings()
+const { data, pending, error, refresh, saving, savePatch } = await useSitePresentationSettings()
+
+const modeBadge = computed(() => {
+  if (modeError.value) return { label: 'Unavailable', color: 'error' as const }
+  if (modeStatus.value !== 'success' || !modeData.value) {
+    return { label: 'Checking…', color: 'neutral' as const }
+  }
+  return modeData.value.value.enabled
+    ? { label: 'Enabled', color: 'success' as const }
+    : { label: 'Disabled', color: 'neutral' as const }
+})
+const modeControlsDisabled = computed(() => (
+  modeStatus.value !== 'success'
+  || !modeData.value
+  || Boolean(modeError.value)
+))
 
 watch(modeData, (response) => {
   modeState.enabled = response?.value.enabled === true
@@ -49,6 +60,8 @@ async function save() {
 }
 
 async function saveMode() {
+  if (modeControlsDisabled.value) return
+
   try {
     await saveEnabled(modeState.enabled)
     toast.add({
@@ -93,8 +106,8 @@ async function refreshAll() {
               Enable the Desk area for Themes, HaloPress Layouts, and Menus. Disabling it hides those tools without deleting Site resources, presentation settings, content, or pages.
             </p>
           </div>
-          <UBadge :color="modeData?.value.enabled ? 'success' : 'neutral'" variant="soft">
-            {{ modeData?.value.enabled ? 'Enabled' : 'Disabled' }}
+          <UBadge :color="modeBadge.color" variant="soft">
+            {{ modeBadge.label }}
           </UBadge>
         </div>
 
@@ -120,10 +133,10 @@ async function refreshAll() {
             v-model="modeState.enabled"
             label="Enable Site features"
             description="Show the Site area in Desk and allow Site administration routes."
-            :disabled="Boolean(modeError)"
+            :disabled="modeControlsDisabled"
           />
           <div class="flex justify-end border-t border-muted pt-5">
-            <UButton type="submit" icon="i-lucide-save" :loading="modeSaving" :disabled="Boolean(modeError)">
+            <UButton type="submit" icon="i-lucide-save" :loading="modeSaving" :disabled="modeControlsDisabled">
               Save Site mode
             </UButton>
           </div>
