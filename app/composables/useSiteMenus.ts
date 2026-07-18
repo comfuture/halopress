@@ -18,13 +18,11 @@ export function useSiteMenusStatus() {
   return { data, pending, status, error, refresh, execute, clear }
 }
 
-export async function useSiteMenus() {
+export function useSiteMenus() {
   const saving = ref(false)
   const creating = ref(false)
   const deleting = ref(false)
-  // Mutable editors wait for the persisted menu documents so local defaults
-  // cannot overwrite an existing order while hydration is still pending.
-  const result = await useSiteMenusData()
+  const result = useSiteMenusData()
 
   function replaceResource(resource: SiteMenuAdminResource) {
     if (!result.data.value) return
@@ -82,5 +80,21 @@ export async function useSiteMenus() {
     }
   }
 
-  return { ...result, saving, creating, deleting, createMenu, saveMenu, deleteMenu }
+  // Keep this synchronous wrapper a plain object. Nuxt AsyncData exposes
+  // Promise methods that a raw spread can leak and an accidental await can assimilate.
+  return {
+    data: result.data,
+    pending: result.pending,
+    status: result.status,
+    error: result.error,
+    refresh: result.refresh,
+    execute: result.execute,
+    clear: result.clear,
+    saving,
+    creating,
+    deleting,
+    createMenu,
+    saveMenu,
+    deleteMenu
+  }
 }

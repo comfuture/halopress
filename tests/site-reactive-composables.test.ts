@@ -104,4 +104,35 @@ describe('Site reactive composables', () => {
     })
     expect(refreshNuxtData).toHaveBeenCalledWith('site-presentation')
   })
+
+  it('keeps Site menu editor helpers on a non-thenable AsyncData return surface', async () => {
+    const { state, promise } = createNuxtLikeAsyncData<{ items: never[] }>()
+    const useFetch = vi.fn(() => promise)
+    vi.stubGlobal('ref', ref)
+    vi.stubGlobal('useFetch', useFetch)
+
+    const { useSiteMenus } = await import('../app/composables/useSiteMenus')
+    const editor = useSiteMenus()
+
+    expect(editor).not.toBeInstanceOf(Promise)
+    expect(editor).not.toHaveProperty('then')
+    expect(editor).not.toHaveProperty('catch')
+    expect(editor).not.toHaveProperty('finally')
+    expect(await editor).toBe(editor)
+    expect(editor).toMatchObject({
+      data: state.data,
+      pending: state.pending,
+      status: state.status,
+      error: state.error,
+      refresh: state.refresh,
+      execute: state.execute,
+      clear: state.clear,
+      saving: expect.objectContaining({ value: false }),
+      creating: expect.objectContaining({ value: false }),
+      deleting: expect.objectContaining({ value: false }),
+      createMenu: expect.any(Function),
+      saveMenu: expect.any(Function),
+      deleteMenu: expect.any(Function)
+    })
+  })
 })

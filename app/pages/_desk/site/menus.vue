@@ -19,7 +19,7 @@ const {
   createMenu,
   saveMenu,
   deleteMenu
-} = await useSiteMenus()
+} = useSiteMenus()
 
 const selectedId = ref('')
 const working = ref<SiteMenuAdminResource | null>(null)
