@@ -5,11 +5,29 @@ definePageMeta({ layout: 'desk' })
 
 const toast = useToast()
 const defaults = defaultSitePresentation()
+const modeState = reactive({ enabled: false })
 const state = reactive({
   general: { ...defaults.general },
   shell: { ...defaults.shell }
 })
-const { data, pending, error, refresh, saving, savePatch } = await useSitePresentationSettings()
+const [
+  {
+    data: modeData,
+    pending: modePending,
+    error: modeError,
+    refresh: refreshMode,
+    saving: modeSaving,
+    saveEnabled
+  },
+  { data, pending, error, refresh, saving, savePatch }
+] = await Promise.all([
+  useSiteModeSettings(),
+  useSitePresentationSettings()
+])
+
+watch(modeData, (response) => {
+  modeState.enabled = response?.value.enabled === true
+}, { immediate: true })
 
 watch(data, (response) => {
   if (!response) return
@@ -29,6 +47,31 @@ async function save() {
     })
   }
 }
+
+async function saveMode() {
+  try {
+    await saveEnabled(modeState.enabled)
+    toast.add({
+      title: modeState.enabled ? 'Site features enabled' : 'Site features disabled',
+      description: modeState.enabled
+        ? 'The Site area is now available in Desk.'
+        : 'Site resources and presentation settings were preserved.',
+      color: 'success',
+      icon: 'i-lucide-check'
+    })
+  } catch (saveError: any) {
+    modeState.enabled = modeData.value?.value.enabled === true
+    toast.add({
+      title: 'Could not save Site mode',
+      description: saveError?.data?.statusMessage || saveError?.statusMessage || 'Try again.',
+      color: 'error'
+    })
+  }
+}
+
+async function refreshAll() {
+  await Promise.all([refreshMode(), refresh()])
+}
 </script>
 
 <template>
@@ -36,10 +79,57 @@ async function save() {
     section="site"
     title="Site"
     description="Configure the public identity, metadata, branding assets, and shell."
-    :pending="pending"
-    @refresh="refresh()"
+    :pending="pending || modePending"
+    @refresh="refreshAll"
   >
     <div class="space-y-6">
+      <section class="space-y-5 rounded-lg border border-default p-5">
+        <div class="flex flex-wrap items-start justify-between gap-4">
+          <div class="max-w-2xl space-y-1">
+            <h2 class="font-semibold text-highlighted">
+              Site features
+            </h2>
+            <p class="text-sm text-muted">
+              Enable the Desk area for Themes, HaloPress Layouts, and Menus. Disabling it hides those tools without deleting Site resources, presentation settings, content, or pages.
+            </p>
+          </div>
+          <UBadge :color="modeData?.value.enabled ? 'success' : 'neutral'" variant="soft">
+            {{ modeData?.value.enabled ? 'Enabled' : 'Disabled' }}
+          </UBadge>
+        </div>
+
+        <UAlert
+          v-if="modeError"
+          title="Site mode is unavailable"
+          :description="modeError.statusMessage || 'Refresh the page and try again.'"
+          color="error"
+          variant="subtle"
+          icon="i-lucide-circle-alert"
+        />
+        <UAlert
+          v-if="modeData?.malformedStoredValue"
+          title="Stored Site mode is invalid"
+          description="Site features are safely disabled. Saving this control will replace the invalid value."
+          color="warning"
+          variant="subtle"
+          icon="i-lucide-shield-alert"
+        />
+
+        <UForm :state="modeState" class="space-y-5" @submit="saveMode">
+          <USwitch
+            v-model="modeState.enabled"
+            label="Enable Site features"
+            description="Show the Site area in Desk and allow Site administration routes."
+            :disabled="Boolean(modeError)"
+          />
+          <div class="flex justify-end border-t border-muted pt-5">
+            <UButton type="submit" icon="i-lucide-save" :loading="modeSaving" :disabled="Boolean(modeError)">
+              Save Site mode
+            </UButton>
+          </div>
+        </UForm>
+      </section>
+
       <UAlert
         v-if="error"
         title="Site settings are unavailable"

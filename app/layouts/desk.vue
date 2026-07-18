@@ -1,8 +1,27 @@
 <script setup lang="ts">
+import type { NavigationMenuItem } from '@nuxt/ui'
+import { buildSiteAdminNavigation } from '~~/shared/site-admin-sections'
+
 const route = useRoute()
 
 const { data, signOut } = useAuth()
-const { data: schemaList } = await useFetch<{ items: any[] }>('/api/schema/list')
+const [{ data: schemaList }, { enabled: siteModeEnabled }] = await Promise.all([
+  useFetch<{ items: any[] }>('/api/schema/list'),
+  useSiteMode()
+])
+const openNavItems = ref<string[]>(['content'])
+
+function setNavigationOpen(value: string, open: boolean) {
+  const next = new Set(openNavItems.value)
+  if (open) next.add(value)
+  else next.delete(value)
+  openNavItems.value = [...next]
+}
+
+watch(siteModeEnabled, enabled => setNavigationOpen('site', enabled), { immediate: true })
+watch(() => route.path, path => {
+  if (path === '/_desk/site' || path.startsWith('/_desk/site/')) setNavigationOpen('site', true)
+})
 
 const activeContentBase = computed(() => {
   const parts = route.path.split('/').filter(Boolean)
@@ -30,7 +49,9 @@ const contentChildren = computed(() => {
   }))
 })
 
-const navItems = computed(() => ([
+const siteNavigation = computed(() => buildSiteAdminNavigation(route.path, siteModeEnabled.value))
+
+const navItems = computed<NavigationMenuItem[]>(() => ([
   {
     label: 'Dashboard',
     to: '/_desk',
@@ -50,6 +71,7 @@ const navItems = computed(() => ([
   },
   {
     label: 'Content',
+    value: 'content',
     icon: 'i-lucide-files',
     defaultOpen: true,
     active: isContentRoute.value,
@@ -67,6 +89,7 @@ const navItems = computed(() => ([
     icon: 'i-lucide-panels-top-left',
     active: isPagesRoute.value
   },
+  ...(siteNavigation.value ? [siteNavigation.value] : []),
   {
     label: 'Settings',
     to: '/_desk/settings',
@@ -97,7 +120,16 @@ async function logout() {
         </div>
       </template>
 
-      <UNavigationMenu :items="navItems" orientation="vertical" />
+      <template #default="{ collapsed }">
+        <UNavigationMenu
+          v-model="openNavItems"
+          :items="navItems"
+          orientation="vertical"
+          :collapsed="collapsed"
+          :tooltip="collapsed"
+          :popover="collapsed"
+        />
+      </template>
 
       <template #footer>
         <div class="flex items-center justify-between gap-2">
