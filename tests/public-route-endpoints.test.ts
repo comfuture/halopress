@@ -11,13 +11,14 @@ const dbState = vi.hoisted(() => ({ current: null as any }))
 vi.mock('#auth', () => ({ getToken: vi.fn() }))
 vi.mock('../server/db/db', () => ({ getDb: vi.fn(async () => dbState.current) }))
 vi.stubGlobal('defineEventHandler', (handler: Handler) => handler)
+vi.stubGlobal('useRuntimeConfig', () => ({ canonicalOrigin: 'https://custom.example.com' }))
 
 let fixture: Awaited<ReturnType<typeof createTestSqliteDb>>
 let routeHandler: Handler
 let sitemapHandler: Handler
 let robotsHandler: Handler
 
-function eventFor(url: string, host = 'press.example.com') {
+function eventFor(url: string, host = 'custom.example.com') {
   const headers = new Map<string, unknown>()
   return {
     event: {

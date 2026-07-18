@@ -44,7 +44,7 @@ if (!isAlias) {
   <UContainer class="py-8">
     <UPage>
       <UPageHeader :title="page?.title || 'Untitled page'" />
-      <UPageBody><PageDocumentRenderer :document="page?.content" /></UPageBody>
+      <UPageBody><PageDocumentRenderer :document="page?.content" :rendering="page?.rendering" /></UPageBody>
     </UPage>
   </UContainer>
 </template>

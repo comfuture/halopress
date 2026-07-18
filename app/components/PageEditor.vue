@@ -463,6 +463,7 @@ watch(mode, (nextMode) => {
             <PageDocumentRenderer
               v-show="mode === 'preview'"
               :document="value"
+              isolated
               class="min-h-full bg-default px-4 py-4 sm:px-6"
               :class="canvasSurfaceClass"
               data-page-editor-preview-surface

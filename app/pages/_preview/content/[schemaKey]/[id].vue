@@ -21,17 +21,12 @@ if (import.meta.server) {
 const route = useRoute()
 const schemaKey = computed(() => String(route.params.schemaKey))
 const id = computed(() => String(route.params.id))
-const schemaRequest = useFetch<any>(() => `/api/schema/${schemaKey.value}/active`)
-const documentRequest = useFetch<any>(() => `/api/preview/content/${schemaKey.value}/${id.value}`)
-const [
-  { data: schema, error: schemaError },
-  { data: doc, error: documentError }
-] = await Promise.all([schemaRequest, documentRequest])
+const { data: doc, error: documentError } = await useFetch<any>(
+  () => `/api/preview/content/${schemaKey.value}/${id.value}`
+)
 const documentState = getPreviewDataState(doc.value, documentError.value)
-const schemaState = documentState === 'ready'
-  ? getPreviewDataState(schema.value, schemaError.value)
-  : 'not-found'
-const previewState = documentState === 'ready' && schemaState === 'ready' ? 'ready' : 'not-found'
+const schema = computed(() => doc.value?.schema ?? null)
+const previewState = documentState === 'ready' && schema.value ? 'ready' : 'not-found'
 if (previewState === 'not-found' && import.meta.server) {
   const event = useRequestEvent()
   if (event) setResponseStatus(event, 404, 'Content not found')
@@ -53,7 +48,7 @@ if (previewState === 'not-found' && import.meta.server) {
       </UPageHeader>
 
       <UPageBody>
-        <PublicContentDetailRenderer v-if="doc?.content" :schema="schema" :content="doc.content" :fallback-title="doc?.id || id" />
+        <PublicContentDetailRenderer v-if="doc?.content" :schema="schema" :content="doc.content" :rendering="doc?.rendering" :fallback-title="doc?.id || id" />
 
         <UAlert
           v-else

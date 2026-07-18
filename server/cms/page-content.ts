@@ -3,6 +3,20 @@ import { validatePageDocumentBlocks } from '~~/shared/page-blocks'
 
 export const emptyPageDocument = { type: 'doc', content: [{ type: 'paragraph' }] }
 
+/**
+ * Read stored documents without applying current publish-time block validation.
+ * Historical/retired blocks stay intact in the raw API projection and are
+ * handled by deterministic portable-renderer fallbacks.
+ */
+export function parseStoredPageContent(value: unknown): unknown {
+  if (typeof value !== 'string') return value ?? structuredClone(emptyPageDocument)
+  try {
+    return JSON.parse(value)
+  } catch {
+    return structuredClone(emptyPageDocument)
+  }
+}
+
 export function normalizePageContent(
   value: unknown,
   options: { mode?: 'draft' | 'publish' } = {}

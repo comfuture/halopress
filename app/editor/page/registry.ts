@@ -109,7 +109,13 @@ const logoFields: PageBlockComponent['fields'] = [
     maxItems: 12,
     itemFields: [
       { key: 'name', label: 'Name', type: 'text' },
-      { key: 'src', label: 'Image URL', type: 'url', placeholder: '/assets/id/raw or https://' },
+      {
+        key: 'src',
+        label: 'Site asset path',
+        type: 'asset-path',
+        placeholder: '/assets/id/raw',
+        help: 'Use an uploaded HaloPress asset. External image URLs are not stored in portable blocks.'
+      },
       { key: 'alt', label: 'Alternative text', type: 'text' }
     ]
   }
@@ -136,7 +142,6 @@ const components: PageBlockComponent[] = [
   {
     key: 'pageHero',
     label: 'Page Hero',
-    componentName: pageBlockDefinitions.pageHero.componentName,
     defaultProps: pageBlockDefinitions.pageHero.defaultProps,
     defaultMedia: {
       url: '',
@@ -154,7 +159,6 @@ const components: PageBlockComponent[] = [
   {
     key: 'pageCard',
     label: 'Page Card',
-    componentName: pageBlockDefinitions.pageCard.componentName,
     defaultProps: pageBlockDefinitions.pageCard.defaultProps,
     defaultMedia: {
       url: '',
@@ -172,7 +176,6 @@ const components: PageBlockComponent[] = [
   {
     key: 'pageSection',
     label: 'Page Section',
-    componentName: pageBlockDefinitions.pageSection.componentName,
     defaultProps: pageBlockDefinitions.pageSection.defaultProps,
     defaultMedia: { url: '', alt: '' },
     fields: sectionFields,
@@ -187,7 +190,6 @@ const components: PageBlockComponent[] = [
   {
     key: 'pageTestimonial',
     label: 'Testimonial',
-    componentName: pageBlockDefinitions.pageTestimonial.componentName,
     defaultProps: pageBlockDefinitions.pageTestimonial.defaultProps,
     defaultMedia: { url: '', alt: '' },
     fields: testimonialFields,
@@ -202,7 +204,6 @@ const components: PageBlockComponent[] = [
   {
     key: 'pageLogos',
     label: 'Logo Cloud',
-    componentName: pageBlockDefinitions.pageLogos.componentName,
     defaultProps: pageBlockDefinitions.pageLogos.defaultProps,
     defaultMedia: { url: '', alt: '' },
     fields: logoFields,
@@ -217,7 +218,6 @@ const components: PageBlockComponent[] = [
   {
     key: 'pageFAQ',
     label: 'FAQ',
-    componentName: pageBlockDefinitions.pageFAQ.componentName,
     defaultProps: pageBlockDefinitions.pageFAQ.defaultProps,
     defaultMedia: { url: '', alt: '' },
     fields: faqFields,
@@ -232,7 +232,6 @@ const components: PageBlockComponent[] = [
   {
     key: 'pageCTA',
     label: 'Page CTA',
-    componentName: pageBlockDefinitions.pageCTA.componentName,
     defaultProps: pageBlockDefinitions.pageCTA.defaultProps,
     defaultMedia: {
       url: '',

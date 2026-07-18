@@ -6,6 +6,7 @@ import { content as contentTable, documentAssetRef, schemaActive } from '../db/s
 import { getAuthSession } from './auth'
 import { applyLifecyclePublicDeliveryHeaders, applyPrivateDeliveryHeaders } from './delivery-policy'
 import { conflict, notFound } from './http'
+import { applyPortablePublicResourceHeaders } from './portable-content-delivery'
 
 export async function assertAssetIsNotRetained(db: Awaited<ReturnType<typeof getDb>>, assetId: string) {
   const retainedBy = await db
@@ -58,5 +59,6 @@ export async function requireAssetDelivery(event: H3Event, assetId: string) {
     .limit(1)
   if (!publishedRef[0]) throw notFound('Asset not found')
   applyLifecyclePublicDeliveryHeaders(event)
+  applyPortablePublicResourceHeaders(event)
   return { isPublic: true }
 }

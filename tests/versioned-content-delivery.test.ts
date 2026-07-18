@@ -35,6 +35,7 @@ vi.mock('../server/utils/schema-permission', () => ({
 }))
 
 vi.stubGlobal('defineEventHandler', (handler: EndpointHandler) => handler)
+vi.stubGlobal('useRuntimeConfig', () => ({ canonicalOrigin: 'http://delivery.example.com' }))
 
 let fixture: Awaited<ReturnType<typeof createTestSqliteDb>>
 let detailHandler: EndpointHandler
@@ -134,7 +135,10 @@ beforeAll(async () => {
   detailHandler = (await import('../server/api/content/[schemaKey]/[id].get')).default as EndpointHandler
 })
 
-afterAll(() => fixture.close())
+afterAll(() => {
+  fixture.close()
+  vi.unstubAllGlobals()
+})
 
 beforeEach(() => {
   permissionState.roleKey = 'anonymous'

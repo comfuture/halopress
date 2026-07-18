@@ -16,6 +16,7 @@ vi.mock('../server/utils/schema-permission', () => ({
   hasSchemaPermission: vi.fn()
 }))
 vi.stubGlobal('defineEventHandler', (handler: (event: any) => Promise<any>) => handler)
+vi.stubGlobal('useRuntimeConfig', () => ({ canonicalOrigin: 'https://press.example.com' }))
 
 afterAll(() => {
   vi.unstubAllGlobals()
@@ -88,8 +89,17 @@ describe('published standalone page delivery', () => {
       const event = {
         context: { params: { id: 'page-api' } },
         node: {
-          req: { headers: { cookie: 'auth-token=ignored' } },
-          res: { setHeader: (name: string, value: unknown) => headers.set(name.toLowerCase(), value) }
+          req: {
+            headers: {
+              cookie: 'auth-token=ignored',
+              host: 'press.example.com',
+              'x-forwarded-proto': 'https'
+            }
+          },
+          res: {
+            setHeader: (name: string, value: unknown) => headers.set(name.toLowerCase(), value),
+            getHeader: (name: string) => headers.get(name.toLowerCase())
+          }
         }
       }
       await expect(handler(event)).resolves.toMatchObject({
@@ -98,7 +108,7 @@ describe('published standalone page delivery', () => {
         status: 'published'
       })
       expect(headers.get('cache-control')).toMatch(/^public,/)
-      expect(headers.get('vary')).toBe('Cookie')
+      expect(headers.get('vary')).toBe('Cookie, X-Forwarded-Proto')
     } finally {
       fixture.close()
       dbState.current = null

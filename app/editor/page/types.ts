@@ -23,6 +23,7 @@ export type PageBlockFieldType =
   | 'select'
   | 'boolean'
   | 'url'
+  | 'asset-path'
   | 'link-list'
   | 'icon'
   | 'color-token'
@@ -44,7 +45,6 @@ export type PageBlockField = {
 export type PageBlockComponent = {
   key: PageBlockComponentKey
   label: string
-  componentName: string
   defaultProps: Record<string, unknown>
   defaultMedia: PageBlockMedia
   fields: PageBlockField[]

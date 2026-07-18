@@ -103,8 +103,10 @@ describe('dependency security contracts', () => {
     const { nuxtConfig } = await readProjectFiles()
 
     expect(nuxtConfig).toContain('originEnvKey: \'NUXT_AUTH_ORIGIN\'')
+    expect(nuxtConfig).toContain('canonicalOrigin: \'\'')
     expect(nuxtConfig).not.toContain('process.env.AUTH_ORIGIN')
     expect(nuxtConfig).not.toContain('process.env.NUXT_AUTH_ORIGIN')
     expect(nuxtConfig).not.toContain('process.env.NUXT_AUTH_SECRET')
+    expect(nuxtConfig).not.toContain('process.env.NUXT_CANONICAL_ORIGIN')
   })
 })

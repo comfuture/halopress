@@ -1,11 +1,13 @@
 import { computed, unref } from 'vue'
 import type { MaybeRef } from 'vue'
 import { convertJsonSchemaToZod } from 'zod-from-json-schema'
+import type { PortableStructuredContentRendering } from '~~/shared/portable-content'
 import type { HalopressItem } from './useHalopressQuery'
 
 export type HalopressContent<TContent = Record<string, unknown>> = HalopressItem & {
   content: TContent
   extra?: TContent
+  rendering?: PortableStructuredContentRendering
 }
 
 export type HalopressSurroundings = {

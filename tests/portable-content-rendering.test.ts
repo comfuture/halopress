@@ -1,0 +1,390 @@
+import { describe, expect, it } from 'vitest'
+
+import {
+  createPortablePageRendering,
+  createPortableStandaloneDocument,
+  createPortableStructuredContentRendering,
+  PORTABLE_CONTENT_STYLESHEET_PATH,
+  renderPortablePageDocument,
+  renderPortableRichText,
+  resolvePortableAssetUrl,
+  resolvePortableLinkUrl,
+  resolvePortablePageAssetUrl
+} from '../shared/portable-content'
+import { pageBlockColors, pageBlockVariants, validatePageDocumentBlocks } from '../shared/page-blocks'
+import { portableContentFixture } from './fixtures/portable-content'
+
+const origin = 'https://press.example.com'
+
+function classTokens(html: string) {
+  return [...html.matchAll(/class="([^"]+)"/g)].flatMap(match => match[1]!.split(/\s+/))
+}
+
+describe('portable authored-content renderer', () => {
+  it('renders rich text and every shipped Page block as stable semantic Halo markup', () => {
+    const before = JSON.stringify(portableContentFixture)
+    const rendering = createPortablePageRendering(portableContentFixture, { origin })
+
+    expect(JSON.stringify(portableContentFixture)).toBe(before)
+    expect(rendering).toMatchObject({
+      contractVersion: 1,
+      themeRevision: 'default',
+      stylesheets: [`https://press.example.com${PORTABLE_CONTENT_STYLESHEET_PATH}`]
+    })
+    expect(rendering.html).toContain('<article class="halo-content halo-page"')
+    for (const block of ['hero', 'card', 'section', 'testimonial', 'logos', 'faq', 'cta']) {
+      expect(rendering.html).toContain(`data-halo-block="${block}"`)
+    }
+    expect(rendering.html).toContain('<details class="halo-faq-item">')
+    expect(rendering.html).toContain('<blockquote class="halo-testimonial-quote">')
+    expect(rendering.html).toContain('<ul class="halo-logo-list">')
+    expect(rendering.html).toContain('data-halo-highlight="true"')
+    expect(rendering.html).toContain('data-halo-spotlight="true"')
+    expect(rendering.html).toContain('data-halo-highlight-color="primary"')
+    expect(rendering.html).toContain('data-halo-spotlight-color="primary"')
+    expect(rendering.html).toContain('data-halo-reverse="true"')
+    expect(rendering.html).toContain('<strong>Bold</strong>')
+    expect(rendering.html).toContain('<em> italic</em>')
+    expect(rendering.html).toContain('<u> underline</u>')
+    expect(rendering.html).toContain('<s> strike</s>')
+    expect(rendering.html).toContain('<pre class="halo-code-block"><code>&lt;script&gt;not executable&lt;/script&gt;</code></pre>')
+    expect(rendering.html.match(/<svg class="halo-icon"/g)?.length).toBeGreaterThanOrEqual(6)
+    expect(classTokens(rendering.html).every(token => token.startsWith('halo-'))).toBe(true)
+  })
+
+  it('escapes author text and drops unchecked HTML, attributes, classes, icons, and unsafe URLs', () => {
+    const html = renderPortablePageDocument(portableContentFixture, { origin })
+
+    expect(html).toContain('Portable &lt;content&gt;')
+    expect(html).toContain('Hero &lt;title&gt;')
+    expect(html).toContain('@Editor &lt;one&gt;')
+    expect(html).toContain('href="https://press.example.com/docs?from=fixture#start" target="_blank" rel="noopener noreferrer"')
+    expect(html).toContain('src="https://press.example.com/assets/rich-image/raw?rev=1#preview"')
+    expect(html).toContain('src="https://press.example.com/assets/hero/raw"')
+    expect(html).not.toMatch(/javascript:/i)
+    expect(html).not.toMatch(/(?:class|style|id|on[a-z]+)="(?:fixed|author-id|alert)/i)
+    expect(html).not.toContain('i-lucide')
+    expect(html).not.toContain('UPage')
+    expect(html).not.toContain('<script')
+    expect(html).toContain('<span class="halo-logo-name">Text fallback</span>')
+  })
+
+  it('renders every supported color and variant with finite renderer-owned icons', () => {
+    for (const color of pageBlockColors) {
+      const html = renderPortablePageDocument({
+        type: 'doc',
+        content: [{
+          type: 'pageBlock',
+          attrs: {
+            component: 'pageHero',
+            props: {
+              title: color,
+              links: [{ label: color, to: '#action', color, icon: 'i-lucide-star' }]
+            }
+          }
+        }]
+      }, { origin })
+      expect(html).toContain(`data-halo-color="${color}"`)
+      expect(html).toContain('<svg class="halo-icon"')
+      expect(html).not.toContain('i-lucide-star')
+    }
+
+    const independentlyColoredCard = renderPortablePageDocument({
+      type: 'doc',
+      content: [{
+        type: 'pageBlock',
+        attrs: {
+          component: 'pageCard',
+          props: {
+            title: 'Independent colors',
+            highlight: true,
+            highlightColor: 'secondary',
+            spotlight: true,
+            spotlightColor: 'error'
+          }
+        }
+      }]
+    }, { origin })
+    expect(independentlyColoredCard).toContain('data-halo-highlight-color="secondary"')
+    expect(independentlyColoredCard).toContain('data-halo-spotlight-color="error"')
+    expect(independentlyColoredCard).not.toContain('data-halo-color=')
+
+    const dormantColors = renderPortablePageDocument({
+      type: 'doc',
+      content: [{
+        type: 'pageBlock',
+        attrs: {
+          component: 'pageCard',
+          props: { title: 'Dormant colors', highlightColor: 'secondary', spotlightColor: 'error' }
+        }
+      }]
+    }, { origin })
+    expect(dormantColors).not.toContain('data-halo-highlight-color')
+    expect(dormantColors).not.toContain('data-halo-spotlight-color')
+
+    for (const variant of pageBlockVariants) {
+      const html = renderPortablePageDocument({
+        type: 'doc',
+        content: [
+          {
+            type: 'pageBlock',
+            attrs: {
+              component: 'pageCard',
+              props: { title: variant, variant, icon: 'i-lucide-book-open' }
+            }
+          },
+          {
+            type: 'pageBlock',
+            attrs: {
+              component: 'pageCTA',
+              props: {
+                title: variant,
+                variant,
+                links: [{ label: variant, to: '#action', variant }]
+              }
+            }
+          }
+        ]
+      }, { origin })
+      expect(html.match(new RegExp(`data-halo-variant="${variant}"`, 'g'))?.length).toBeGreaterThanOrEqual(2)
+    }
+  })
+
+  it('keeps legacy blocks with unsupported icons and gives external legacy logos an explicit fallback', () => {
+    const unsupportedIcon = {
+      type: 'doc',
+      content: [{
+        type: 'pageBlock',
+        attrs: { component: 'pageCard', props: { title: 'Unsafe', icon: 'i-lucide-user-authored' } }
+      }]
+    }
+    const externalLogo = {
+      type: 'doc',
+      content: [{
+        type: 'pageBlock',
+        attrs: {
+          component: 'pageLogos',
+          props: { title: 'Legacy', items: [{ name: 'External logo', src: 'https://cdn.example/logo.svg' }] }
+        }
+      }]
+    }
+
+    const unsupportedIconHtml = renderPortablePageDocument(unsupportedIcon, { origin })
+    expect(unsupportedIconHtml).toContain('data-halo-block="card"')
+    expect(unsupportedIconHtml).not.toContain('data-halo-block-status="malformed"')
+    expect(unsupportedIconHtml).not.toContain('i-lucide-user-authored')
+    expect(validatePageDocumentBlocks(unsupportedIcon)).toEqual([
+      expect.objectContaining({ key: 'pageCard', kind: 'malformed' })
+    ])
+    expect(validatePageDocumentBlocks(externalLogo)).toEqual([
+      expect.objectContaining({ key: 'pageLogos', kind: 'malformed' })
+    ])
+    const legacyHtml = renderPortablePageDocument(externalLogo, { origin })
+    expect(legacyHtml).not.toContain('https://cdn.example/logo.svg')
+    expect(legacyHtml).toContain('data-halo-asset-status="unavailable"')
+    expect(legacyHtml).toContain('External logo')
+  })
+
+  it('uses distinct link and trusted-origin media policies', () => {
+    expect(resolvePortableLinkUrl('/relative', origin)).toBe('https://press.example.com/relative')
+    expect(resolvePortableLinkUrl('#fragment', origin)).toBe('#fragment')
+    expect(resolvePortableLinkUrl('mailto:hello@example.com', origin)).toBe('mailto:hello@example.com')
+    expect(resolvePortableLinkUrl('https://other.example/path', origin)).toBe('https://other.example/path')
+    expect(resolvePortableLinkUrl('https://user:pass@other.example/path', origin)).toBeNull()
+    expect(resolvePortableLinkUrl('//other.example/path', origin)).toBeNull()
+    expect(resolvePortableLinkUrl('java\nscript:alert(1)', origin)).toBeNull()
+    expect(resolvePortableLinkUrl('https:\\other.example\\obfuscated', origin)).toBeNull()
+
+    expect(resolvePortableAssetUrl('/assets/image/raw', origin)).toBe('https://press.example.com/assets/image/raw')
+    expect(resolvePortableAssetUrl('https://press.example.com/assets/image/raw', origin)).toBe('https://press.example.com/assets/image/raw')
+    expect(resolvePortableAssetUrl('https://other.example/image.png', origin)).toBeNull()
+    expect(resolvePortableAssetUrl('https://user:pass@press.example.com/image.png', origin)).toBeNull()
+    expect(resolvePortableAssetUrl('//other.example/image.png', origin)).toBeNull()
+    expect(resolvePortableAssetUrl('data:image/png;base64,AAAA', origin)).toBeNull()
+    expect(resolvePortableAssetUrl('mailto:image@example.com', origin)).toBeNull()
+    expect(resolvePortableAssetUrl('https:\\press.example.com\\assets\\image\\raw', origin)).toBeNull()
+
+    expect(resolvePortablePageAssetUrl('/assets/image/raw', origin)).toBe('https://press.example.com/assets/image/raw')
+    expect(resolvePortablePageAssetUrl('https://press.example.com/api/private/image', origin)).toBeNull()
+
+    const historicalPrivateMedia = renderPortablePageDocument({
+      type: 'doc',
+      content: [{
+        type: 'pageBlock',
+        attrs: { component: 'pageHero', props: { title: 'Legacy' }, media: { url: '/api/private/image' } }
+      }]
+    }, { origin })
+    expect(historicalPrivateMedia).toContain('data-halo-block="hero"')
+    expect(historicalPrivateMedia).toContain('Media unavailable')
+    expect(historicalPrivateMedia).not.toContain('src="https://press.example.com/api/private/image"')
+  })
+
+  it('keeps retired and malformed raw blocks but renders deterministic visible fallbacks', () => {
+    const raw = {
+      type: 'doc',
+      customDocumentKey: { preserve: true },
+      content: [
+        { type: 'pageBlock', attrs: { component: 'RetiredBlock', props: { legacy: true }, custom: 'preserve' } },
+        { type: 'pageBlock', attrs: { component: 'pageCard', props: { title: 'Unsafe', to: 'javascript:alert(1)' } } },
+        { type: 'unsupportedNode', attrs: { class: 'fixed' } }
+      ]
+    }
+    const before = structuredClone(raw)
+    const html = renderPortablePageDocument(raw, { origin })
+
+    expect(raw).toEqual(before)
+    expect(html.match(/class="halo-block halo-block-fallback"/g)).toHaveLength(2)
+    expect(html).toContain('data-halo-block-status="unknown"')
+    expect(html).toContain('data-halo-block-status="malformed"')
+    expect(html).toContain('<p class="halo-content-fallback" role="status">Unsupported content</p>')
+  })
+
+  it('bounds recursive depth, node count, and serialized output', () => {
+    let nested: any = { type: 'text', text: 'deep' }
+    for (let index = 0; index < 40; index += 1) nested = { type: 'blockquote', content: [nested] }
+    const deep = { type: 'doc', content: [nested] }
+    const many = { type: 'doc', content: Array.from({ length: 10 }, () => ({ type: 'paragraph' })) }
+    const large = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'x'.repeat(2_000) }] }] }
+
+    expect(renderPortableRichText(deep, { origin, limits: { maxDepth: 8 } })).toContain('Content exceeds portable rendering limits')
+    expect(renderPortableRichText(many, { origin, limits: { maxNodes: 5 } })).toContain('Content exceeds portable rendering limits')
+    expect(renderPortableRichText(large, { origin, limits: { maxOutputLength: 512 } })).toContain('Content exceeds portable rendering limits')
+    expect(renderPortableRichText(large, { origin, limits: { maxOutputLength: 1 } }).length).toBeLessThanOrEqual(1)
+  })
+
+  it('bounds page-block collections before schema parsing', () => {
+    const links = Array.from({ length: 100_000 }, () => ({ label: 'x', to: '#x' }))
+    const html = renderPortablePageDocument({
+      type: 'doc',
+      content: [{ type: 'pageBlock', attrs: { component: 'pageHero', props: { title: 'Hostile', links } } }]
+    }, { origin, limits: { maxNodes: 2 } })
+
+    expect(html).toContain('data-halo-block-status="malformed"')
+    expect(html.length).toBeLessThan(1_000)
+  })
+
+  it('charges hostile mark arrays before allocating nested wrappers', () => {
+    const unknownMarks = Array.from({ length: 10_000 }, (_, index) => ({ type: `unknown-${index}` }))
+    const supportedMarks = Array.from({ length: 10_000 }, () => ({ type: 'bold' }))
+    const document = (marks: unknown[]) => ({
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'bounded', marks }] }]
+    })
+
+    expect(renderPortableRichText(document(unknownMarks), { origin, limits: { maxMarks: 32 } }))
+      .toContain('Content exceeds portable rendering limits')
+    expect(renderPortableRichText(document(supportedMarks), { origin, limits: { maxMarks: 32 } }))
+      .toContain('Content exceeds portable rendering limits')
+  })
+
+  it('projects only schema-declared rich-text fields while preserving the structured JSON', () => {
+    const content = {
+      title: 'Raw title',
+      body: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: '<portable>' }] }] },
+      legacyBody: '<b>plain legacy text</b>'
+    }
+    const before = structuredClone(content)
+    const rendering = createPortableStructuredContentRendering(content, [
+      { fieldId: 'title-id', key: 'title', kind: 'string' },
+      { fieldId: 'body-id', key: 'body', kind: 'richtext' },
+      { fieldId: 'legacy-id', key: 'legacyBody', kind: 'richtext' }
+    ], { origin })
+
+    expect(content).toEqual(before)
+    expect(Object.keys(rendering.fields)).toEqual(['body', 'legacyBody'])
+    expect(rendering.fields.body).toMatchObject({ fieldId: 'body-id', fieldKey: 'body' })
+    expect(rendering.fields.body!.html).toContain('&lt;portable&gt;')
+    expect(rendering.fields.legacyBody!.html).toContain('&lt;b&gt;plain legacy text&lt;/b&gt;')
+    expect(rendering.fields.legacyBody!.html).not.toContain('<b>')
+    expect(rendering).not.toHaveProperty('html')
+  })
+
+  it('shares field, node, mark, and output budgets across a structured projection', () => {
+    const manyFields = Array.from({ length: 300 }, (_, index) => ({
+      fieldId: `field-${index}`,
+      key: `body${index}`,
+      kind: 'richtext'
+    }))
+    const content = Object.fromEntries(manyFields.map(field => [field.key, {
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'x'.repeat(200) }] }]
+    }]))
+    const rendering = createPortableStructuredContentRendering(content, manyFields, {
+      origin,
+      limits: { maxFields: 20, maxNodes: 30, maxOutputLength: 2_000 }
+    })
+
+    expect(rendering.truncated).toBe(true)
+    expect(Object.keys(rendering.fields).length).toBeLessThanOrEqual(20)
+    expect(JSON.stringify(rendering).length).toBeLessThan(4_000)
+  })
+
+  it('counts projected rich-text fields separately from the bounded schema scan', () => {
+    const scalarFields = Array.from({ length: 256 }, (_, index) => ({
+      fieldId: `scalar-${index}`,
+      key: `scalar${index}`,
+      kind: 'string'
+    }))
+    const body = { fieldId: 'body-id', key: 'body', kind: 'richtext' }
+    const content = {
+      body: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Projected body' }] }] }
+    }
+
+    const rendering = createPortableStructuredContentRendering(content, [...scalarFields, body], {
+      origin,
+      limits: { maxFields: 1, maxSchemaFields: 300 }
+    })
+    expect(rendering.fields.body?.html).toContain('Projected body')
+    expect(rendering.truncated).toBeUndefined()
+
+    const scanLimited = createPortableStructuredContentRendering(content, [...scalarFields, body], {
+      origin,
+      limits: { maxFields: 1, maxSchemaFields: 256 }
+    })
+    expect(scanLimited.fields.body).toBeUndefined()
+    expect(scanLimited.truncated).toBe(true)
+  })
+
+  it('preserves block order, feature orientation, and CTA defaults without invented copy', () => {
+    const html = renderPortablePageDocument({
+      type: 'doc',
+      content: [
+        {
+          type: 'pageBlock',
+          attrs: {
+            component: 'pageCard',
+            props: { title: 'Linked card', to: '#card', reverse: true },
+            media: { url: '/assets/card/raw', alt: 'Card' }
+          }
+        },
+        {
+          type: 'pageBlock',
+          attrs: {
+            component: 'pageSection',
+            props: { title: 'Features', features: [{ title: 'Horizontal by default' }, { title: 'Vertical', orientation: 'vertical' }] }
+          }
+        },
+        { type: 'pageBlock', attrs: { component: 'pageCTA', props: { title: 'Default CTA' } } }
+      ]
+    }, { origin })
+
+    expect(html).toContain('<a class="halo-card-anchor" href="#card">')
+    expect(html).not.toContain('Learn more')
+    expect(html.indexOf('halo-block-content')).toBeLessThan(html.indexOf('src="https://press.example.com/assets/card/raw"'))
+    expect(html).toContain('class="halo-feature" data-halo-orientation="horizontal"')
+    expect(html).toContain('class="halo-feature" data-halo-orientation="vertical"')
+    expect(html).toContain('class="halo-block halo-cta" data-halo-block="cta" data-halo-orientation="vertical" data-halo-variant="outline"')
+  })
+
+  it('builds a scriptless standalone document from only the envelope and stylesheet', () => {
+    const rendering = createPortablePageRendering(portableContentFixture, { origin })
+    const standalone = createPortableStandaloneDocument(rendering, { colorMode: 'dark' })
+
+    expect(standalone).toMatch(/^<!doctype html>/)
+    expect(standalone).toContain(`<link rel="stylesheet" href="https://press.example.com${PORTABLE_CONTENT_STYLESHEET_PATH}">`)
+    expect(standalone).toContain('data-halo-color-mode="dark"')
+    expect(standalone).not.toContain('<script')
+    expect(standalone).not.toContain('_nuxt')
+    expect(standalone).not.toContain('tailwind')
+  })
+})

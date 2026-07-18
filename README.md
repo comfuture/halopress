@@ -108,6 +108,12 @@ scripts, classes, attributes, and unsafe URLs are never taken from stored data.
 The [page pattern guide](docs/page-patterns.md) documents the reviewed starter
 library, compatibility metadata, copy-on-insert upgrades, and visual fixtures.
 
+Published Page and rich-text detail APIs also expose a versioned portable HTML
+projection with an absolute, content-addressed Halo stylesheet. The projection
+keeps raw editor JSON intact while rendering without Vue, Nuxt UI, Tailwind, or
+the HaloPress application bundle. See the [portable authored-content guide](docs/portable-content.md)
+and its [plain HTML consumer](examples/portable-content/index.html).
+
 ## Project status
 
 HaloPress is under active development. The complete schema-to-publishing path is
@@ -164,6 +170,11 @@ The Desk setup checklist adapts to local development, production Node servers,
 and Cloudflare Workers. See the [deployment and onboarding guide](docs/deployment.md)
 for the environment matrix, Node build and persistent-storage requirements,
 public-origin behavior, and Cloudflare-specific checks.
+
+Production Node servers must set the origin-only
+`NUXT_CANONICAL_ORIGIN=https://cms.example.com`. Portable content and future
+theme envelopes use this server-only authority for deterministic absolute URLs;
+they do not trust a syntactically valid request Host by itself.
 
 ## Database migrations
 
@@ -339,6 +350,10 @@ deployments. Set it only when forcing a specific auth base URL, including
 pnpm wrangler secret put NUXT_AUTH_ORIGIN
 # Example: https://cms.example.com/api/auth
 ```
+
+Portable content can likewise use the Cloudflare Request URL as its canonical
+authority. Set `NUXT_CANONICAL_ORIGIN` only when a deployment must require one
+specific custom-domain origin and reject alternate workers.dev authority.
 
 To add Google OAuth, register
 `https://<worker-host>/api/auth/callback/google` as an authorized redirect URI,

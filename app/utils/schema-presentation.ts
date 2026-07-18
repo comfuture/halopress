@@ -85,6 +85,12 @@ export function presentationText(value: unknown): string {
   return ''
 }
 
+export function isRichTextPresentationField(field: unknown) {
+  if (!field || typeof field !== 'object' || Array.isArray(field)) return false
+  const candidate = field as Record<string, unknown>
+  return candidate.kind === 'richtext' || candidate.renderer === 'rich_text'
+}
+
 export function reservedPresentationFieldIds(presentation: any) {
   const renderedSlots = new Set(['title', 'description', 'image', 'body', 'gallery'])
   if (presentation?.detailTemplate === 'catalog') renderedSlots.add('price')

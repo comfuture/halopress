@@ -119,7 +119,6 @@ describe('page block registry', () => {
     expect(resolved).toEqual({
       status: 'known',
       key: 'pageCard',
-      componentName: 'UPageCard',
       props: {
         title: 'Safe card',
         description: '',
@@ -158,7 +157,6 @@ describe('page block registry', () => {
     })).toEqual({
       status: 'known',
       key: 'pageFAQ',
-      componentName: 'PageBlockFAQ',
       props: {
         title: 'Questions',
         items: [{ question: 'Is it safe?', answer: 'Yes.' }]
@@ -251,7 +249,10 @@ describe('page document renderer', () => {
     expect(view).not.toContain('ring-2')
     expect(nodeView).toContain('props.selected')
     expect(nodeView).toContain('<PageBlockView')
-    expect(renderer).toContain('<PageBlockView')
+    expect(renderer).toContain('createPortablePageRendering')
+    expect(renderer).toContain('data-portable-content-renderer')
+    expect(renderer).toContain('v-html="activeRendering.html"')
+    expect(renderer).not.toContain('<PageBlockView')
     expect(renderer).not.toContain('PageBlockNodeView')
     expect(renderer).not.toContain('ring-2')
   })
