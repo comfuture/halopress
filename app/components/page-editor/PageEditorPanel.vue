@@ -12,19 +12,16 @@ const props = withDefaults(defineProps<{
   activeFields: PageBlockField[]
   activeLabel?: string
   editable?: boolean
-  collapsible?: boolean
   pageDescription?: string
   pageValidationMessage?: string
 }>(), {
   activeLabel: undefined,
   editable: true,
-  collapsible: false,
   pageDescription: undefined,
   pageValidationMessage: undefined
 })
 
 const emit = defineEmits<{
-  collapse: []
   insert: [item: PagePaletteItem]
   dragstart: [event: DragEvent, item: PagePaletteItem]
   updateBlock: [attrs: PageBlockAttrs]
@@ -60,18 +57,6 @@ function forwardDragStart(event: DragEvent, item: PagePaletteItem) {
       content: 'min-h-0 flex-1 overflow-hidden rounded-none p-0'
     }"
   >
-    <template #list-trailing>
-      <UButton
-        v-if="collapsible"
-        aria-label="Collapse page editor panel"
-        icon="i-lucide-panel-right-close"
-        color="neutral"
-        variant="ghost"
-        size="xs"
-        @click="emit('collapse')"
-      />
-    </template>
-
     <template #library>
       <PageBlockPalette
         class="h-full min-h-0"
