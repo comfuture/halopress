@@ -38,7 +38,7 @@ function persistedTheme(colorMode) {
     },
     radii: { control: 0.25, sm: 0.25, md: 0.375, lg: 0.5 },
     typography: {
-      bodyFontFamily: 'public-sans',
+      bodyFontFamily: 'system-mono',
       headingFontFamily: 'system-serif',
       fontSizeBase: 1,
       lineHeightBody: 1.6,
@@ -415,6 +415,11 @@ async function assertCompiledSiteThemeAdapter(origin, html) {
     css.includes('font-family:var(--halo-font-family-heading)')
     && css.includes('line-height:var(--halo-line-height-heading)'),
     'Expected the built public shell to consume the distinct heading typography tokens'
+  )
+  assert.match(
+    css,
+    /body\.site-theme-adapter\[data-halo-theme-enabled=(?:true|"true")\][^{]*\{[^}]*font-family:var\(--halo-font-family-body\)[^}]*font-size:var\(--halo-font-size-base\)[^}]*line-height:var\(--halo-line-height-body\)/,
+    'Expected body-level public teleports to inherit the Theme body typography tokens'
   )
 }
 

@@ -175,6 +175,10 @@
   color: var(--halo-site-color-text);
   background: var(--halo-site-color-background);
   color-scheme: light;
+  line-height: inherit;
+}
+
+body.site-theme-adapter[data-halo-theme-enabled="true"] {
   font-family: var(--halo-font-family-body);
   font-size: var(--halo-font-size-base);
   line-height: var(--halo-line-height-body);
