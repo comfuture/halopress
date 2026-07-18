@@ -161,27 +161,6 @@ async function publish() {
 
     <template #body>
       <div class="flex h-full min-h-0 flex-col">
-        <div class="border-b border-muted bg-default px-4 py-3">
-          <UFormField label="Title">
-            <UInput v-model="state.title" placeholder="Page title" class="w-full" />
-          </UFormField>
-          <p class="mt-1 text-xs text-muted">Build the page, then save a draft or publish.</p>
-          <p v-if="publishValidationIssues[0]" class="mt-2 text-sm text-error">
-            {{ publishValidationIssues[0].message }}
-          </p>
-        </div>
-
-        <div class="border-b border-muted bg-default p-4">
-          <CmsPublicMetadataFields
-            v-model:public-path="state.publicPath"
-            v-model:title="state.seoTitle"
-            v-model:description="state.seoDescription"
-            v-model:image-asset-id="state.seoImageAssetId"
-            v-model:structured-data-type="state.structuredDataType"
-            show-path
-          />
-        </div>
-
         <div
           v-if="!starterChoice"
           class="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-muted/30 p-4 sm:p-8"
@@ -216,7 +195,19 @@ async function publish() {
             </div>
           </div>
         </div>
-        <PageEditor v-else v-model="state.content" class="min-h-0 flex-1" />
+        <PageEditor
+          v-else
+          v-model="state.content"
+          v-model:page-title="state.title"
+          v-model:public-path="state.publicPath"
+          v-model:seo-title="state.seoTitle"
+          v-model:seo-description="state.seoDescription"
+          v-model:seo-image-asset-id="state.seoImageAssetId"
+          v-model:structured-data-type="state.structuredDataType"
+          page-description="Build the page, then save a draft or publish."
+          :page-validation-message="publishValidationIssues[0]?.message"
+          class="min-h-0 flex-1"
+        />
       </div>
     </template>
   </UDashboardPanel>

@@ -4,17 +4,26 @@ const title = defineModel<string>('title', { default: '' })
 const description = defineModel<string>('description', { default: '' })
 const imageAssetId = defineModel<string>('imageAssetId', { default: '' })
 const structuredDataType = defineModel<string>('structuredDataType', { default: '' })
+const schemaDefaultValue = '__schema_default__'
+const structuredDataTypeValue = computed({
+  get: () => structuredDataType.value || schemaDefaultValue,
+  set: value => {
+    structuredDataType.value = value === schemaDefaultValue ? '' : value
+  }
+})
 
 withDefaults(defineProps<{
   showPath?: boolean
   disabled?: boolean
+  compact?: boolean
 }>(), {
   showPath: false,
-  disabled: false
+  disabled: false,
+  compact: false
 })
 
 const structuredDataTypes = [
-  { label: 'Schema default', value: '' },
+  { label: 'Schema default', value: schemaDefaultValue },
   { label: 'Web page', value: 'WebPage' },
   { label: 'Article', value: 'Article' },
   { label: 'Blog posting', value: 'BlogPosting' },
@@ -30,12 +39,12 @@ const structuredDataTypes = [
       <p class="text-xs text-muted">Overrides are published with the canonical route. Blank fields use site and schema defaults.</p>
     </div>
 
-    <div class="grid gap-4 md:grid-cols-2">
+    <div class="grid gap-4" :class="compact ? 'grid-cols-1' : 'md:grid-cols-2'">
       <UFormField
         v-if="showPath"
         label="Custom public path"
         description="Optional. Use a path such as /about or /company/about. Previous published paths remain redirects."
-        class="md:col-span-2"
+        :class="!compact && 'md:col-span-2'"
       >
         <UInput v-model="publicPath" placeholder="Generated from the page title" class="w-full" :disabled="disabled" />
       </UFormField>
@@ -46,7 +55,7 @@ const structuredDataTypes = [
 
       <UFormField label="Structured data type">
         <USelect
-          v-model="structuredDataType"
+          v-model="structuredDataTypeValue"
           :items="structuredDataTypes"
           value-key="value"
           label-key="label"
@@ -55,7 +64,7 @@ const structuredDataTypes = [
         />
       </UFormField>
 
-      <UFormField label="SEO description" class="md:col-span-2">
+      <UFormField label="SEO description" :class="!compact && 'md:col-span-2'">
         <UTextarea
           v-model="description"
           maxlength="320"
@@ -70,7 +79,7 @@ const structuredDataTypes = [
       <UFormField
         label="Social image asset ID"
         description="Optional asset ID used for Open Graph, Twitter cards, and structured data."
-        class="md:col-span-2"
+        :class="!compact && 'md:col-span-2'"
       >
         <UInput v-model="imageAssetId" placeholder="Asset ID" class="w-full" :disabled="disabled" />
       </UFormField>

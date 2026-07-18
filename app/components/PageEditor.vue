@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import type { EditorToolbarItem } from '@nuxt/ui'
+import type { DropdownMenuItem, TabsItem } from '@nuxt/ui'
+import { mapEditorItems } from '@nuxt/ui/utils/editor'
+import type { DragHandleProps } from '@tiptap/extension-drag-handle-vue-3'
 import type { Editor, JSONContent } from '@tiptap/vue-3'
 import { VueNodeViewRenderer } from '@tiptap/vue-3'
 import { markRaw } from 'vue'
@@ -7,10 +9,14 @@ import { clonePagePatternContent, pagePatternRegistry, type PagePatternKey } fro
 
 import PageBlockPalette from '~/components/page-editor/PageBlockPalette.vue'
 import PageBlockInspector from '~/components/page-editor/PageBlockInspector.vue'
+import PagePropertiesInspector from '~/components/page-editor/PagePropertiesInspector.vue'
+import RichEditorLinkPopover from '~/components/cms/RichEditorLinkPopover.vue'
 import PageBlock from '~/editor/page/PageBlock'
 import PageBlockNodeView from '~/editor/page/PageBlockNodeView.vue'
+import { clonePageBlockAttrs } from '~/editor/page/inspector-state'
 import type { PagePaletteItem } from '~/editor/page/palette'
 import { getPageBlockComponent, pageBlockRegistry } from '~/editor/page/registry'
+import { clearPageBlockSelection } from '~/editor/page/selection'
 import type { PageBlockAttrs, PageBlockComponentKey } from '~/editor/page/types'
 import { createPageProfile } from '~/editor/profiles'
 import type { EditorProfileCustomization } from '~/editor/profiles'
@@ -20,23 +26,22 @@ import RichEditorImageUploadNode from '~/editor/RichEditorImageUploadNode.vue'
 defineOptions({ inheritAttrs: false })
 
 const props = withDefaults(defineProps<{
-  modelValue: JSONContent | null
   editable?: boolean
   profile?: EditorProfileCustomization
+  pageDescription?: string
+  pageValidationMessage?: string
 }>(), {
-  modelValue: null,
   editable: true,
   profile: () => ({})
 })
 
-const emit = defineEmits<{
-  'update:modelValue': [value: JSONContent | null]
-}>()
-
-const value = computed({
-  get: () => props.modelValue,
-  set: (nextValue) => emit('update:modelValue', nextValue)
-})
+const value = defineModel<JSONContent | null>({ default: null })
+const pageTitle = defineModel<string>('pageTitle', { default: '' })
+const publicPath = defineModel<string>('publicPath', { default: '' })
+const seoTitle = defineModel<string>('seoTitle', { default: '' })
+const seoDescription = defineModel<string>('seoDescription', { default: '' })
+const seoImageAssetId = defineModel<string>('seoImageAssetId', { default: '' })
+const structuredDataType = defineModel<string>('structuredDataType', { default: '' })
 
 const PageBlockEditor = PageBlock.extend({
   addNodeView() {
@@ -57,16 +62,17 @@ const extensions = markRaw(editorProfile.extensions.map(extension => markRaw(ext
 const editorRef = ref<any>(null)
 const canvasRef = ref<HTMLElement | null>(null)
 const selectedBlock = ref<PageBlockAttrs | null>(null)
+const selectedDragNode = ref<{ node: JSONContent | null, pos: number } | null>(null)
 const mode = ref<'edit' | 'preview'>('edit')
 const viewport = ref<'desktop' | 'tablet' | 'mobile'>('desktop')
-const paletteCollapsed = ref(false)
-const inspectorCollapsed = ref(false)
-const mobilePaletteOpen = ref(false)
-const mobileInspectorOpen = ref(false)
+const activePanel = ref<'library' | 'inspector'>('inspector')
+const panelCollapsed = ref(false)
+const mobilePanelOpen = ref(false)
 const dropPosition = ref<number | null>(null)
 const dropIndicatorTop = ref<number | null>(null)
 
-const isEditing = computed(() => props.editable && mode.value === 'edit')
+const isEditMode = computed(() => mode.value === 'edit')
+const isEditing = computed(() => props.editable && isEditMode.value)
 const activeComponent = computed(() => getPageBlockComponent(selectedBlock.value?.component))
 const activeFields = computed(() => activeComponent.value?.fields ?? [])
 
@@ -75,15 +81,19 @@ const viewportItems = [
   { label: 'Tablet', value: 'tablet', icon: 'i-lucide-tablet' },
   { label: 'Mobile', value: 'mobile', icon: 'i-lucide-smartphone' }
 ]
+const panelTabs: TabsItem[] = [
+  { label: 'Block Library', value: 'library', slot: 'library' },
+  { label: 'Inspector', value: 'inspector', slot: 'inspector' }
+]
 const canvasStyle = computed(() => ({
   width: '100%',
   maxWidth: viewport.value === 'desktop' ? '80rem' : viewport.value === 'tablet' ? '48rem' : '24rem'
 }))
 const workspaceColumns = computed(() => {
-  if (paletteCollapsed.value && inspectorCollapsed.value) return 'xl:grid-cols-[3rem_minmax(0,1fr)_3rem]'
-  if (paletteCollapsed.value) return 'xl:grid-cols-[3rem_minmax(0,1fr)_20rem]'
-  if (inspectorCollapsed.value) return 'xl:grid-cols-[18rem_minmax(0,1fr)_3rem]'
-  return 'xl:grid-cols-[18rem_minmax(0,1fr)_20rem]'
+  if (!isEditMode.value) return 'xl:grid-cols-1'
+  return panelCollapsed.value
+    ? 'xl:grid-cols-[minmax(0,1fr)_3rem]'
+    : 'xl:grid-cols-[minmax(0,1fr)_22rem]'
 })
 
 function getEditor() {
@@ -94,8 +104,9 @@ function syncSelection(editor: Editor) {
   const selection: any = editor.state.selection
   const node = selection.node
   selectedBlock.value = node?.type?.name === 'pageBlock'
-    ? structuredClone(node.attrs as PageBlockAttrs)
+    ? clonePageBlockAttrs(node.attrs as PageBlockAttrs)
     : null
+  if (selectedBlock.value) activePanel.value = 'inspector'
 }
 
 watch(getEditor, (editor, _previous, onCleanup) => {
@@ -134,7 +145,7 @@ function insertBlock(key: PageBlockComponentKey, position?: number) {
   if (!editor || !isEditing.value || !pageBlockRegistry.byKey[key]) return false
   const destination = position ?? selectionInsertionPosition(editor)
   const inserted = editor.commands.insertPageBlockAt(destination, blockAttrs(key))
-  if (inserted) mobilePaletteOpen.value = false
+  if (inserted) mobilePanelOpen.value = false
   return inserted
 }
 
@@ -143,7 +154,7 @@ function insertPattern(key: PagePatternKey, position?: number) {
   if (!editor || !isEditing.value || !pagePatternRegistry.byKey[key]) return false
   const destination = position ?? selectionInsertionPosition(editor)
   const inserted = editor.commands.insertPagePatternAt(destination, clonePagePatternContent(key))
-  if (inserted) mobilePaletteOpen.value = false
+  if (inserted) mobilePanelOpen.value = false
   return inserted
 }
 
@@ -153,30 +164,56 @@ function insertPaletteItem(item: PagePaletteItem, position?: number) {
     : insertPattern(item.key, position)
 }
 
-function runBlockCommand(command: 'duplicatePageBlock' | 'deletePageBlock' | 'movePageBlockUp' | 'movePageBlockDown') {
-  const editor = getEditor()
-  if (!editor || !isEditing.value) return
-  editor.commands[command]()
-}
-
 function updateSelectedBlock(attrs: PageBlockAttrs) {
   const editor = getEditor()
   if (!editor || !isEditing.value) return
   editor.commands.updatePageBlockAttributes(attrs)
 }
 
-const toolbarItems = computed<EditorToolbarItem[][]>(() => [
-  [
-    { kind: 'undo', icon: 'i-lucide-undo', tooltip: { text: 'Undo' } },
-    { kind: 'redo', icon: 'i-lucide-redo', tooltip: { text: 'Redo' } }
-  ],
-  [
-    { label: 'Duplicate block', icon: 'i-lucide-copy', disabled: !selectedBlock.value, onClick: () => runBlockCommand('duplicatePageBlock') },
-    { label: 'Move block up', icon: 'i-lucide-arrow-up', disabled: !selectedBlock.value, onClick: () => runBlockCommand('movePageBlockUp') },
-    { label: 'Move block down', icon: 'i-lucide-arrow-down', disabled: !selectedBlock.value, onClick: () => runBlockCommand('movePageBlockDown') },
-    { label: 'Delete block', icon: 'i-lucide-trash', color: 'error', disabled: !selectedBlock.value, onClick: () => runBlockCommand('deletePageBlock') }
-  ]
-])
+function showPageProperties() {
+  const editor = getEditor()
+  if (editor) {
+    clearPageBlockSelection(editor)
+  }
+  selectedBlock.value = null
+  activePanel.value = 'inspector'
+}
+
+function openMobilePanel(tab: 'library' | 'inspector') {
+  if (!isEditMode.value) return
+  activePanel.value = tab
+  mobilePanelOpen.value = true
+}
+
+const getDragHandleItems = (editor: Editor): DropdownMenuItem[][] => {
+  const selected = selectedDragNode.value
+  if (!selected?.node?.type) return []
+  const groups = editorProfile.quickMenuGroups.flatMap(create => create({
+    editor,
+    node: selected.node!,
+    pos: selected.pos
+  }))
+  return mapEditorItems(editor, groups as any, editorProfile.handlers) as DropdownMenuItem[][]
+}
+
+function onDragNodeChange(event: { node: JSONContent | null, pos: number }) {
+  selectedDragNode.value = event
+}
+
+function selectDragNode(editor: Editor) {
+  const selected = selectedDragNode.value
+  if (selected?.node && Number.isInteger(selected.pos)) {
+    const result = editor.commands.setNodeSelection(selected.pos)
+    if (result) syncSelection(editor)
+  }
+}
+
+function setDragMenuOpen(editor: Editor, open: boolean) {
+  if (open) selectDragNode(editor)
+  editor.chain().setMeta('lockDragHandle', open).run()
+}
+
+const dragHandleNestedOptions = undefined as unknown as DragHandleProps['nestedOptions']
 
 function startPaletteDrag(event: DragEvent, item: PagePaletteItem) {
   if (!isEditing.value || !event.dataTransfer) return
@@ -248,8 +285,12 @@ function handleCanvasDrop(event: DragEvent) {
 
 defineShortcuts({
   meta_shift_p: () => { mode.value = mode.value === 'edit' ? 'preview' : 'edit' },
-  meta_shift_b: () => { mobilePaletteOpen.value = !mobilePaletteOpen.value },
-  meta_shift_i: () => { mobileInspectorOpen.value = !mobileInspectorOpen.value }
+  meta_shift_b: () => openMobilePanel('library'),
+  meta_shift_i: () => openMobilePanel('inspector')
+})
+
+watch(mode, (nextMode) => {
+  if (nextMode === 'preview') mobilePanelOpen.value = false
 })
 </script>
 
@@ -257,8 +298,16 @@ defineShortcuts({
   <div class="flex h-full min-h-0 flex-col bg-muted/30" data-page-editor-workspace>
     <div class="flex flex-wrap items-center justify-between gap-2 border-b border-muted bg-default px-3 py-2">
       <div class="flex items-center gap-1">
-        <UButton class="xl:hidden" label="Blocks" icon="i-lucide-blocks" color="neutral" variant="ghost" size="sm" @click="mobilePaletteOpen = true;" />
-        <UButton class="xl:hidden" label="Inspector" icon="i-lucide-panel-right" color="neutral" variant="ghost" size="sm" :disabled="!selectedBlock" @click="mobileInspectorOpen = true;" />
+        <UButton
+          v-if="isEditMode"
+          class="xl:hidden"
+          label="Editor panel"
+          icon="i-lucide-panel-right"
+          color="neutral"
+          variant="ghost"
+          size="sm"
+          @click="mobilePanelOpen = true;"
+        />
         <UButton
           :label="mode === 'edit' ? 'Preview' : 'Edit'"
           :icon="mode === 'edit' ? 'i-lucide-eye' : 'i-lucide-pencil'"
@@ -283,18 +332,6 @@ defineShortcuts({
     </div>
 
     <div class="grid min-h-0 flex-1 grid-cols-1" :class="workspaceColumns">
-      <aside class="hidden min-h-0 border-r border-muted bg-default xl:flex xl:flex-col" aria-label="Block library">
-        <template v-if="paletteCollapsed">
-          <UButton aria-label="Expand block library" icon="i-lucide-panel-left-open" color="neutral" variant="ghost" class="m-2" @click="paletteCollapsed = false;" />
-        </template>
-        <template v-else>
-          <div class="flex justify-end border-b border-muted p-1">
-            <UButton aria-label="Collapse block library" icon="i-lucide-panel-left-close" color="neutral" variant="ghost" size="xs" @click="paletteCollapsed = true;" />
-          </div>
-          <PageBlockPalette class="min-h-0 flex-1" :editable="isEditing" @insert="insertPaletteItem" @dragstart="startPaletteDrag" />
-        </template>
-      </aside>
-
       <main class="min-h-0 min-w-0 overflow-auto p-3 sm:p-5" aria-label="Page canvas">
         <div
           ref="canvasRef"
@@ -318,8 +355,46 @@ defineShortcuts({
               class="min-h-full w-full rounded-md border border-muted bg-default shadow-sm"
               :ui="{ base: 'min-h-[calc(100dvh-12rem)] px-4 py-4 sm:px-6' }"
             >
-              <UEditorToolbar v-if="isEditing" :editor="editor" :items="toolbarItems" class="sticky top-0 z-10 border-b border-muted bg-default/95 backdrop-blur" />
-              <UEditorDragHandle v-if="isEditing" :editor="editor" class="hidden sm:inline-flex" />
+              <UEditorToolbar
+                v-if="isEditing"
+                :editor="editor"
+                :items="editorProfile.toolbarGroups"
+                class="sticky top-0 z-10 flex-wrap border-b border-muted bg-default/95 backdrop-blur"
+              >
+                <template #link>
+                  <RichEditorLinkPopover :editor="editor" auto-open />
+                </template>
+              </UEditorToolbar>
+
+              <UEditorDragHandle
+                v-if="isEditing"
+                v-slot="{ ui }"
+                :editor="editor"
+                :nested-options="dragHandleNestedOptions"
+                :plugin-key="editorProfile.pluginKeys.dragHandle"
+                class="inline-flex"
+                @node-change="onDragNodeChange"
+              >
+                <UDropdownMenu
+                  v-slot="{ open }"
+                  :modal="false"
+                  :items="getDragHandleItems(editor)"
+                  :content="{ side: 'left' }"
+                  :ui="{ content: 'w-48', label: 'text-xs' }"
+                  @update:open="setDragMenuOpen(editor, $event)"
+                >
+                  <UButton
+                    color="neutral"
+                    variant="ghost"
+                    active-variant="soft"
+                    size="sm"
+                    icon="i-lucide-grip-vertical"
+                    :active="open"
+                    :class="ui.handle()"
+                    aria-label="Block actions"
+                  />
+                </UDropdownMenu>
+              </UEditorDragHandle>
             </UEditor>
           </div>
           <PageDocumentRenderer
@@ -330,41 +405,106 @@ defineShortcuts({
         </div>
       </main>
 
-      <aside class="hidden min-h-0 border-l border-muted bg-default xl:flex xl:flex-col" aria-label="Block inspector">
-        <template v-if="inspectorCollapsed">
-          <UButton aria-label="Expand inspector" icon="i-lucide-panel-right-open" color="neutral" variant="ghost" class="m-2" @click="inspectorCollapsed = false;" />
+      <aside v-if="isEditMode" class="hidden min-h-0 border-l border-muted bg-default xl:flex xl:flex-col" aria-label="Page editor panel">
+        <template v-if="panelCollapsed">
+          <UButton aria-label="Expand page editor panel" icon="i-lucide-panel-right-open" color="neutral" variant="ghost" class="m-2" @click="panelCollapsed = false;" />
         </template>
         <template v-else>
-          <div class="flex justify-start border-b border-muted p-1">
-            <UButton aria-label="Collapse inspector" icon="i-lucide-panel-right-close" color="neutral" variant="ghost" size="xs" @click="inspectorCollapsed = true;" />
-          </div>
-          <PageBlockInspector
-            class="min-h-0 flex-1"
-            :attrs="selectedBlock"
-            :fields="activeFields"
-            :label="activeComponent?.label"
-            :editable="isEditing"
-            @update="updateSelectedBlock"
-          />
+          <UTabs
+            v-model="activePanel"
+            :items="panelTabs"
+            class="flex h-full min-h-0 flex-1 flex-col"
+            :ui="{
+              root: 'gap-0',
+              list: 'shrink-0 rounded-none border-b border-muted',
+              content: 'min-h-0 flex-1 overflow-hidden rounded-none p-0'
+            }"
+          >
+            <template #list-trailing>
+              <UButton aria-label="Collapse page editor panel" icon="i-lucide-panel-right-close" color="neutral" variant="ghost" size="xs" @click="panelCollapsed = true;" />
+            </template>
+            <template #library>
+              <PageBlockPalette class="h-full min-h-0" :editable="isEditing" @insert="insertPaletteItem" @dragstart="startPaletteDrag" />
+            </template>
+            <template #inspector>
+              <div class="flex h-full min-h-0 flex-col">
+                <div v-if="selectedBlock" class="shrink-0 border-b border-muted px-2 py-1">
+                  <UButton label="Page properties" icon="i-lucide-file-cog" color="neutral" variant="link" size="sm" @click="showPageProperties" />
+                </div>
+                <PageBlockInspector
+                  v-if="selectedBlock"
+                  class="min-h-0 flex-1"
+                  :attrs="selectedBlock"
+                  :fields="activeFields"
+                  :label="activeComponent?.label"
+                  :editable="isEditing"
+                  @update="updateSelectedBlock"
+                />
+                <PagePropertiesInspector
+                  v-else
+                  v-model:page-title="pageTitle"
+                  v-model:public-path="publicPath"
+                  v-model:seo-title="seoTitle"
+                  v-model:seo-description="seoDescription"
+                  v-model:seo-image-asset-id="seoImageAssetId"
+                  v-model:structured-data-type="structuredDataType"
+                  class="min-h-0 flex-1"
+                  :disabled="!editable"
+                  :description="pageDescription"
+                  :validation-message="pageValidationMessage"
+                />
+              </div>
+            </template>
+          </UTabs>
         </template>
       </aside>
     </div>
 
-    <USlideover v-model:open="mobilePaletteOpen" title="Block library" side="left" :ui="{ body: 'p-0 sm:p-0 min-h-0' }">
+    <USlideover v-if="isEditMode" v-model:open="mobilePanelOpen" title="Page editor" side="right" :ui="{ body: 'p-0 sm:p-0 min-h-0' }">
       <template #body>
-        <PageBlockPalette class="h-full min-h-0" :editable="isEditing" @insert="insertPaletteItem" @dragstart="startPaletteDrag" />
-      </template>
-    </USlideover>
-    <USlideover v-model:open="mobileInspectorOpen" title="Block inspector" side="right" :ui="{ body: 'p-0 sm:p-0 min-h-0' }">
-      <template #body>
-        <PageBlockInspector
-          class="h-full min-h-0"
-          :attrs="selectedBlock"
-          :fields="activeFields"
-          :label="activeComponent?.label"
-          :editable="isEditing"
-          @update="updateSelectedBlock"
-        />
+        <UTabs
+          v-model="activePanel"
+          :items="panelTabs"
+          class="flex h-full min-h-0 flex-col"
+          :ui="{
+            root: 'gap-0',
+            list: 'shrink-0 rounded-none border-b border-muted',
+            content: 'min-h-0 flex-1 overflow-hidden rounded-none p-0'
+          }"
+        >
+          <template #library>
+            <PageBlockPalette class="h-full min-h-0" :editable="isEditing" @insert="insertPaletteItem" @dragstart="startPaletteDrag" />
+          </template>
+          <template #inspector>
+            <div class="flex h-full min-h-0 flex-col">
+              <div v-if="selectedBlock" class="shrink-0 border-b border-muted px-2 py-1">
+                <UButton label="Page properties" icon="i-lucide-file-cog" color="neutral" variant="link" size="sm" @click="showPageProperties" />
+              </div>
+              <PageBlockInspector
+                v-if="selectedBlock"
+                class="min-h-0 flex-1"
+                :attrs="selectedBlock"
+                :fields="activeFields"
+                :label="activeComponent?.label"
+                :editable="isEditing"
+                @update="updateSelectedBlock"
+              />
+              <PagePropertiesInspector
+                v-else
+                v-model:page-title="pageTitle"
+                v-model:public-path="publicPath"
+                v-model:seo-title="seoTitle"
+                v-model:seo-description="seoDescription"
+                v-model:seo-image-asset-id="seoImageAssetId"
+                v-model:structured-data-type="structuredDataType"
+                class="min-h-0 flex-1"
+                :disabled="!editable"
+                :description="pageDescription"
+                :validation-message="pageValidationMessage"
+              />
+            </div>
+          </template>
+        </UTabs>
       </template>
     </USlideover>
   </div>

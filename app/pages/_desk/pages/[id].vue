@@ -356,7 +356,7 @@ const actionMenuItems = computed<DropdownMenuItem[][]>(() => {
 
     <template #body>
       <div class="flex h-full min-h-0 flex-col">
-        <div class="space-y-2 border-b border-muted bg-default px-4 py-3">
+        <div v-if="conflictDetails || isDeleted" class="space-y-2 border-b border-muted bg-default px-4 py-3">
           <UAlert
             v-if="conflictDetails"
             title="A newer revision is available"
@@ -380,28 +380,21 @@ const actionMenuItems = computed<DropdownMenuItem[][]>(() => {
             variant="subtle"
           />
 
-          <UFormField label="Title">
-            <UInput v-model="state.title" placeholder="Page title" class="w-full" :disabled="isDeleted" />
-          </UFormField>
-          <p class="text-xs text-muted">Update the page, then save a draft or publish.</p>
-          <p v-if="publishValidationIssues[0]" class="text-sm text-error">
-            {{ publishValidationIssues[0].message }}
-          </p>
         </div>
 
-        <div class="border-b border-muted bg-default p-4">
-          <CmsPublicMetadataFields
-            v-model:public-path="state.publicPath"
-            v-model:title="state.seoTitle"
-            v-model:description="state.seoDescription"
-            v-model:image-asset-id="state.seoImageAssetId"
-            v-model:structured-data-type="state.structuredDataType"
-            show-path
-            :disabled="isDeleted"
-          />
-        </div>
-
-        <PageEditor v-model="state.content" :editable="!isDeleted" class="min-h-0 flex-1" />
+        <PageEditor
+          v-model="state.content"
+          v-model:page-title="state.title"
+          v-model:public-path="state.publicPath"
+          v-model:seo-title="state.seoTitle"
+          v-model:seo-description="state.seoDescription"
+          v-model:seo-image-asset-id="state.seoImageAssetId"
+          v-model:structured-data-type="state.structuredDataType"
+          :editable="!isDeleted"
+          page-description="Update the page, then save a draft or publish."
+          :page-validation-message="publishValidationIssues[0]?.message"
+          class="min-h-0 flex-1"
+        />
       </div>
 
       <CmsRevisionHistorySlideover
