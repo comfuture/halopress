@@ -334,15 +334,19 @@ function selectPortableKeys(
   return selected
 }
 
-function normalizedBlockInput(attrs: StoredPageBlockAttrs, tolerateLegacyIcons: boolean) {
-  const key = typeof attrs.component === 'string' ? attrs.component : ''
+function normalizedBlockInput(attrs: unknown, tolerateLegacyIcons: boolean) {
+  if (!attrs || typeof attrs !== 'object' || Array.isArray(attrs)) {
+    return { status: 'unknown', key: '', reason: 'Unsupported page block' }
+  }
+  const blockAttrs = attrs as StoredPageBlockAttrs
+  const key = typeof blockAttrs.component === 'string' ? blockAttrs.component : ''
   if (!isPageBlockComponentKey(key)) {
     return { status: 'unknown', key, reason: 'Unsupported page block' }
   }
 
   const definition = definitions[key]
-  const rawProps = attrs.props && typeof attrs.props === 'object' && !Array.isArray(attrs.props)
-    ? attrs.props as Record<string, unknown>
+  const rawProps = blockAttrs.props && typeof blockAttrs.props === 'object' && !Array.isArray(blockAttrs.props)
+    ? blockAttrs.props as Record<string, unknown>
     : {}
   const boundedCollections = [rawProps.links, rawProps.items]
   if (key === 'pageSection') boundedCollections.push(rawProps.features)
@@ -352,8 +356,8 @@ function normalizedBlockInput(attrs: StoredPageBlockAttrs, tolerateLegacyIcons: 
 
   const props = tolerateLegacyIcons ? normalizeLegacyProps(rawProps) : rawProps
   const parsedProps = definition.propsSchema.safeParse({ ...definition.defaultProps, ...props })
-  const rawMedia = attrs.media && typeof attrs.media === 'object' && !Array.isArray(attrs.media)
-    ? attrs.media as Record<string, unknown>
+  const rawMedia = blockAttrs.media && typeof blockAttrs.media === 'object' && !Array.isArray(blockAttrs.media)
+    ? blockAttrs.media as Record<string, unknown>
     : {}
   const parsedMedia = media.safeParse(
     tolerateLegacyIcons ? selectPortableKeys(rawMedia, portableMediaKeys) : rawMedia
@@ -397,11 +401,11 @@ function normalizeLegacyProps(rawProps: Record<string, unknown>) {
   return props
 }
 
-export function resolvePageBlock(attrs: StoredPageBlockAttrs): ResolvedPageBlock {
+export function resolvePageBlock(attrs: unknown): ResolvedPageBlock {
   return normalizedBlockInput(attrs, false) as ResolvedPageBlock
 }
 
-export function resolvePageBlockForDelivery(attrs: StoredPageBlockAttrs): ResolvedPageBlock {
+export function resolvePageBlockForDelivery(attrs: unknown): ResolvedPageBlock {
   return normalizedBlockInput(attrs, true) as ResolvedPageBlock
 }
 
