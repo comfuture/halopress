@@ -465,6 +465,42 @@ describe('dynamic Menu D1 execution gate', () => {
     expect(maxActive).toBe(4)
     expect(active).toBe(0)
   })
+
+  it('removes a timed-out queued query without leaking gate capacity', async () => {
+    const { createSiteMenuD1Gate, withSourceTimeout } = await import('../server/utils/site-menu-sources')
+    const gate = createSiteMenuD1Gate(1)
+    let releaseBlocker!: () => void
+    let markBlockerStarted!: () => void
+    const blockerStarted = new Promise<void>((resolve) => {
+      markBlockerStarted = resolve
+    })
+    const blockerReleased = new Promise<void>((resolve) => {
+      releaseBlocker = resolve
+    })
+    const blocker = gate.run(async () => {
+      markBlockerStarted()
+      await blockerReleased
+    })
+    await blockerStarted
+
+    let queuedQueryRan = false
+    await expect(withSourceTimeout(
+      async signal => await gate.run(async () => {
+        queuedQueryRan = true
+      }, signal),
+      10
+    )).rejects.toThrow('Dynamic source exceeded its execution budget')
+
+    releaseBlocker()
+    await blocker
+    expect(queuedQueryRan).toBe(false)
+
+    let followupRan = false
+    await gate.run(async () => {
+      followupRan = true
+    })
+    expect(followupRan).toBe(true)
+  })
 })
 
 describe('public dynamic Site menu resolution', () => {

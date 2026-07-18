@@ -29,6 +29,7 @@ import {
   shouldApplySiteMenuCreateNavigation,
   shouldEmitDeferredSiteMenuCreation,
   siteMenuIconFromEditorValue,
+  siteMenuTypedFilterValue,
   siteMenuAuthoredItemLabel,
   siteMenuDestinationSummary,
   siteMenuItemIdForValidationPath,
@@ -37,9 +38,27 @@ import {
   siteMenuValidationIssuesFromFetchError,
   validationMessageForPath
 } from '../app/utils/site-menu-editor'
-import { SITE_MENU_ICONS, type SiteMenuItem } from '../shared/site-menu'
+import {
+  SITE_MENU_ICONS,
+  siteMenuFilterValueSchema,
+  type SiteMenuItem,
+  type SiteMenuSourceFieldOption
+} from '../shared/site-menu'
 
 describe('Site menu rendered editor behavior', () => {
+  it('keeps cleared numeric filters blank and coerces valid numeric input', () => {
+    const numberField = { kind: 'number' } as SiteMenuSourceFieldOption
+    const integerField = { kind: 'integer' } as SiteMenuSourceFieldOption
+
+    const blank = siteMenuTypedFilterValue(numberField, '')
+    expect(blank).toBe('')
+    expect(siteMenuTypedFilterValue(integerField, '   ')).toBe('')
+    expect(siteMenuFilterValueSchema.safeParse(blank).success).toBe(false)
+    expect(siteMenuTypedFilterValue(numberField, '0')).toBe(0)
+    expect(siteMenuTypedFilterValue(numberField, '12.5')).toBe(12.5)
+    expect(siteMenuTypedFilterValue(integerField, '7')).toBe(7)
+  })
+
   it('commits detached parent and child modal drafts once by stable identity', () => {
     const items = [{
       id: 'parent-a',

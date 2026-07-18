@@ -8,6 +8,7 @@ import {
   type SiteMenuChild,
   type SiteMenuDynamicItem,
   type SiteMenuItem,
+  type SiteMenuSourceFieldOption,
   type SiteMenuSourceOptionsResponse,
   type SiteMenuUsage,
   type SiteMenuValidationIssue
@@ -17,6 +18,25 @@ export const SITE_MENU_NO_ICON_VALUE = '__none__'
 
 export function siteMenuIconFromEditorValue(value: string): typeof SITE_MENU_ICONS[number] | undefined {
   return SITE_MENU_ICONS.find(icon => icon === value)
+}
+
+export function siteMenuTypedFilterValue(
+  field: SiteMenuSourceFieldOption | undefined,
+  value: unknown
+) {
+  if (field?.kind === 'boolean') {
+    if (value === true || value === 'true') return true
+    if (value === false || value === 'false') return false
+  }
+  if ((field?.kind === 'number' || field?.kind === 'integer')
+    && (typeof value === 'string' || typeof value === 'number')) {
+    if (typeof value === 'string' && value.trim() === '') return ''
+    const number = Number(value)
+    if (Number.isFinite(number)) return number
+  }
+  return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
+    ? value
+    : ''
 }
 
 export function shouldInitializeSiteMenuSelection(
