@@ -1,4 +1,4 @@
-import { and, eq, gt, isNull, lte, ne, or, sql } from 'drizzle-orm'
+import { and, eq, exists, gt, isNull, lte, ne, or, sql } from 'drizzle-orm'
 import type { H3Event } from 'h3'
 import { compileSchemaAst } from '../cms/compiler'
 import { parseContentJson } from '../cms/content-json'
@@ -15,6 +15,7 @@ import {
   schema,
   schemaActive,
   schemaRole,
+  siteMenuSet,
   user,
   userRole
 } from '../db/schema'
@@ -498,13 +499,16 @@ export async function completeInstallation(
   event?: H3Event,
   now = new Date()
 ) {
-  // New installations establish the stable Global resource before becoming
-  // ready. Upgrades still use the same bootstrap-owned reconciliation lazily,
-  // so migration 0008 never captures an old Worker's stale legacy snapshot.
-  await ensureGlobalSiteMenu(event ?? ({} as H3Event), db)
-  const completed = await db
-    .update(installation)
-    .set({
+  const transactionEvent = event ?? ({ context: {} } as H3Event)
+  await ensureGlobalSiteMenu(transactionEvent, db, { repairReference: true })
+
+  // Migration 0001 marks legacy databases with users/roles complete, so this
+  // browser-setup completion path is fresh-install-only (including retries).
+  // Complete the installation and transfer Global to the named-menu owner in
+  // one transaction/batch. Rolling upgrades remain bootstrap-owned and keep
+  // reconciling old-Worker writes until their first named-menu save.
+  await withDbTransaction(transactionEvent, db, async (tx, statements) => {
+    await executeDbStatement(tx.update(installation).set({
       state: 'complete',
       owner,
       setupSessionHash: null,
@@ -514,17 +518,47 @@ export async function completeInstallation(
       completedAt: now,
       updatedAt: now,
       lastError: null
-    })
-    .where(and(
+    }).where(and(
       eq(installation.key, INSTALLATION_KEY),
       eq(installation.leaseToken, leaseToken),
-      eq(installation.state, 'installing')
-    ))
-    .returning({ key: installation.key })
+      eq(installation.state, 'installing'),
+      exists(tx.select({ id: siteMenuSet.id }).from(siteMenuSet)
+        .where(eq(siteMenuSet.id, 'global-navigation')))
+    )), statements)
 
-  if (!completed?.length) {
+    await executeDbStatement(tx.update(siteMenuSet).set({
+      bootstrapOwned: false,
+      bootstrapSourceUpdatedAt: null,
+      updatedBy: owner,
+      updatedAt: now
+    }).where(and(
+      eq(siteMenuSet.id, 'global-navigation'),
+      exists(tx.select({ key: installation.key }).from(installation).where(and(
+        eq(installation.key, INSTALLATION_KEY),
+        eq(installation.state, 'complete'),
+        eq(installation.owner, owner),
+        eq(installation.completedAt, now)
+      )))
+    )), statements)
+  })
+
+  const completed = await db.select({
+    state: installation.state,
+    owner: installation.owner,
+    completedAt: installation.completedAt
+  }).from(installation).where(eq(installation.key, INSTALLATION_KEY)).get()
+  if (completed?.state !== 'complete'
+    || completed.owner !== owner
+    // Drizzle's SQLite timestamp mode persists seconds, while callers can
+    // provide millisecond-precision Dates. Compare at the stored precision so
+    // a successful conditional completion is accepted without letting a later
+    // stale lease reuse an older completion row.
+    || Math.floor((completed.completedAt?.getTime() ?? 0) / 1000) !== Math.floor(now.getTime() / 1000)) {
     throw new Error('Installation lease is no longer owned by this request')
   }
+  const globalMenu = await db.select({ bootstrapOwned: siteMenuSet.bootstrapOwned })
+    .from(siteMenuSet).where(eq(siteMenuSet.id, 'global-navigation')).get()
+  if (!globalMenu || globalMenu.bootstrapOwned) throw new Error('Global navigation ownership was not finalized')
 }
 
 export async function ensureBootstrapSchema(db: any, createdBy: string, event?: H3Event) {

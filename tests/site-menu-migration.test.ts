@@ -39,6 +39,28 @@ describe('site menu migration', () => {
     }
   })
 
+  it('uniquely indexes the application-derived Unicode name key', async () => {
+    const sqlite = await databaseBeforeSiteMenus()
+    try {
+      sqlite.exec(await migrationSql(8))
+      const emptyDocument = JSON.stringify({ version: 1, items: [] })
+      sqlite.prepare(`
+        INSERT INTO site_menu_set
+          (id, name, name_key, document_json, created_at, updated_at)
+        VALUES (?, ?, ?, ?, 1, 1)
+      `).run('uppercase-menu', 'Älpha', 'älpha', emptyDocument)
+
+      expect(() => sqlite.prepare(`
+        INSERT INTO site_menu_set
+          (id, name, name_key, document_json, created_at, updated_at)
+        VALUES (?, ?, ?, ?, 1, 1)
+      `).run('lowercase-menu', 'älpha', 'älpha', emptyDocument))
+        .toThrow(/UNIQUE constraint failed: site_menu_set\.name_key/)
+    } finally {
+      sqlite.close()
+    }
+  })
+
   it('enforces normalized menu references with an ON DELETE RESTRICT foreign key', async () => {
     const sqlite = await databaseBeforeSiteMenus()
     try {
@@ -46,9 +68,9 @@ describe('site menu migration', () => {
       sqlite.exec('PRAGMA foreign_keys = ON')
       sqlite.prepare(`
         INSERT INTO site_menu_set
-          (id, name, document_json, created_by, updated_by, created_at, updated_at)
-        VALUES (?, ?, ?, NULL, NULL, 1, 1)
-      `).run('referenced-menu', 'Referenced', JSON.stringify({ version: 1, items: [] }))
+          (id, name, name_key, document_json, created_by, updated_by, created_at, updated_at)
+        VALUES (?, ?, ?, ?, NULL, NULL, 1, 1)
+      `).run('referenced-menu', 'Referenced', 'referenced', JSON.stringify({ version: 1, items: [] }))
       sqlite.prepare(`
         INSERT INTO site_menu_reference
           (owner_type, owner_id, slot, menu_set_id, label, created_at, updated_at)

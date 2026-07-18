@@ -1,11 +1,11 @@
-import { computed, ref } from 'vue'
+import { computed, ref, shallowRef } from 'vue'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 type AsyncDataStatus = 'idle' | 'pending' | 'success' | 'error'
 
 function createNuxtLikeAsyncData<T>() {
   const state = {
-    data: ref<T>(),
+    data: shallowRef<T>(),
     pending: ref(true),
     status: ref<AsyncDataStatus>('pending'),
     error: ref<unknown>(),
@@ -134,5 +134,104 @@ describe('Site reactive composables', () => {
       saveMenu: expect.any(Function),
       deleteMenu: expect.any(Function)
     })
+  })
+
+  it('invalidates shallow AsyncData consumers after every Site menu mutation', async () => {
+    const initialMenu = {
+      id: 'global-navigation',
+      name: 'Global navigation',
+      document: { version: 1 as const, items: [] },
+      malformedStoredValue: false,
+      createdBy: 'admin-1',
+      updatedBy: 'admin-1',
+      createdAt: '2026-07-18T00:00:00.000Z',
+      updatedAt: '2026-07-18T00:00:00.000Z',
+      usage: [{ resourceType: 'public-site-shell' as const, resourceId: 'default', label: 'Public site shell' }],
+      canDelete: false
+    }
+    const createdMenu = {
+      ...initialMenu,
+      id: 'footer-links',
+      name: 'Footer links',
+      usage: [],
+      canDelete: true
+    }
+    const renamedMenu = {
+      ...createdMenu,
+      name: 'Company links',
+      document: {
+        version: 1 as const,
+        items: [{
+          id: 'about',
+          value: 'about',
+          label: 'About',
+          destination: { type: 'url' as const, url: '/about' },
+          children: []
+        }]
+      }
+    }
+    const conflictUsage = [{ resourceType: 'site-layout' as const, resourceId: 'layout-1', label: 'Marketing layout' }]
+    const initialResponse = {
+      defaultMenuId: 'global-navigation',
+      items: [initialMenu]
+    }
+    const { state, promise } = createNuxtLikeAsyncData<typeof initialResponse>()
+    state.data.value = initialResponse
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(createdMenu)
+      .mockResolvedValueOnce(renamedMenu)
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce({ data: { usage: conflictUsage } })
+    vi.stubGlobal('ref', ref)
+    vi.stubGlobal('useFetch', vi.fn(() => promise))
+    vi.stubGlobal('$fetch', fetch)
+    vi.stubGlobal('refreshNuxtData', vi.fn(async () => {}))
+    vi.stubGlobal('siteMenuUsageFromFetchError', (error: { data?: { usage?: unknown } }) => error.data?.usage ?? null)
+
+    const { useSiteMenus } = await import('../app/composables/useSiteMenus')
+    const editor = useSiteMenus()
+    const summaries = computed(() => editor.data.value?.items.map(menu => (
+      `${menu.name}:${menu.document.items.length}:${menu.canDelete}:${menu.usage.map(usage => usage.label).join(',')}`
+    )))
+    const responseSnapshots: unknown[] = []
+
+    responseSnapshots.push(editor.data.value)
+    expect(summaries.value).toEqual(['Global navigation:0:false:Public site shell'])
+
+    await editor.createMenu('Footer links')
+    responseSnapshots.push(editor.data.value)
+    expect(summaries.value).toEqual([
+      'Global navigation:0:false:Public site shell',
+      'Footer links:0:true:'
+    ])
+
+    await editor.saveMenu('footer-links', {
+      name: renamedMenu.name,
+      document: renamedMenu.document
+    })
+    responseSnapshots.push(editor.data.value)
+    expect(summaries.value).toEqual([
+      'Global navigation:0:false:Public site shell',
+      'Company links:1:true:'
+    ])
+
+    await editor.deleteMenu('footer-links')
+    responseSnapshots.push(editor.data.value)
+    expect(summaries.value).toEqual(['Global navigation:0:false:Public site shell'])
+
+    state.data.value = {
+      ...state.data.value,
+      items: [...state.data.value.items, renamedMenu]
+    }
+    responseSnapshots.push(editor.data.value)
+    expect(summaries.value.at(-1)).toBe('Company links:1:true:')
+
+    await expect(editor.deleteMenu('footer-links')).rejects.toEqual({ data: { usage: conflictUsage } })
+    responseSnapshots.push(editor.data.value)
+    expect(summaries.value.at(-1)).toBe('Company links:1:false:Marketing layout')
+
+    for (let index = 1; index < responseSnapshots.length; index += 1) {
+      expect(responseSnapshots[index]).not.toBe(responseSnapshots[index - 1])
+    }
   })
 })

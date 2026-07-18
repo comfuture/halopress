@@ -9,6 +9,7 @@ import {
   siteMenuCreateSchema,
   siteMenuDocumentSchema,
   siteMenuIdSchema,
+  siteMenuNameKey,
   siteMenuUpdateSchema,
   type PublicSiteMenu,
   type ResolvedSiteMenuLeaf,
@@ -179,6 +180,7 @@ async function rowToAdminResource(db: Db, row: SiteMenuRow): Promise<SiteMenuAdm
 
 type SiteMenuBootstrapOptions = {
   afterLegacyRead?: () => Promise<void>
+  repairReference?: boolean
 }
 
 async function legacyBootstrapSeed(db: Db, options: SiteMenuBootstrapOptions = {}) {
@@ -221,6 +223,113 @@ function bootstrapSourceMatches(row: SiteMenuRow, seed: Awaited<ReturnType<typeo
     && row.documentJson === JSON.stringify(seed.document)
 }
 
+type SiteMenuNameRow = Pick<SiteMenuRow, 'id' | 'name' | 'nameKey'>
+
+const NAME_CONFLICT_KEY_PREFIX = 'halopress:reserved:site-menu-name-conflict:'
+const NAME_REPAIR_KEY_PREFIX = 'halopress:reserved:site-menu-name-repair:'
+
+function allocateReservedNameKey(prefix: string, id: string, unavailable: Set<string>) {
+  let candidate = `${prefix}${id}`
+  while (unavailable.has(candidate)) candidate += ':'
+  unavailable.add(candidate)
+  return candidate
+}
+
+function siteMenuNameKeyTargets(rows: SiteMenuNameRow[]) {
+  const groups = new Map<string, SiteMenuNameRow[]>()
+  for (const row of rows) {
+    const key = siteMenuNameKey(row.name)
+    const group = groups.get(key) ?? []
+    group.push(row)
+    groups.set(key, group)
+  }
+
+  // Keep every normalized display-name key unavailable to the reserved
+  // namespace, including duplicate groups whose canonical key remains vacant.
+  const unavailable = new Set(groups.keys())
+  const targets = new Map<string, string>()
+  for (const [key, group] of groups) {
+    if (group.length === 1) {
+      targets.set(group[0]!.id, key)
+      continue
+    }
+    for (const row of group) {
+      targets.set(row.id, allocateReservedNameKey(NAME_CONFLICT_KEY_PREFIX, row.id, unavailable))
+    }
+  }
+  return targets
+}
+
+async function readSiteMenuNameRows(db: Db): Promise<SiteMenuNameRow[]> {
+  return await db.select({
+    id: siteMenuSetTable.id,
+    name: siteMenuSetTable.name,
+    nameKey: siteMenuSetTable.nameKey
+  }).from(siteMenuSetTable).orderBy(asc(siteMenuSetTable.id))
+}
+
+async function repairSiteMenuNameKeys(event: H3Event, db: Db) {
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const rows = await readSiteMenuNameRows(db)
+    const targets = siteMenuNameKeyTargets(rows)
+    const changes = rows.filter(row => row.nameKey !== targets.get(row.id))
+    if (!changes.length) return
+
+    const unavailable = new Set([
+      ...rows.map(row => row.nameKey),
+      ...targets.values()
+    ])
+    const temporaryKeys = new Map(changes.map(row => [
+      row.id,
+      allocateReservedNameKey(NAME_REPAIR_KEY_PREFIX, row.id, unavailable)
+    ]))
+
+    await withDbTransaction(event, db, async (tx, statements) => {
+      for (const row of changes) {
+        await executeDbStatement(tx.update(siteMenuSetTable).set({
+          nameKey: temporaryKeys.get(row.id)!
+        }).where(and(
+          eq(siteMenuSetTable.id, row.id),
+          eq(siteMenuSetTable.nameKey, row.nameKey)
+        )), statements)
+      }
+      for (const row of changes) {
+        await executeDbStatement(tx.update(siteMenuSetTable).set({
+          nameKey: targets.get(row.id)!
+        }).where(and(
+          eq(siteMenuSetTable.id, row.id),
+          eq(siteMenuSetTable.nameKey, temporaryKeys.get(row.id)!)
+        )), statements)
+      }
+    })
+
+    const verified = await readSiteMenuNameRows(db)
+    const verifiedTargets = siteMenuNameKeyTargets(verified)
+    if (verified.every(row => row.nameKey === verifiedTargets.get(row.id))) return
+  }
+  throw new Error('Menu name storage changed repeatedly while repairing normalized keys')
+}
+
+async function assertSiteMenuNameAvailable(db: Db, name: string, excludedId?: string) {
+  const candidate = siteMenuNameKey(name)
+  const rows = await db.select({ id: siteMenuSetTable.id, name: siteMenuSetTable.name })
+    .from(siteMenuSetTable)
+  if (rows.some((row: { id: string, name: string }) => (
+    row.id !== excludedId && siteMenuNameKey(row.name) === candidate
+  ))) {
+    throw new SiteMenuNameConflictError()
+  }
+}
+
+async function ensurePublicSiteMenuReference(db: Db, now: Date) {
+  await db.insert(siteMenuReferenceTable).values({
+    ...PUBLIC_SITE_REFERENCE,
+    menuSetId: GLOBAL_SITE_MENU_ID,
+    createdAt: now,
+    updatedAt: now
+  }).onConflictDoNothing()
+}
+
 /**
  * Reconciles old-Worker navigation writes until the first named-menu save.
  * bootstrapOwned is cleared in that same checked menu UPDATE, making the editor
@@ -234,8 +343,14 @@ export async function ensureGlobalSiteMenu(
   for (let attempt = 0; attempt < 8; attempt++) {
     const existing = await db.select().from(siteMenuSetTable)
       .where(eq(siteMenuSetTable.id, GLOBAL_SITE_MENU_ID)).get() as SiteMenuRow | undefined
-    const seed = await legacyBootstrapSeed(db, options)
     const now = new Date()
+
+    if (existing && !existing.bootstrapOwned) {
+      if (options.repairReference) await ensurePublicSiteMenuReference(db, now)
+      return existing
+    }
+
+    const seed = await legacyBootstrapSeed(db, options)
 
     if (!existing) {
       const sourceUpdatedAt = seed.sourceUpdatedAt
@@ -243,6 +358,7 @@ export async function ensureGlobalSiteMenu(
         await executeDbStatement(tx.insert(siteMenuSetTable).values({
           id: GLOBAL_SITE_MENU_ID,
           name: GLOBAL_SITE_MENU_NAME,
+          nameKey: siteMenuNameKey(GLOBAL_SITE_MENU_NAME),
           documentJson: JSON.stringify(seed.document),
           bootstrapOwned: true,
           bootstrapSourceUpdatedAt: sourceUpdatedAt,
@@ -261,14 +377,7 @@ export async function ensureGlobalSiteMenu(
       continue
     }
 
-    await db.insert(siteMenuReferenceTable).values({
-      ...PUBLIC_SITE_REFERENCE,
-      menuSetId: GLOBAL_SITE_MENU_ID,
-      createdAt: now,
-      updatedAt: now
-    }).onConflictDoNothing()
-
-    if (!existing.bootstrapOwned) return existing
+    await ensurePublicSiteMenuReference(db, now)
 
     if (bootstrapSourceMatches(existing, seed)) {
       // A second source read closes the old-writer interleaving between the
@@ -300,6 +409,7 @@ export async function ensureGlobalSiteMenu(
     }
     await db.update(siteMenuSetTable).set({
       name: GLOBAL_SITE_MENU_NAME,
+      nameKey: siteMenuNameKey(GLOBAL_SITE_MENU_NAME),
       documentJson: JSON.stringify(seed.document),
       bootstrapSourceUpdatedAt: seed.sourceUpdatedAt,
       updatedBy: seed.actorId,
@@ -321,9 +431,10 @@ export async function ensureGlobalSiteMenu(
 export async function listSiteMenus(event: H3Event): Promise<SiteMenuListResponse> {
   const db = await getDb(event)
   try {
-    await ensureGlobalSiteMenu(event, db)
+    await ensureGlobalSiteMenu(event, db, { repairReference: true })
+    await repairSiteMenuNameKeys(event, db)
     const rows = await db.select().from(siteMenuSetTable)
-      .orderBy(asc(sql`lower(${siteMenuSetTable.name})`))
+      .orderBy(asc(siteMenuSetTable.nameKey))
     return {
       defaultMenuId: GLOBAL_SITE_MENU_ID,
       items: await Promise.all(rows.map((row: SiteMenuRow) => rowToAdminResource(db, row)))
@@ -346,7 +457,9 @@ export async function createSiteMenu(
 
   const db = await getDb(event)
   try {
-    await ensureGlobalSiteMenu(event, db)
+    await ensureGlobalSiteMenu(event, db, { repairReference: true })
+    await repairSiteMenuNameKeys(event, db)
+    await assertSiteMenuNameAvailable(db, parsed.data.name)
   } catch (error) {
     if (isMissingSiteMenuTableError(error)) throw new SiteMenuStorageUnavailableError()
     throw error
@@ -355,6 +468,7 @@ export async function createSiteMenu(
   const row = {
     id: newId(),
     name: parsed.data.name,
+    nameKey: siteMenuNameKey(parsed.data.name),
     documentJson: JSON.stringify(defaultSiteMenuDocument()),
     bootstrapOwned: false,
     bootstrapSourceUpdatedAt: null,
@@ -391,7 +505,8 @@ export async function updateSiteMenu(
   const db = await getDb(event)
   let existing: SiteMenuRow | undefined
   try {
-    await ensureGlobalSiteMenu(event, db)
+    await ensureGlobalSiteMenu(event, db, { repairReference: true })
+    await repairSiteMenuNameKeys(event, db)
     existing = await db.select().from(siteMenuSetTable)
       .where(eq(siteMenuSetTable.id, menuId.data)).get()
   } catch (error) {
@@ -399,10 +514,12 @@ export async function updateSiteMenu(
     throw error
   }
   if (!existing) throw new SiteMenuNotFoundError()
+  await assertSiteMenuNameAvailable(db, parsed.data.name, menuId.data)
 
   const next: SiteMenuRow = {
     ...existing,
     name: parsed.data.name,
+    nameKey: siteMenuNameKey(parsed.data.name),
     documentJson: JSON.stringify(parsed.data.document),
     bootstrapOwned: false,
     bootstrapSourceUpdatedAt: null,
@@ -413,6 +530,7 @@ export async function updateSiteMenu(
     // A whole-document update keeps reorder, field edits, and rename atomic.
     const updated = await db.update(siteMenuSetTable).set({
       name: next.name,
+      nameKey: next.nameKey,
       documentJson: next.documentJson,
       bootstrapOwned: false,
       bootstrapSourceUpdatedAt: null,
@@ -434,7 +552,7 @@ export async function deleteSiteMenu(event: H3Event, menuIdInput: unknown) {
   const db = await getDb(event)
   let existing: SiteMenuRow | undefined
   try {
-    await ensureGlobalSiteMenu(event, db)
+    await ensureGlobalSiteMenu(event, db, { repairReference: true })
     existing = await db.select().from(siteMenuSetTable)
       .where(eq(siteMenuSetTable.id, menuId.data)).get()
   } catch (error) {

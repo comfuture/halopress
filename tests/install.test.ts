@@ -43,6 +43,10 @@ import {
   seedRoles
 } from '../server/utils/install'
 import { BOOTSTRAP_CONTENT_ID, BOOTSTRAP_PUBLICATION_REVISION_ID } from '../server/utils/bootstrap'
+import {
+  SitePresentationNavigationMigratedError,
+  updateSitePresentation
+} from '../server/utils/site-presentation-settings'
 import { createTestSqliteDb } from './fixtures/sqlite'
 
 const TEST_SIGNING_SECRET = 'test-signing-secret-0123456789abcdef'
@@ -170,6 +174,13 @@ describe('installation state', () => {
       expect(adminId).toBeTruthy()
       expect(await getInstallStatus(db)).toMatchObject({ ready: false, phase: 'installing' })
 
+      await expect(completeInstallation(db, 'stale-lease', `user:${adminId}`))
+        .rejects.toThrow('Installation lease is no longer owned by this request')
+      expect(await getInstallStatus(db)).toMatchObject({ ready: false, phase: 'installing' })
+      expect(await db.select().from(siteMenuSet)).toEqual([
+        expect.objectContaining({ id: 'global-navigation', bootstrapOwned: true })
+      ])
+
       await completeInstallation(db, claim!.leaseToken, `user:${adminId}`)
       expect(await getInstallStatus(db)).toMatchObject({
         ready: true,
@@ -178,7 +189,12 @@ describe('installation state', () => {
         userCount: 1
       })
       expect(await db.select().from(siteMenuSet)).toEqual([
-        expect.objectContaining({ id: 'global-navigation', bootstrapOwned: true })
+        expect.objectContaining({
+          id: 'global-navigation',
+          bootstrapOwned: false,
+          bootstrapSourceUpdatedAt: null,
+          updatedBy: `user:${adminId}`
+        })
       ])
       expect(await db.select().from(siteMenuReference)).toEqual([
         expect.objectContaining({
@@ -187,6 +203,11 @@ describe('installation state', () => {
           menuSetId: 'global-navigation'
         })
       ])
+      await expect(updateSitePresentation({} as any, {
+        navigation: { items: [] }
+      }, 'legacy-client')).rejects.toBeInstanceOf(SitePresentationNavigationMigratedError)
+      await expect(completeInstallation(db, 'stale-after-complete', `user:${adminId}`, undefined, new Date('2099-01-01T00:00:00.000Z')))
+        .rejects.toThrow('Installation lease is no longer owned by this request')
     })
   })
 

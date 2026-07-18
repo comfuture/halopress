@@ -85,6 +85,7 @@ export const settings = sqliteTable('settings', {
 export const siteMenuSet = sqliteTable('site_menu_set', {
   id: text('id').notNull(),
   name: text('name').notNull(),
+  nameKey: text('name_key').notNull(),
   documentJson: text('document_json').notNull(),
   bootstrapOwned: integer('bootstrap_owned', { mode: 'boolean' }).notNull().default(false),
   bootstrapSourceUpdatedAt: integer('bootstrap_source_updated_at', { mode: 'timestamp' }),
@@ -94,7 +95,7 @@ export const siteMenuSet = sqliteTable('site_menu_set', {
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull()
 }, t => ({
   pk: primaryKey({ columns: [t.id] }),
-  nameUnique: uniqueIndex('idx_site_menu_set_name_unique').on(sql`lower(${t.name})`),
+  nameUnique: uniqueIndex('idx_site_menu_set_name_unique').on(t.nameKey),
   byUpdatedAt: index('idx_site_menu_set_updated_at').on(t.updatedAt)
 }))
 

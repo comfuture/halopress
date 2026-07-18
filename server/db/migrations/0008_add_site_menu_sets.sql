@@ -14,6 +14,7 @@ CREATE INDEX `idx_site_menu_reference_menu` ON `site_menu_reference` (`menu_set_
 CREATE TABLE `site_menu_set` (
 	`id` text PRIMARY KEY NOT NULL,
 	`name` text NOT NULL,
+	`name_key` text NOT NULL,
 	`document_json` text NOT NULL,
 	`bootstrap_owned` integer DEFAULT false NOT NULL,
 	`bootstrap_source_updated_at` integer,
@@ -23,5 +24,5 @@ CREATE TABLE `site_menu_set` (
 	`updated_at` integer NOT NULL
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `idx_site_menu_set_name_unique` ON `site_menu_set` (lower("name"));--> statement-breakpoint
+CREATE UNIQUE INDEX `idx_site_menu_set_name_unique` ON `site_menu_set` (`name_key`);--> statement-breakpoint
 CREATE INDEX `idx_site_menu_set_updated_at` ON `site_menu_set` (`updated_at`);
