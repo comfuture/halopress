@@ -48,6 +48,10 @@ describe('Site Theme app and mode boundaries', () => {
     expect(mainCss).toContain('@media (prefers-color-scheme: dark)')
     expect(mainCss).toContain('[data-halo-color-mode="default"]')
     expect(mainCss).toContain('color-scheme: dark')
+    expect(mainCss).toContain('body.site-theme-adapter[data-halo-theme-enabled="true"] {\n  font-family: var(--halo-font-family-body)')
+    expect(mainCss).toContain('font-size: var(--halo-font-size-base)')
+    expect(mainCss).toContain('line-height: var(--halo-line-height-body)')
+    expect(mainCss).toContain('line-height: inherit')
     expect(mainCss).toContain('font-family: var(--halo-font-family-heading)')
     expect(mainCss).toContain('line-height: var(--halo-line-height-heading)')
     for (const role of ['primary', 'secondary', 'success', 'info', 'warning', 'error']) {
