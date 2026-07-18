@@ -3,6 +3,7 @@ import {
   layoutElementSchema,
   moveLayoutElement,
   serializeLayoutDocument,
+  type LayoutAdminResource,
   type LayoutDocument,
   type LayoutElement,
   type LayoutElementType,
@@ -164,6 +165,10 @@ export function allowedLayoutRegions(document: LayoutDocument, type: LayoutEleme
   return layoutElementRegistry[type].allowedRegions.filter(region => present.has(region))
 }
 
+export function hasUsableLayoutMenuItems(items: readonly { disabled?: boolean }[]) {
+  return items.some(item => !item.disabled)
+}
+
 export function isLayoutElementDropAllowed(
   document: LayoutDocument,
   payload: LayoutEditorDropPayload,
@@ -212,6 +217,23 @@ export function shouldReplaceLayoutDraft(
   currentSnapshot: string
 ) {
   return request.snapshot === currentSnapshot
+}
+
+export function reconcileLayoutRenameState(
+  currentName: string,
+  request: Pick<LayoutMutationIdentity, 'snapshot'>,
+  resource: Extract<LayoutAdminResource, { status: 'ready' }>,
+  currentDocument: LayoutDocument
+) {
+  const document = structuredClone(currentDocument)
+  document.name = resource.name
+  return {
+    workingName: currentName === request.snapshot ? resource.name : currentName,
+    workingRevision: resource.revision,
+    baselineName: resource.name,
+    baselineDocument: serializeLayoutDocument(resource.document),
+    document
+  }
 }
 
 export type LayoutCreateNavigationIdentity = {

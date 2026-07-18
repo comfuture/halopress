@@ -8,6 +8,7 @@ import type {
   LayoutRegionKey
 } from '~~/shared/site-layout'
 import type { SiteMenuAdminResource } from '~~/shared/site-menu'
+import { hasUsableLayoutMenuItems } from '~/utils/layout-editor'
 
 const props = defineProps<{
   formId: string
@@ -35,6 +36,7 @@ const menuItems = computed(() => props.menuSets.map(menu => ({
   description: menu.malformedStoredValue ? 'This Menu set needs repair.' : `Stable ID: ${menu.id}`,
   disabled: menu.malformedStoredValue
 })))
+const hasUsableMenuItems = computed(() => hasUsableLayoutMenuItems(menuItems.value))
 const schema = computed(() => z.object({
   regionId: z.string().refine(value => allowedRegions.value.includes(value as LayoutRegionKey), 'Choose an available region'),
   menuSetId: props.descriptor.type === 'menu'
@@ -93,7 +95,7 @@ function updateRegion(value: unknown) {
     </UFormField>
 
     <UAlert
-      v-if="descriptor.type === 'menu' && !menuPending && !menuItems.length"
+      v-if="descriptor.type === 'menu' && !menuPending && !hasUsableMenuItems"
       title="No usable Menu sets"
       description="Create or repair a Menu set before adding this element."
       color="warning"

@@ -10,12 +10,14 @@ import {
   createLayoutElement,
   focusLayoutCreateTrigger,
   focusLayoutMoveControl,
+  hasUsableLayoutMenuItems,
   layoutElementDropIndex,
   isLayoutElementDropAllowed,
   layoutStaleConflictFromFetchError,
   layoutValidationIssuesFromFetchError,
   moveLayoutElementOrNoop,
   normalizeLayoutSelection,
+  reconcileLayoutRenameState,
   redoLayoutEditorHistory,
   shouldAcceptLayoutCreateOpenChange,
   shouldApplyLayoutCreateNavigation,
@@ -135,6 +137,42 @@ describe('Layout editor interactions', () => {
     expect(shouldApplyLayoutCreateNavigation(createRequest, 9, '/_desk/site/layouts')).toBe(true)
     expect(shouldApplyLayoutCreateNavigation(createRequest, 9, '/_desk/site/layouts/new')).toBe(false)
     expect(shouldApplyLayoutCreateNavigation(createRequest, 10, '/_desk/site/layouts')).toBe(false)
+  })
+
+  it('reconciles an in-flight rename without overwriting newer typing or reusing the stale revision', () => {
+    const currentDocument = createLayoutDocumentFromPreset('blank', 'layout-rename', 'Original')
+    const serverDocument = { ...structuredClone(currentDocument), name: 'Submitted name' }
+    const request = { token: 3, layoutId: 'layout-rename', revision: 4, snapshot: 'Submitted name' }
+    const reconciliation = reconcileLayoutRenameState('Newer local name', request, {
+      id: 'layout-rename',
+      name: 'Submitted name',
+      revision: 5,
+      status: 'ready',
+      document: serverDocument,
+      createdBy: null,
+      updatedBy: 'reviewer',
+      createdAt: '2026-07-18T00:00:00.000Z',
+      updatedAt: '2026-07-18T00:01:00.000Z',
+      usage: [],
+      canDelete: true
+    }, currentDocument)
+
+    expect(reconciliation.workingName).toBe('Newer local name')
+    expect(reconciliation.baselineName).toBe('Submitted name')
+    expect(reconciliation.baselineDocument).toBe(serializeLayoutDocument(serverDocument))
+    expect(reconciliation.document.name).toBe('Submitted name')
+    const nextMutation = {
+      layoutId: request.layoutId,
+      revision: reconciliation.workingRevision,
+      snapshot: reconciliation.workingName
+    }
+    expect(nextMutation).toMatchObject({ revision: 5, snapshot: 'Newer local name' })
+  })
+
+  it('detects zero usable Menu sets when every option is disabled', () => {
+    expect(hasUsableLayoutMenuItems([])).toBe(false)
+    expect(hasUsableLayoutMenuItems([{ disabled: true }, { disabled: true }])).toBe(false)
+    expect(hasUsableLayoutMenuItems([{ disabled: true }, { disabled: false }])).toBe(true)
   })
 
   it('preserves validation drafts, blocks pending dismissal, and restores toolbar focus after the overlay cycle', () => {
