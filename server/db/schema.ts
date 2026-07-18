@@ -100,7 +100,7 @@ export const siteMenuSet = sqliteTable('site_menu_set', {
 }))
 
 // Normalized references are the deletion-integrity seam for public Site
-// resources. Site Layouts (#70) can add rows without changing menu storage, and
+// resources. Layouts can add rows without changing Menu storage, and
 // the restrictive FK closes the usage-check/delete race.
 export const siteMenuReference = sqliteTable('site_menu_reference', {
   ownerType: text('owner_type').notNull(),
@@ -113,6 +113,43 @@ export const siteMenuReference = sqliteTable('site_menu_reference', {
 }, t => ({
   pk: primaryKey({ columns: [t.ownerType, t.ownerId, t.slot] }),
   byMenu: index('idx_site_menu_reference_menu').on(t.menuSetId)
+}))
+
+// A Layout resource owns the stable identity and current-save pointer. The
+// JSON column is a validated, framework-independent public rendering contract;
+// it must never contain Nuxt layout/component/runtime lookup data. Immutable
+// history is recorded through document_revision(document_kind='layout').
+export const layoutResource = sqliteTable('site_layout_resource', {
+  id: text('id').notNull(),
+  name: text('name').notNull(),
+  nameKey: text('name_key').notNull(),
+  documentJson: text('document_json').notNull(),
+  currentRevision: integer('current_revision').notNull().default(1),
+  createdBy: text('created_by'),
+  updatedBy: text('updated_by'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull()
+}, t => ({
+  pk: primaryKey({ columns: [t.id] }),
+  nameUnique: uniqueIndex('idx_site_layout_resource_name_unique').on(t.nameKey),
+  byUpdatedAt: index('idx_site_layout_resource_updated_at').on(t.updatedAt)
+}))
+
+// #72 writes normalized Site/Schema/Page assignments here. The restrictive FK
+// is the final authority for assignment/Layout deletion races; behavior records
+// the explicit missing-resource policy consumed by the later resolver.
+export const layoutReference = sqliteTable('site_layout_reference', {
+  ownerType: text('owner_type').notNull(),
+  ownerId: text('owner_id').notNull(),
+  slot: text('slot').notNull(),
+  layoutId: text('layout_id').notNull().references(() => layoutResource.id, { onDelete: 'restrict' }),
+  label: text('label').notNull(),
+  behavior: text('behavior').notNull().default('use-current'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull()
+}, t => ({
+  pk: primaryKey({ columns: [t.ownerType, t.ownerId, t.slot] }),
+  byLayout: index('idx_site_layout_reference_layout').on(t.layoutId)
 }))
 
 export const installation = sqliteTable('installation', {
@@ -277,7 +314,7 @@ export const publicationRevision = sqliteTable('publication_revision', {
 
 export const documentRevision = sqliteTable('document_revision', {
   id: text('id').notNull(),
-  documentKind: text('document_kind').notNull(), // content|page|schema-draft
+  documentKind: text('document_kind').notNull(), // content|page|schema-draft|layout
   documentId: text('document_id').notNull(),
   schemaKey: text('schema_key'),
   revision: integer('revision').notNull(),

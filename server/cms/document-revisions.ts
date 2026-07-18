@@ -9,11 +9,12 @@ import { newId } from '../utils/ids'
 
 export const DOCUMENT_REVISION_RETENTION_LIMIT = 100
 
-export type DocumentKind = 'content' | 'page' | 'schema-draft'
+export type DocumentKind = 'content' | 'page' | 'schema-draft' | 'layout'
 export type DocumentRevisionAction =
   | 'backfill'
   | 'create'
   | 'save'
+  | 'rename'
   | 'publish'
   | 'discard'
   | 'archive'
@@ -129,6 +130,7 @@ export async function mutateWithDocumentRevision<T>(args: {
   action: DocumentRevisionAction
   state: RevisionSnapshot
   actorId?: string | null
+  preserveOrdinarySaves?: boolean
   work: (tx: Db, statements: any[] | undefined, nextRevision: number, now: Date) => Promise<T>
 }) {
   assertExpectedRevision(args.identity, args.expectedRevision)
@@ -170,21 +172,23 @@ export async function mutateWithDocumentRevision<T>(args: {
         createdAt: now
       })), statements)
 
-      const ordinarySavesToKeep = tx.select({ id: documentRevision.id })
-        .from(documentRevision)
-        .where(and(
+      if (!args.preserveOrdinarySaves) {
+        const ordinarySavesToKeep = tx.select({ id: documentRevision.id })
+          .from(documentRevision)
+          .where(and(
+            eq(documentRevision.documentKind, args.documentKind),
+            eq(documentRevision.documentId, args.documentId),
+            eq(documentRevision.action, 'save')
+          ))
+          .orderBy(desc(documentRevision.revision))
+          .limit(DOCUMENT_REVISION_RETENTION_LIMIT)
+        await executeDbStatement(tx.delete(documentRevision).where(and(
           eq(documentRevision.documentKind, args.documentKind),
           eq(documentRevision.documentId, args.documentId),
-          eq(documentRevision.action, 'save')
-        ))
-        .orderBy(desc(documentRevision.revision))
-        .limit(DOCUMENT_REVISION_RETENTION_LIMIT)
-      await executeDbStatement(tx.delete(documentRevision).where(and(
-        eq(documentRevision.documentKind, args.documentKind),
-        eq(documentRevision.documentId, args.documentId),
-        eq(documentRevision.action, 'save'),
-        notInArray(documentRevision.id, ordinarySavesToKeep)
-      )), statements)
+          eq(documentRevision.action, 'save'),
+          notInArray(documentRevision.id, ordinarySavesToKeep)
+        )), statements)
+      }
       return result
     })
   } catch (error) {

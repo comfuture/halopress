@@ -21,7 +21,7 @@ export type SiteAdminNavigation = {
 /**
  * Desk-only navigation metadata for Site administration.
  *
- * `layouts` refers to persisted HaloPress SiteLayout resources. It is not a
+ * `layouts` refers to persisted HaloPress Layout resources. It is not a
  * Nuxt application layout and must never resolve to a file in app/layouts/.
  */
 export const SITE_ADMIN_SECTIONS: readonly SiteAdminSection[] = [

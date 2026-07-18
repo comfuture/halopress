@@ -115,7 +115,7 @@ describe('Site administration foundation', () => {
     expect(overview).toContain('aria-label="Loading Site overview"')
     expect(overview).toContain('useSitePresentationStatus()')
     expect(overview).not.toContain('await useSitePresentationSettings()')
-    expect(overview).toContain('Default SiteLayout: none')
+    expect(overview).toContain('Default Layout: none')
     expect(overview).toContain('menuSetCount')
     expect(overview).toContain('useSiteMenusStatus()')
     expect(overview).toContain('/_desk/site/themes')
@@ -137,7 +137,7 @@ describe('Site administration foundation', () => {
     expect(menuEditor).toContain('Save menu')
     expect(menuEditor).toContain('SiteMenuItemList')
     expect(menuEditor).toContain('Back to menu sets')
-    expect(layouts).toContain('SiteLayouts are persisted HaloPress resources')
+    expect(layouts).toContain('persisted Layouts remain isolated')
 
     for (const placeholder of [layouts]) {
       expect(placeholder).not.toContain('method: \'POST\'')
@@ -146,7 +146,7 @@ describe('Site administration foundation', () => {
     }
   })
 
-  it('keeps SiteLayout resources isolated from Nuxt layouts and public delivery', async () => {
+  it('keeps Layout resources isolated from Nuxt layouts and public delivery', async () => {
     const root = resolve(import.meta.dirname, '..')
     const [docs, publicLayout, publicCatchAll, publicPresentationRoute] = await Promise.all([
       readFile(resolve(root, 'docs/SETTINGS.md'), 'utf8'),
@@ -155,7 +155,7 @@ describe('Site administration foundation', () => {
       readFile(resolve(root, 'server/api/delivery/site-presentation.get.ts'), 'utf8')
     ])
 
-    expect(docs).toContain('`SiteLayout` is the HaloPress domain name')
+    expect(docs).toContain('`Layout` is the HaloPress domain name')
     expect(docs).toContain('It is not a Nuxt application layout')
     for (const publicSurface of [publicLayout, publicCatchAll, publicPresentationRoute]) {
       expect(publicSurface).not.toContain('SiteAdminSection')

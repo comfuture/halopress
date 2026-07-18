@@ -144,9 +144,9 @@ export function parseStoredSiteMenu(row: SiteMenuRow) {
 }
 
 /**
- * Central deletion-guard seam for Site resources. #70 can extend this function
- * with persisted SiteLayout references without coupling menu documents to Nuxt
- * application layouts.
+ * Central deletion-guard seam for Site resources. Persisted Layout references
+ * use the `site-layout` storage namespace without coupling Menu documents to
+ * Nuxt application layouts.
  */
 export async function listSiteMenuUsage(db: Db, menuId: string): Promise<SiteMenuUsage[]> {
   const rows = await db.select({
@@ -564,7 +564,7 @@ export async function deleteSiteMenu(event: H3Event, menuIdInput: unknown) {
   try {
     // The NOT EXISTS predicate makes the guard and deletion one conditional
     // operation; the restrictive FK remains the final authority if a future
-    // Site Layout reference is inserted concurrently.
+    // Layout reference is inserted concurrently.
     await withDbTransaction(event, db, async (tx, statements) => {
       await executeDbStatement(tx.delete(siteMenuSetTable).where(and(
         eq(siteMenuSetTable.id, menuId.data),
