@@ -58,6 +58,7 @@ const extensions = markRaw(editorProfile.extensions.map(extension => markRaw(ext
 
 const editorRef = ref<any>(null)
 const canvasRef = ref<HTMLElement | null>(null)
+const toolbarHostRef = ref<HTMLElement | null>(null)
 const selectedBlock = ref<PageBlockAttrs | null>(null)
 const selectedDragNode = ref<{ node: JSONContent | null, pos: number } | null>(null)
 const mode = ref<'edit' | 'preview'>('edit')
@@ -92,7 +93,6 @@ const canvasShellClass = computed(() => isFullWidthCanvas.value ? 'p-0' : 'p-3 s
 const canvasSurfaceClass = computed(() => isFullWidthCanvas.value
   ? 'rounded-none border-0 shadow-none'
   : 'rounded-md border border-muted shadow-sm')
-const toolbarRadiusClass = computed(() => isFullWidthCanvas.value ? 'rounded-none' : 'rounded-t-md')
 const workspaceColumns = computed(() => {
   if (!isEditMode.value || panelCollapsed.value) return 'xl:grid-cols-1'
   return 'xl:grid-cols-[minmax(0,1fr)_22rem]'
@@ -335,20 +335,27 @@ watch(mode, (nextMode) => {
           :disabled="!editable"
           @click="mode = mode === 'edit' ? 'preview' : 'edit';"
         />
-      </template>
-
-      <template #right>
-        <div class="inline-flex items-center gap-1" role="group" aria-label="Canvas viewport">
+        <UFieldGroup
+          size="sm"
+          role="group"
+          aria-label="Canvas viewport"
+          data-page-editor-viewport-group
+        >
           <UButton
             v-for="item in viewportItems"
             :key="item.value"
             :label="item.label"
             :icon="item.icon"
+            :aria-label="item.label"
             color="neutral"
             :variant="viewport === item.value ? 'soft' : 'ghost'"
+            :ui="{ label: 'hidden lg:inline' }"
             @click="viewport = item.value as typeof viewport;"
           />
-        </div>
+        </UFieldGroup>
+      </template>
+
+      <template #right>
         <UButton
           v-if="isEditMode"
           aria-label="Toggle page editor panel"
@@ -364,88 +371,98 @@ watch(mode, (nextMode) => {
 
     <div class="grid min-h-0 flex-1 grid-cols-1" :class="workspaceColumns">
       <main
-        class="min-h-0 min-w-0 overflow-auto"
-        :class="canvasShellClass"
-        aria-label="Page canvas"
-        data-page-editor-canvas-shell
+        class="flex min-h-0 min-w-0 flex-col"
       >
         <div
-          ref="canvasRef"
-          class="relative mx-auto h-full min-h-0 transition-[max-width] duration-200"
-          :style="canvasStyle"
-          data-page-editor-canvas
-          @dragover="handleCanvasDragOver"
-          @dragleave.self="clearDropTarget"
-          @drop="handleCanvasDrop"
+          v-show="isEditing"
+          ref="toolbarHostRef"
+          class="sticky top-0 z-20 min-h-12 shrink-0 overflow-x-auto border-b border-muted bg-default/95 backdrop-blur"
+          data-page-editor-toolbar-host
+        />
+        <div
+          class="min-h-0 flex-1 overflow-auto"
+          :class="canvasShellClass"
+          aria-label="Page canvas"
+          data-page-editor-canvas-shell
         >
-          <div v-if="dropIndicatorTop !== null" class="pointer-events-none absolute inset-x-0 z-20 h-0.5 bg-primary" :style="{ top: `${dropIndicatorTop}px` }" data-page-block-drop-indicator />
           <div
-            v-show="mode === 'edit'"
-            class="h-full min-h-0"
-            :aria-hidden="mode === 'preview'"
-            data-page-editor-edit-surface
+            ref="canvasRef"
+            class="relative mx-auto h-full min-h-0 transition-[max-width] duration-200"
+            :style="canvasStyle"
+            data-page-editor-canvas
+            @dragover="handleCanvasDragOver"
+            @dragleave.self="clearDropTarget"
+            @drop="handleCanvasDrop"
           >
-            <UEditor
-              ref="editorRef"
-              v-slot="{ editor }"
-              v-model="value"
-              content-type="json"
-              :extensions="extensions"
-              :handlers="editorProfile.handlers"
-              :editable="isEditing"
-              class="flex h-full min-h-0 w-full flex-col bg-default"
-              :class="canvasSurfaceClass"
-              :ui="{ base: 'min-h-full px-4 py-4 sm:px-6' }"
+            <div v-if="dropIndicatorTop !== null" class="pointer-events-none absolute inset-x-0 z-20 h-0.5 bg-primary" :style="{ top: `${dropIndicatorTop}px` }" data-page-block-drop-indicator />
+            <div
+              v-show="mode === 'edit'"
+              class="h-full min-h-0"
+              :aria-hidden="mode === 'preview'"
+              data-page-editor-edit-surface
             >
-              <UEditorToolbar
-                v-if="isEditing"
-                :editor="editor"
-                :items="toolbarGroups"
-                class="sticky top-0 z-10 min-h-12 flex-wrap border-b border-muted bg-default/95 px-2 py-2 backdrop-blur"
-                :class="toolbarRadiusClass"
+              <UEditor
+                ref="editorRef"
+                v-slot="{ editor }"
+                v-model="value"
+                content-type="json"
+                :extensions="extensions"
+                :handlers="editorProfile.handlers"
+                :editable="isEditing"
+                class="flex h-full min-h-0 w-full flex-col bg-default"
+                :class="canvasSurfaceClass"
+                :ui="{ base: 'min-h-full px-4 py-4 sm:px-6' }"
               >
-                <template #link>
-                  <RichEditorLinkPopover :editor="editor" auto-open />
-                </template>
-              </UEditorToolbar>
+                <Teleport v-if="isEditing && toolbarHostRef" :to="toolbarHostRef">
+                  <UEditorToolbar
+                    :editor="editor"
+                    :items="toolbarGroups"
+                    class="min-h-12 w-max min-w-full flex-nowrap px-2 py-2"
+                  >
+                    <template #link="{ item, isDisabled }">
+                      <RichEditorLinkPopover :editor="editor" auto-open :disabled="isDisabled(item)" />
+                    </template>
+                  </UEditorToolbar>
+                </Teleport>
 
-              <UEditorDragHandle
-                v-if="isEditing"
-                v-slot="{ ui }"
-                :editor="editor"
-                :plugin-key="editorProfile.pluginKeys.dragHandle"
-                class="inline-flex"
-                @node-change="onDragNodeChange"
-              >
-                <UDropdownMenu
-                  v-slot="{ open }"
-                  :modal="false"
-                  :items="getDragHandleItems(editor)"
-                  :content="{ side: 'left' }"
-                  :ui="{ content: 'w-48', label: 'text-xs' }"
-                  @update:open="setDragMenuOpen(editor, $event)"
+                <UEditorDragHandle
+                  v-if="isEditing"
+                  v-slot="{ ui }"
+                  :editor="editor"
+                  :plugin-key="editorProfile.pluginKeys.dragHandle"
+                  class="inline-flex"
+                  @node-change="onDragNodeChange"
                 >
-                  <UButton
-                    color="neutral"
-                    variant="ghost"
-                    active-variant="soft"
-                    size="sm"
-                    icon="i-lucide-grip-vertical"
-                    :active="open"
-                    :class="ui.handle()"
-                    aria-label="Block actions"
-                  />
-                </UDropdownMenu>
-              </UEditorDragHandle>
-            </UEditor>
+                  <UDropdownMenu
+                    v-slot="{ open }"
+                    :modal="false"
+                    :items="getDragHandleItems(editor)"
+                    :content="{ side: 'left' }"
+                    :ui="{ content: 'w-48', label: 'text-xs' }"
+                    @update:open="setDragMenuOpen(editor, $event)"
+                  >
+                    <UButton
+                      color="neutral"
+                      variant="ghost"
+                      active-variant="soft"
+                      size="sm"
+                      icon="i-lucide-grip-vertical"
+                      :active="open"
+                      :class="ui.handle()"
+                      aria-label="Block actions"
+                    />
+                  </UDropdownMenu>
+                </UEditorDragHandle>
+              </UEditor>
+            </div>
+            <PageDocumentRenderer
+              v-show="mode === 'preview'"
+              :document="value"
+              class="min-h-full bg-default px-4 py-4 sm:px-6"
+              :class="canvasSurfaceClass"
+              data-page-editor-preview-surface
+            />
           </div>
-          <PageDocumentRenderer
-            v-show="mode === 'preview'"
-            :document="value"
-            class="min-h-full bg-default px-4 py-4 sm:px-6"
-            :class="canvasSurfaceClass"
-            data-page-editor-preview-surface
-          />
         </div>
       </main>
 

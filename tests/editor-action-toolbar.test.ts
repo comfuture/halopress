@@ -35,6 +35,19 @@ describe('editor action toolbar', () => {
     expect(source).not.toContain('target="_blank"')
   })
 
+  it('temporarily hides the top-level page preview trigger while preserving its modal', async () => {
+    const [actions, pageEdit] = await Promise.all([
+      readFile(files.actions, 'utf8'),
+      readFile(files.pageEdit, 'utf8')
+    ])
+
+    expect(actions).toContain('showPreview?: boolean')
+    expect(actions).toContain('showPreview: true')
+    expect(actions).toContain('v-if="previewTo && showPreview"')
+    expect(actions).toContain('<UModal')
+    expect(pageEdit).toContain(':show-preview="false"')
+  })
+
   it('moves secondary and destructive edit actions into menu item models', async () => {
     const [contentEdit, pageEdit] = await Promise.all([
       readFile(files.contentEdit, 'utf8'),
