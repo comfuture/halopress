@@ -1,4 +1,4 @@
-import { and, eq, ne } from 'drizzle-orm'
+import { and, eq, notExists, sql } from 'drizzle-orm'
 import type { H3Event } from 'h3'
 
 import type { Db } from '../db/db'
@@ -13,6 +13,7 @@ import {
   schemaLayoutAssignmentOwner,
   syncLayoutAssignmentReference
 } from '../utils/layout-assignments'
+import { notFound } from '../utils/http'
 import { revisionConflict } from './document-revisions'
 import { publishSchemaCollectionRoute } from './public-routes'
 
@@ -31,8 +32,8 @@ function errorMessages(error: unknown) {
 }
 
 function isSchemaDraftRevisionGuardError(error: unknown) {
-  return errorMessages(error).some(message => message.includes('schema_draft.schema_key')
-    && (message.includes('UNIQUE constraint failed') || message.includes('SQLITE_CONSTRAINT')))
+  return errorMessages(error).some(message => message.includes('schema_draft')
+    && (message.includes('constraint failed') || message.includes('SQLITE_CONSTRAINT')))
 }
 
 async function guardSchemaDraftRevision(
@@ -42,23 +43,24 @@ async function guardSchemaDraftRevision(
   expectedRevision: number
 ) {
   // D1 batches cannot inspect an UPDATE row count before later statements run.
-  // Selecting the existing draft only when its revision is stale and inserting
-  // it back into the same table turns staleness into a primary-key violation.
-  // As the first write, that violation atomically aborts every publication write.
-  const staleDraft = tx.select({
-    schemaKey: schemaDraftTable.schemaKey,
-    title: schemaDraftTable.title,
-    astJson: schemaDraftTable.astJson,
-    currentRevision: schemaDraftTable.currentRevision,
-    updatedBy: schemaDraftTable.updatedBy,
-    updatedAt: schemaDraftTable.updatedAt,
-    lockedBy: schemaDraftTable.lockedBy,
-    lockExpiresAt: schemaDraftTable.lockExpiresAt
-  }).from(schemaDraftTable).where(and(
+  // When no exact row exists, this SELECT emits one deliberately invalid draft
+  // from a constant source. Its NOT NULL (missing) or PK (newer) failure makes
+  // the first write atomically abort every publication write in SQLite and D1.
+  const exactDraft = tx.select({ one: sql`1` }).from(schemaDraftTable).where(and(
     eq(schemaDraftTable.schemaKey, schemaKey),
-    ne(schemaDraftTable.currentRevision, expectedRevision)
-  )).limit(1)
-  await executeDbStatement(tx.insert(schemaDraftTable).select(staleDraft), statements)
+    eq(schemaDraftTable.currentRevision, expectedRevision)
+  ))
+  const failedDraftGuard = tx.select({
+    schemaKey: sql<string>`${schemaKey}`,
+    title: sql<string | null>`null`,
+    astJson: sql<string>`null`,
+    currentRevision: sql<number>`${expectedRevision}`,
+    updatedBy: sql<string | null>`null`,
+    updatedAt: sql<Date>`${sql.param(new Date(0), schemaDraftTable.updatedAt)}`,
+    lockedBy: sql<string | null>`null`,
+    lockExpiresAt: sql<Date | null>`null`
+  }).from(sql`(select 1) as schema_draft_guard`).where(notExists(exactDraft)).limit(1)
+  await executeDbStatement(tx.insert(schemaDraftTable).select(failedDraftGuard), statements)
 }
 
 export async function commitSchemaPublication(args: {
@@ -142,6 +144,7 @@ export async function commitSchemaPublication(args: {
       if (current && current.currentRevision !== args.expectedDraftRevision) {
         throw revisionConflict(current)
       }
+      if (!current) throw notFound('Draft not found')
     }
     throw error
   }
