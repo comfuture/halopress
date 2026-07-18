@@ -147,6 +147,10 @@ class PortableBudget {
     this.exceeded = true
   }
 
+  markExceeded() {
+    this.exceeded = true
+  }
+
   reject(): never {
     this.exceeded = true
     throw new PortableRenderBudgetError('Portable rendering budget exceeded')
@@ -794,8 +798,11 @@ function renderWithFallback(
   const rootStart = `<article class="halo-content ${root.className}" data-halo-contract-version="1" data-halo-content="${root.contentKind}" data-halo-color-mode="default">`
   const rootEnd = '</article>'
   const fallback = `${rootStart}<p class="halo-content-fallback" role="status">Content exceeds portable rendering limits</p>${rootEnd}`
-  if (fallback.length > limits.maxOutputLength) return ''
   const budget = sharedBudget ?? new PortableBudget(limits)
+  if (fallback.length > limits.maxOutputLength) {
+    budget.markExceeded()
+    return ''
+  }
   const checkpoint = budget.checkpoint()
   try {
     const writer = new PortableWriter(budget)

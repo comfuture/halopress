@@ -9,6 +9,7 @@ import { commitPageBlockLink, createPageBlockLinkDrafts, movePageBlockLink } fro
 import { pageBlockRegistry } from '../app/editor/page/registry'
 import { normalizePageContent } from '../server/cms/page-content'
 import { resolvePageBlock } from '../shared/page-blocks'
+import { createPortablePageRendering, createPortableStandaloneDocument } from '../shared/portable-content'
 
 describe('page block registry', () => {
   it('exposes typed link controls for reviewed action-bearing blocks', () => {
@@ -255,6 +256,33 @@ describe('page document renderer', () => {
     expect(renderer).not.toContain('<PageBlockView')
     expect(renderer).not.toContain('PageBlockNodeView')
     expect(renderer).not.toContain('ring-2')
+  })
+
+  it('keeps isolated previews scriptless while preserving same-origin draft asset delivery', async () => {
+    const root = resolve(import.meta.dirname, '..')
+    const renderer = await readFile(resolve(root, 'app/components/PageDocumentRenderer.vue'), 'utf8')
+    const sandbox = renderer.match(/sandbox="([^"]*)"/)?.[1]?.split(/\s+/).filter(Boolean)
+
+    expect(sandbox).toEqual(['allow-same-origin'])
+    expect(sandbox).not.toEqual(expect.arrayContaining([
+      'allow-scripts',
+      'allow-forms',
+      'allow-popups',
+      'allow-top-navigation',
+      'allow-top-navigation-by-user-activation'
+    ]))
+
+    const siteOrigin = 'https://press.example.com'
+    const rendering = createPortablePageRendering({
+      type: 'doc',
+      content: [{ type: 'image', attrs: { src: '/assets/draft-asset/raw', alt: 'Draft asset' } }]
+    }, { origin: siteOrigin })
+    const preview = createPortableStandaloneDocument(rendering)
+    const assetUrl = preview.match(/<img[^>]+src="([^"]+)"/)?.[1]
+
+    expect(assetUrl).toBe(`${siteOrigin}/assets/draft-asset/raw`)
+    expect(new URL(assetUrl!).origin).toBe(siteOrigin)
+    expect(preview).not.toMatch(/<script\b|<form\b/i)
   })
 
   it('maps rich atomic blocks to code-owned renderers and visible media placeholders', async () => {
