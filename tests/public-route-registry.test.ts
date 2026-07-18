@@ -5,6 +5,8 @@ import {
   assertPublicRouteAvailable,
   contentCanonicalPath,
   listCanonicalPublicRoutes,
+  listCanonicalPublicRoutesByIdentity,
+  PUBLIC_ROUTE_D1_IN_CHUNK_SIZE,
   publishCanonicalRoute,
   resolvePublicRoute
 } from '../server/cms/public-routes'
@@ -20,6 +22,42 @@ import { runMigrations } from '../server/utils/install'
 import { createTestSqliteDb } from './fixtures/sqlite'
 
 describe('public route registry', () => {
+  it('keeps identity lookups below D1 bind limits across more than one batch', async () => {
+    expect(PUBLIC_ROUTE_D1_IN_CHUNK_SIZE).toBeLessThanOrEqual(90)
+    const fixture = await createTestSqliteDb()
+    try {
+      await runMigrations(fixture.db)
+      const now = new Date('2026-07-18T00:00:00.000Z')
+      const pages = Array.from({ length: 108 }, (_, index) => ({
+        id: `batched-page-${index}`,
+        title: `Batched Page ${index}`,
+        status: 'published',
+        contentJson: '{}',
+        publishedRevisionId: `batched-revision-${index}`,
+        createdAt: now,
+        updatedAt: now
+      }))
+      await fixture.db.insert(page).values(pages)
+      await fixture.db.insert(publicRoute).values(pages.map((item, index) => ({
+        path: `/batched/${index}`,
+        routeKind: 'canonical',
+        documentKind: 'page',
+        documentId: item.id,
+        schemaKey: null,
+        createdAt: now,
+        updatedAt: now
+      })))
+      const routes = await listCanonicalPublicRoutesByIdentity(
+        fixture.db as any,
+        pages.map(item => ({ documentKind: 'page', documentId: item.id }))
+      )
+      expect(routes).toHaveLength(108)
+      expect(new Set(routes.map(route => route.documentId))).toEqual(new Set(pages.map(item => item.id)))
+    } finally {
+      fixture.close()
+    }
+  })
+
   it('serializes route-claim reads for transaction-safe publication', async () => {
     let readPending = false
     const get = vi.fn(async () => {

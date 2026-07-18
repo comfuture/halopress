@@ -2,6 +2,10 @@
 import type { ButtonProps } from '@nuxt/ui'
 import { PUBLIC_PAGE_ROUTE_PREFIX, publicPathFromDecodedSegments, publicPathToHref } from '~~/shared/public-routing'
 import { resolveSchemaPresentation } from '~/utils/schema-presentation'
+import BuiltInLayoutRenderer from '~/components/layout-renderer/BuiltInLayoutRenderer.vue'
+import LayoutComposition from '~/components/layout-renderer/LayoutComposition.vue'
+
+definePageMeta({ layout: false })
 
 const route = useRoute()
 const router = useRouter()
@@ -13,7 +17,7 @@ try {
   applyPrivateNoindex()
   throw createError({ statusCode: 404, statusMessage: 'Not Found' })
 }
-const routeResult = await useFetch<any>('/api/delivery/route', { query: { path: requestedPath } })
+const routeResult = await useFetch<any>('/api/delivery/route', { query: { path: requestedPath, includeLayout: 1 } })
 if (routeResult.error.value || !routeResult.data.value) {
   applyPrivateNoindex()
   throw createError({ statusCode: 404, statusMessage: 'Not Found' })
@@ -128,61 +132,68 @@ function goPrev() {
 </script>
 
 <template>
-  <UContainer v-if="standalonePage" class="py-8">
-    <UPage>
-      <UPageHeader :title="standalonePage.title || 'Untitled page'" />
-      <UPageBody><PageDocumentRenderer :document="standalonePage.content" :rendering="standalonePage.rendering" /></UPageBody>
-    </UPage>
-  </UContainer>
+  <LayoutComposition v-if="resolvedRoute?.layout" :projection="resolvedRoute.layout">
+    <article v-if="standalonePage" class="layout-route-page-content">
+      <header><h1>{{ standalonePage.title || 'Untitled page' }}</h1></header>
+      <PageDocumentRenderer :document="standalonePage.content" :rendering="standalonePage.rendering" />
+    </article>
 
-  <UContainer v-else>
-    <UPage class="space-y-8">
-      <template #left>
-        <UPageAside>
-          <UPageLinks title="Entries" :links="itemLinks" />
-          <UAlert
-            v-if="itemLinks.length === 0"
-            title="No entries yet"
-            description="Publish your first entry in Desk."
-            icon="i-lucide-info"
-            variant="subtle"
-            class="mt-4"
-          />
-        </UPageAside>
-      </template>
-      <template #right />
+    <section v-else class="layout-route-collection">
+      <header>
+        <p class="layout-route-eyebrow">Collection</p>
+        <h1>{{ schema?.title || schemaKey }}</h1>
+        <p>{{ heroDescription }}</p>
+      </header>
+      <div>
+        <h2>Published entries</h2>
+        <p>Recently published content for this schema.</p>
+      </div>
+      <PublicContentCollectionRenderer :items="items" :schema-key="schemaKey" :template="presentation.collectionTemplate" />
+      <nav class="layout-route-pagination" aria-label="Collection pages">
+        <UButton icon="i-lucide-arrow-left" variant="outline" color="neutral" :disabled="!hasPrev" @click="goPrev">Previous</UButton>
+        <UButton trailing-icon="i-lucide-arrow-right" :disabled="!hasNext" @click="goNext">Next</UButton>
+      </nav>
+    </section>
 
-      <UPageBody>
-        <UPageHero
-          headline="Collection"
-          :title="schema?.title || schemaKey"
-          :description="heroDescription"
-          :links="heroLinks"
-        />
+    <template #fallback>
+      <BuiltInLayoutRenderer>
+        <UContainer v-if="standalonePage" class="py-8">
+          <UPage>
+            <UPageHeader :title="standalonePage.title || 'Untitled page'" />
+            <UPageBody><PageDocumentRenderer :document="standalonePage.content" :rendering="standalonePage.rendering" /></UPageBody>
+          </UPage>
+        </UContainer>
 
-        <UPageSection title="Published entries" description="Recently published content for this schema.">
-          <PublicContentCollectionRenderer :items="items" :schema-key="schemaKey" :template="presentation.collectionTemplate" />
-
-          <div class="mt-8 flex items-center justify-between">
-            <UButton
-              icon="i-lucide-arrow-left"
-              variant="outline"
-              color="neutral"
-              :disabled="!hasPrev"
-              @click="goPrev"
-            >
-              Previous
-            </UButton>
-            <UButton
-              trailing-icon="i-lucide-arrow-right"
-              :disabled="!hasNext"
-              @click="goNext"
-            >
-              Next
-            </UButton>
-          </div>
-        </UPageSection>
-      </UPageBody>
-    </UPage>
-  </UContainer>
+        <UContainer v-else>
+          <UPage class="space-y-8">
+            <template #left>
+              <UPageAside>
+                <UPageLinks title="Entries" :links="itemLinks" />
+                <UAlert v-if="itemLinks.length === 0" title="No entries yet" description="Publish your first entry in Desk." icon="i-lucide-info" variant="subtle" class="mt-4" />
+              </UPageAside>
+            </template>
+            <template #right />
+            <UPageBody>
+              <UPageHero headline="Collection" :title="schema?.title || schemaKey" :description="heroDescription" :links="heroLinks" />
+              <UPageSection title="Published entries" description="Recently published content for this schema.">
+                <PublicContentCollectionRenderer :items="items" :schema-key="schemaKey" :template="presentation.collectionTemplate" />
+                <div class="mt-8 flex items-center justify-between">
+                  <UButton icon="i-lucide-arrow-left" variant="outline" color="neutral" :disabled="!hasPrev" @click="goPrev">Previous</UButton>
+                  <UButton trailing-icon="i-lucide-arrow-right" :disabled="!hasNext" @click="goNext">Next</UButton>
+                </div>
+              </UPageSection>
+            </UPageBody>
+          </UPage>
+        </UContainer>
+      </BuiltInLayoutRenderer>
+    </template>
+  </LayoutComposition>
 </template>
+
+<style scoped>
+.layout-route-page-content, .layout-route-collection { display: grid; gap: 2rem; width: 100%; }
+.layout-route-page-content h1, .layout-route-collection h1 { font-size: clamp(2rem, 5vw, 3.5rem); font-weight: 700; line-height: 1.1; overflow-wrap: anywhere; }
+.layout-route-collection h2 { font-size: 1.5rem; font-weight: 650; }
+.layout-route-eyebrow { color: var(--halo-site-color-primary); font-weight: 650; }
+.layout-route-pagination { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+</style>

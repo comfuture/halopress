@@ -396,6 +396,18 @@ export async function resolvePublishedPageLayout(event: H3Event, pageId: string)
   }])
 }
 
+export async function resolveWorkingPageLayout(event: H3Event, pageId: string): Promise<ResolvedLayoutAssignment> {
+  const db = await getDb(event)
+  const row = await db.select({ layoutId: pageTable.layoutId })
+    .from(pageTable).where(eq(pageTable.id, pageId)).get()
+  const layoutId = row?.layoutId ?? null
+  return await resolveCandidates(event, [{
+    source: 'page',
+    layoutId,
+    projection: layoutId ? await resolveLayoutAssignmentProjection(db, layoutId) : undefined
+  }])
+}
+
 export async function resolveSchemaVersionLayout(
   event: H3Event,
   schemaKey: string,
