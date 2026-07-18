@@ -78,10 +78,16 @@ const viewportItems = [
   { label: 'Tablet', value: 'tablet', icon: 'i-lucide-tablet' },
   { label: 'Mobile', value: 'mobile', icon: 'i-lucide-smartphone' }
 ]
+const isFullWidthCanvas = computed(() => viewport.value === 'desktop')
 const canvasStyle = computed(() => ({
   width: '100%',
-  maxWidth: viewport.value === 'desktop' ? '80rem' : viewport.value === 'tablet' ? '48rem' : '24rem'
+  maxWidth: viewport.value === 'desktop' ? 'none' : viewport.value === 'tablet' ? '48rem' : '24rem'
 }))
+const canvasShellClass = computed(() => isFullWidthCanvas.value ? 'p-0' : 'p-3 sm:p-5')
+const canvasSurfaceClass = computed(() => isFullWidthCanvas.value
+  ? 'rounded-none border-0 shadow-none'
+  : 'rounded-md border border-muted shadow-sm')
+const toolbarRadiusClass = computed(() => isFullWidthCanvas.value ? 'rounded-none' : 'rounded-t-md')
 const workspaceColumns = computed(() => {
   if (!isEditMode.value) return 'xl:grid-cols-1'
   return panelCollapsed.value
@@ -320,10 +326,15 @@ watch(mode, (nextMode) => {
     </div>
 
     <div class="grid min-h-0 flex-1 grid-cols-1" :class="workspaceColumns">
-      <main class="min-h-0 min-w-0 overflow-auto p-3 sm:p-5" aria-label="Page canvas">
+      <main
+        class="min-h-0 min-w-0 overflow-auto"
+        :class="canvasShellClass"
+        aria-label="Page canvas"
+        data-page-editor-canvas-shell
+      >
         <div
           ref="canvasRef"
-          class="relative mx-auto min-h-full transition-[max-width] duration-200"
+          class="relative mx-auto h-full min-h-0 transition-[max-width] duration-200"
           :style="canvasStyle"
           data-page-editor-canvas
           @dragover="handleCanvasDragOver"
@@ -331,7 +342,12 @@ watch(mode, (nextMode) => {
           @drop="handleCanvasDrop"
         >
           <div v-if="dropIndicatorTop !== null" class="pointer-events-none absolute inset-x-0 z-20 h-0.5 bg-primary" :style="{ top: `${dropIndicatorTop}px` }" data-page-block-drop-indicator />
-          <div v-show="mode === 'edit'" :aria-hidden="mode === 'preview'">
+          <div
+            v-show="mode === 'edit'"
+            class="h-full min-h-0"
+            :aria-hidden="mode === 'preview'"
+            data-page-editor-edit-surface
+          >
             <UEditor
               ref="editorRef"
               v-slot="{ editor }"
@@ -340,14 +356,16 @@ watch(mode, (nextMode) => {
               :extensions="extensions"
               :handlers="editorProfile.handlers"
               :editable="isEditing"
-              class="min-h-full w-full rounded-md border border-muted bg-default shadow-sm"
-              :ui="{ base: 'min-h-[calc(100dvh-12rem)] px-4 py-4 sm:px-6' }"
+              class="flex h-full min-h-0 w-full flex-col bg-default"
+              :class="canvasSurfaceClass"
+              :ui="{ base: 'min-h-full px-4 py-4 sm:px-6' }"
             >
               <UEditorToolbar
                 v-if="isEditing"
                 :editor="editor"
                 :items="editorProfile.toolbarGroups"
-                class="sticky top-0 z-10 flex-wrap border-b border-muted bg-default/95 backdrop-blur"
+                class="sticky top-0 z-10 min-h-12 flex-wrap border-b border-muted bg-default/95 px-2 py-2 backdrop-blur"
+                :class="toolbarRadiusClass"
               >
                 <template #link>
                   <RichEditorLinkPopover :editor="editor" auto-open />
@@ -387,7 +405,9 @@ watch(mode, (nextMode) => {
           <PageDocumentRenderer
             v-show="mode === 'preview'"
             :document="value"
-            class="min-h-[calc(100dvh-12rem)] rounded-md border border-muted bg-default px-4 py-4 shadow-sm sm:px-6"
+            class="min-h-full bg-default px-4 py-4 sm:px-6"
+            :class="canvasSurfaceClass"
+            data-page-editor-preview-surface
           />
         </div>
       </main>
