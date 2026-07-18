@@ -263,12 +263,14 @@ async function isPubliclyReadable(db: Db, route: typeof publicRouteTable.$inferS
 
 export async function publishSchemaCollectionRoute(args: {
   db: Db
+  statements?: DbStatement[]
   schemaKey: string
   now: Date
 }) {
   if (isReservedSchemaKey(args.schemaKey)) throw conflict('Reserved system paths cannot be published')
   return await publishCanonicalRoute({
     db: args.db,
+    statements: args.statements,
     documentKind: 'schema',
     documentId: args.schemaKey,
     schemaKey: args.schemaKey,

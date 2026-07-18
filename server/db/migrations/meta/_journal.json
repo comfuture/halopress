@@ -71,6 +71,13 @@
       "when": 1784377236759,
       "tag": "0009_add_site_layout_documents",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1784382414545,
+      "tag": "0010_add_site_layout_assignments",
+      "breakpoints": true
     }
   ]
 }

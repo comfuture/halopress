@@ -260,6 +260,10 @@ export const page = sqliteTable('page', {
   contentJson: text('content_json').notNull(),
   publicPath: text('public_path'),
   seoJson: text('seo_json'),
+  // Historical/public Layout metadata deliberately has no direct FK. The
+  // normalized site_layout_reference rows are the restrictive deletion and
+  // assignment/delete race authority.
+  layoutId: text('layout_id'),
   currentRevision: integer('current_revision').notNull().default(1),
   publishedRevisionId: text('published_revision_id'),
   firstPublishedAt: integer('first_published_at', { mode: 'timestamp' }),
@@ -305,6 +309,7 @@ export const publicationRevision = sqliteTable('publication_revision', {
   schemaVersion: integer('schema_version'),
   title: text('title'),
   contentJson: text('content_json').notNull(),
+  layoutId: text('layout_id'),
   createdBy: text('created_by'),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull()
 }, t => ({

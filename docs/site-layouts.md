@@ -47,11 +47,34 @@ Pure shared helpers insert, move, reorder, duplicate, and delete semantic elemen
 
 Strict parsing also canonicalizes serialization: regions follow the fixed Layout region vocabulary and elements follow region, authoritative relative `order`, then stable ID. Element orders are renumbered contiguously per region and schema-defined object key order is rebuilt before persistence and resolved projection, so semantically identical documents produce identical JSON and revision snapshots regardless of incoming array order or sparse order values.
 
-A stable Layout ID always means its current active revision. Intentional edits therefore propagate to later assignments. Working/published Page assignment snapshots belong to #72, not this contract.
+A stable Layout ID always means its current active revision. Intentional edits therefore propagate to every assignment; Desk describes this as “follows current Layout revision.” Assignments never pin a Layout revision.
 
 SQLite transactions and Cloudflare D1 atomic batches update the current resource, append history, and replace Menu references together. The revision uniqueness guard turns competing stale writes into `409 Conflict`. Menu foreign keys decide Menu-delete/Layout-save races: if Menu deletion commits first, the Layout batch rolls back; if the Layout reference commits first, Menu deletion is blocked with actionable usage.
 
-`site_layout_reference` is the normalized #72 seam for Site, Schema, and Page assignments. Its restrictive foreign key closes assignment/deletion races and its finite behavior token records whether a consumer follows the current revision or uses an explicit missing-resource fallback. #70 does not create assignments.
+`site_layout_reference` is the normalized deletion-integrity seam for Site, Schema, and Page assignments. Its restrictive foreign key closes assignment/deletion races and its finite behavior token records current-revision behavior.
+
+## Assignment and publication contract
+
+Migration `0010_add_site_layout_assignments` adds nullable `page.layout_id` working metadata and nullable `publication_revision.layout_id` snapshots. These historical columns intentionally have no direct foreign key. Current normalized references are the deletion/race authority:
+
+- the typed `site.layout.default` setting and `site/default/default` reference are the immediately active Site default;
+- Schema drafts use `schema/<schemaKey>/working`, while each immutable published version retains `schema/<schemaKey>/published:<version>` until Schema purge;
+- Page working metadata uses `page/<pageId>/working`, while only the current publication uses `page/<pageId>/published`. Old publication rows do not permanently block Layout deletion.
+
+Absent assignment input preserves the current value, `null` clears it, and a string must identify a strictly valid, ready Layout. General Page and Schema saves remain allowed while Site mode is disabled when the assignment is unchanged; an actual assignment change or clear returns `403`. Disabling Site mode never deletes settings, metadata, or normalized references.
+
+Page create/save updates the working assignment. Publish stores it in the immutable publication revision and updates the current published reference. Discard restores working metadata from that publication; unpublish and soft delete remove only the published reference; soft delete preserves working metadata. Restoring an authored Page content revision deliberately preserves current Layout metadata.
+
+Schema publication validates the draft assignment and commits the immutable version, active pointer, anonymous role, canonical collection route, and `published:<version>` reference in one SQLite transaction or D1 batch. A Layout-delete race therefore cannot leave a partially published Schema. Schema draft-history restore updates the working reference, and Schema purge removes its working and historical published references atomically with the Schema data.
+
+Public resolution is deterministic:
+
+1. a standalone Page's published assignment;
+2. the publication's exact Schema-version presentation assignment for collection/structured-content delivery;
+3. the Site default; and
+4. the code-owned built-in shell fallback.
+
+Standalone Page routes never consult a Schema assignment. Content detail uses the publication revision's exact `schemaVersion`, not the Schema's current active version. The first explicit assignment is authoritative: if it is invalid, missing, retired, or repair-required, diagnostics retain that source and resolution uses the built-in fallback instead of silently inheriting a lower assignment. Site mode disabled returns the disabled fallback before rendering consumes assignments. Each successful resolution reads the current Layout resource revision, so later valid Layout edits propagate live.
 
 ## Admin API
 
@@ -65,6 +88,10 @@ Reads require an active administrator and remain available while Site mode is di
 - `POST /api/site/layouts/:layoutId/duplicate` — deep-clone the current valid document into an independent resource.
 - `GET /api/site/layouts/:layoutId/usage` — list actionable normalized references.
 - `DELETE /api/site/layouts/:layoutId?revision=:revision` — guarded delete. Exactly one positive integer revision is required. Nitro 2.13's Cloudflare preset forwards request bodies only for POST, PUT, and PATCH, so the DELETE precondition is intentionally carried in the query instead of a JSON body.
+- `GET|PUT /api/settings/site-layout` — read or replace the typed Site default assignment.
+- `GET /api/site/layout-assignments/options` — minimal ready/repair option metadata for Desk selectors.
+
+Assignment APIs are administrator-only. Page and Schema assignment metadata is returned only through their existing private Desk endpoints. Anonymous delivery APIs do not expose Site, Schema, or Page assignment state; the internal resolver supplies only the composition decision needed by the later renderer.
 
 Validation failures return structured `400` issues, missing resources return `404`, stale/name/reference conflicts return `409`, and a rolling deploy without migration `0009_add_site_layout_documents` returns `503`. Admin and resolved repair projections never echo raw unsafe stored JSON.
 
@@ -72,4 +99,4 @@ Other existing DELETE endpoints that still read JSON bodies need a separate fram
 
 ## Scope boundaries
 
-#70 does not implement the visual editor (#71), Site/Schema/Page assignment (#72), public/full-preview composition (#73), or dynamic Menu sources (#74). The internal Page editor remains content-focused. Nuxt files under `app/layouts/` continue to own only application shells and must never be serialized, selected, or exposed as Layout resources.
+#72 does not implement the visual Layout editor (#71), public/full-preview composition (#73), or dynamic Menu sources (#74). Nuxt files under `app/layouts/` continue to own only application shells and must never be serialized, selected, or exposed as Layout resources.

@@ -46,6 +46,9 @@ export type SchemaPresentationConfig = {
   preset: PresentationPreset
   collectionTemplate: CollectionTemplate
   detailTemplate: DetailTemplate
+  // Stable public Layout resource identity. Resolution deliberately follows
+  // that resource's current revision rather than pinning a saved revision.
+  layoutId?: string
   slugFieldId?: string
   structuredDataType?: StructuredDataType
   slots?: Partial<Record<PresentationSlot, string>>

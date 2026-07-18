@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { layoutIdSchema } from '../../shared/site-layout'
+
 const uiConfig = z.object({
   widget: z.string().optional(),
   placeholder: z.string().optional(),
@@ -44,6 +46,9 @@ const presentationConfig = z.object({
   preset: z.enum(['generic', 'article', 'catalog']),
   collectionTemplate: z.enum(['list', 'cards', 'catalog-grid']),
   detailTemplate: z.enum(['document', 'article', 'catalog']),
+  // Editors use null while clearing the selector. Normalize that wire value
+  // back to the optional published SchemaPresentationConfig property.
+  layoutId: layoutIdSchema.nullable().optional().transform(value => value ?? undefined),
   slugFieldId: z.string().min(1).optional(),
   structuredDataType: z.enum(['WebPage', 'Article', 'BlogPosting', 'NewsArticle', 'Product']).optional(),
   slots: z.object({

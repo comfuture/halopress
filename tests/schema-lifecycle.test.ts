@@ -21,6 +21,8 @@ import {
   contentSearchData,
   documentAssetRef,
   documentRevision,
+  layoutReference,
+  layoutResource,
   publicationRevision,
   schema,
   schemaActive,
@@ -195,12 +197,54 @@ async function seedSchemaLifecycle(db: any) {
   })
 }
 
+async function seedSchemaLayoutReferences(db: any) {
+  const layoutAt = new Date('2026-07-14T00:00:30.000Z')
+  await db.insert(layoutResource).values({
+    id: 'layout-schema-history',
+    name: 'Schema history Layout',
+    nameKey: 'schema history layout',
+    documentJson: '{}',
+    createdAt: layoutAt,
+    updatedAt: layoutAt
+  })
+  await db.insert(layoutReference).values([
+    {
+      ownerType: 'schema',
+      ownerId: 'article',
+      slot: 'working',
+      layoutId: 'layout-schema-history',
+      label: 'article draft Layout',
+      createdAt: layoutAt,
+      updatedAt: layoutAt
+    },
+    {
+      ownerType: 'schema',
+      ownerId: 'article',
+      slot: 'published:1',
+      layoutId: 'layout-schema-history',
+      label: 'article v1 Layout',
+      createdAt: layoutAt,
+      updatedAt: layoutAt
+    },
+    {
+      ownerType: 'schema',
+      ownerId: 'external',
+      slot: 'published:1',
+      layoutId: 'layout-schema-history',
+      label: 'external v1 Layout',
+      createdAt: layoutAt,
+      updatedAt: layoutAt
+    }
+  ])
+}
+
 describe('schema lifecycle', () => {
   it('deactivates and reactivates without losing schema dependencies', async () => {
     const fixture = await createTestSqliteDb()
     try {
       await runMigrations(fixture.db)
       await seedSchemaLifecycle(fixture.db)
+      await seedSchemaLayoutReferences(fixture.db)
 
       const before = await getSchemaDependencyImpact(fixture.db, 'article')
       expect(before).toMatchObject({
@@ -231,6 +275,10 @@ describe('schema lifecycle', () => {
       expect(active).toMatchObject({ status: 'active', reactivatedBy: 'admin-2' })
       expect(active.counts).toEqual(before.counts)
       expect((await listActiveSchemas(fixture.db)).map(item => item.schemaKey)).toEqual(['article', 'external'])
+      expect(await fixture.db.select().from(layoutReference).where(and(
+        eq(layoutReference.ownerType, 'schema'),
+        eq(layoutReference.ownerId, 'article')
+      ))).toHaveLength(2)
     } finally {
       fixture.close()
     }
@@ -375,6 +423,7 @@ describe('schema lifecycle', () => {
     try {
       await runMigrations(fixture.db)
       await seedSchemaLifecycle(fixture.db)
+      await seedSchemaLayoutReferences(fixture.db)
       await fixture.db.insert(contentRef).values([
         {
           contentId: 'external-owner',
@@ -415,6 +464,15 @@ describe('schema lifecycle', () => {
       expect(await fixture.db.select().from(schemaActive).where(eq(schemaActive.schemaKey, 'article'))).toEqual([])
       expect(await fixture.db.select().from(schemaDraft).where(eq(schemaDraft.schemaKey, 'article'))).toEqual([])
       expect(await fixture.db.select().from(schemaRole).where(eq(schemaRole.schemaKey, 'article'))).toEqual([])
+      expect(await fixture.db.select().from(layoutReference).where(and(
+        eq(layoutReference.ownerType, 'schema'),
+        eq(layoutReference.ownerId, 'article')
+      ))).toEqual([])
+      expect(await fixture.db.select().from(layoutReference).where(and(
+        eq(layoutReference.ownerType, 'schema'),
+        eq(layoutReference.ownerId, 'external')
+      ))).toHaveLength(1)
+      expect(await fixture.db.select().from(layoutResource).where(eq(layoutResource.id, 'layout-schema-history'))).toHaveLength(1)
       expect(await fixture.db.select().from(content).where(eq(content.schemaKey, 'article'))).toEqual([])
       expect(await fixture.db.select().from(contentListing).where(eq(contentListing.schemaKey, 'article'))).toEqual([])
       expect(await fixture.db.select().from(searchConfig).where(eq(searchConfig.schemaKey, 'article'))).toEqual([])
@@ -622,6 +680,6 @@ describe('schema lifecycle', () => {
     expect(db.transaction).not.toHaveBeenCalled()
     expect(db.batch).toHaveBeenCalledOnce()
     expect(db.batch).toHaveBeenCalledWith(statements)
-    expect(statements).toHaveLength(14)
+    expect(statements).toHaveLength(15)
   })
 })

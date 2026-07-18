@@ -7,22 +7,58 @@ import { getDraft, getPublishedSchema } from '../../../cms/repo'
 import { getKindChanges, migrateSchemaContent } from '../../../cms/migrate'
 import { syncSearchConfig } from '../../../cms/search-config'
 import { syncSearchIndexForSchema } from '../../../cms/search-index'
-import { schema as schemaTable, schemaActive as schemaActiveTable } from '../../../db/schema'
+import { schema as schemaTable } from '../../../db/schema'
 import { requireAdmin } from '../../../utils/auth'
 import { badRequest, notFound } from '../../../utils/http'
 import { schemaAstSchema } from '../../../cms/zod'
 import { assertSchemaKeyCanBePersisted, assertSchemaKeyCanBePublished } from '../../../cms/schema-key'
 import { assertExpectedRevision, requireExpectedRevision } from '../../../cms/document-revisions'
-import { ensureAnonymousSchemaRole } from '../../../utils/install'
 import { getTrustedRequestOrigin } from '../../../utils/request-origin'
 import { queueWidgetCacheInvalidation } from '../../../utils/widget-cache'
-import { assertPublicRouteAvailable, publishSchemaCollectionRoute } from '../../../cms/public-routes'
+import { assertPublicRouteAvailable } from '../../../cms/public-routes'
+import { commitSchemaPublication } from '../../../cms/schema-publication'
+import {
+  LayoutAssignmentValidationError,
+  assertReadyLayoutAssignment,
+  layoutAssignmentHttpError,
+  parseLayoutAssignmentField,
+  prepareLayoutAssignmentChange
+} from '../../../utils/layout-assignments'
+
+const DEFAULT_PRESENTATION = {
+  contractVersion: 1 as const,
+  preset: 'generic' as const,
+  collectionTemplate: 'list' as const,
+  detailTemplate: 'document' as const
+}
+
+function schemaPresentationAssignmentInput(body: unknown) {
+  const direct = parseLayoutAssignmentField(body)
+  const record = body && typeof body === 'object' ? body as Record<string, unknown> : {}
+  const ast = record.ast && typeof record.ast === 'object' ? record.ast as Record<string, unknown> : {}
+  const presentation = ast.presentation && typeof ast.presentation === 'object'
+    ? ast.presentation as Record<string, unknown>
+    : {}
+  const nested = parseLayoutAssignmentField(presentation)
+  if (direct.provided && nested.provided && direct.layoutId !== nested.layoutId) {
+    throw new LayoutAssignmentValidationError('Conflicting Layout assignments were supplied')
+  }
+  return direct.provided ? direct : nested
+}
+
+function withSchemaLayoutId(ast: any, layoutId: string | null) {
+  if (!ast.presentation && layoutId === null) return ast
+  const presentation = { ...(ast.presentation ?? DEFAULT_PRESENTATION) }
+  if (layoutId === null) delete presentation.layoutId
+  else presentation.layoutId = layoutId
+  return { ...ast, presentation }
+}
 
 export default defineEventHandler(async (event) => {
   const session = await requireAdmin(event)
   const actorId = (session.user as any)?.id ?? null
   const schemaKey = event.context.params?.schemaKey as string
-  const body = await readBody<{ ast?: unknown; note?: string; migrate?: boolean; revision?: number }>(event)
+  const body = await readBody<{ ast?: unknown; note?: string; migrate?: boolean; revision?: number; layoutId?: string | null }>(event)
   const db = await getDb(event)
 
   const draft = await getDraft(db, schemaKey)
@@ -33,13 +69,30 @@ export default defineEventHandler(async (event) => {
     updatedBy: draft.updatedBy
   }, requireExpectedRevision(body?.revision))
 
-  let ast: any = null
+  let requestedAst: any = null
   if (body?.ast) {
     const parsed = schemaAstSchema.safeParse(body.ast)
     if (!parsed.success) throw badRequest('Invalid AST', parsed.error.flatten())
-    ast = parsed.data
+    requestedAst = parsed.data
   } else {
-    ast = draft.ast
+    requestedAst = draft.ast
+  }
+  let ast: any
+  let layoutId: string | null
+  try {
+    const assignmentInput = schemaPresentationAssignmentInput(body)
+    layoutId = await prepareLayoutAssignmentChange({
+      event,
+      db,
+      body: assignmentInput.provided ? { layoutId: assignmentInput.layoutId } : {},
+      currentLayoutId: draft.ast.presentation?.layoutId ?? null
+    })
+    // Publish validates the selected resource even when the assignment did not
+    // change, so a broken draft can never become a new public Schema version.
+    await assertReadyLayoutAssignment(db, layoutId)
+    ast = withSchemaLayoutId(requestedAst, layoutId)
+  } catch (error) {
+    throw layoutAssignmentHttpError(error)
   }
   if (ast.schemaKey !== schemaKey) throw badRequest('schemaKey mismatch')
   await assertSchemaKeyCanBePersisted(db, schemaKey)
@@ -74,37 +127,26 @@ export default defineEventHandler(async (event) => {
     path: `/${schemaKey}`
   })
 
-  await db.insert(schemaTable).values({
-    schemaKey,
-    version: nextVersion,
-    title: ast.title,
-    astJson: JSON.stringify(ast),
-    jsonSchema: JSON.stringify(compiled.jsonSchema),
-    uiSchema: JSON.stringify(compiled.uiSchema),
-    registryJson: JSON.stringify(compiled.registry),
-    diffJson: JSON.stringify({ from: latest?.version ?? null, to: nextVersion }),
-    createdBy: actorId,
-    createdAt: now,
-    note: body?.note?.trim() || null
-  })
-
-  await db
-    .insert(schemaActiveTable)
-    .values({
+  try {
+    await commitSchemaPublication({
+      event,
+      db,
       schemaKey,
-      activeVersion: nextVersion,
-      updatedAt: now
+      version: nextVersion,
+      previousVersion: latest?.version ?? null,
+      title: ast.title,
+      ast,
+      jsonSchema: compiled.jsonSchema,
+      uiSchema: compiled.uiSchema,
+      registry: compiled.registry,
+      note: body?.note?.trim() || null,
+      actorId,
+      layoutId,
+      now
     })
-    .onConflictDoUpdate({
-      target: schemaActiveTable.schemaKey,
-      set: {
-        activeVersion: nextVersion,
-        updatedAt: now
-      }
-    })
-
-  await ensureAnonymousSchemaRole(db, schemaKey)
-  await publishSchemaCollectionRoute({ db, schemaKey, now })
+  } catch (error) {
+    throw layoutAssignmentHttpError(error)
+  }
 
   let migrated = 0
   if (body?.migrate && kindChanges.length) {
