@@ -1,12 +1,16 @@
 // @vitest-environment happy-dom
 
 import { Editor } from '@tiptap/core'
+import { GapCursor } from '@tiptap/pm/gapcursor'
 import { NodeSelection } from '@tiptap/pm/state'
 import StarterKit from '@tiptap/starter-kit'
+import { mapEditorItems } from '@nuxt/ui/utils/editor'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import PageBlock from '../app/editor/page/PageBlock'
+import { clearPageBlockSelection } from '../app/editor/page/selection'
 import type { PageBlockAttrs, PageBlockComponentKey } from '../app/editor/page/types'
+import { createPageProfile } from '../app/editor/profiles'
 import { clonePagePatternContent } from '../shared/page-patterns'
 
 const editors: Editor[] = []
@@ -66,6 +70,26 @@ function expectSingleTransaction(editor: Editor, action: () => boolean) {
   expect(action()).toBe(true)
   editor.off('transaction', handler)
   expect(transactions).toBe(1)
+}
+
+function dragMenuItems(editor: Editor, index: number) {
+  const pos = positionAt(editor, index)
+  const node = editor.state.doc.nodeAt(pos)
+  if (!node) throw new Error(`Missing node at ${pos}`)
+  const profile = createPageProfile()
+  const groups = profile.quickMenuGroups.flatMap(create => create({
+    editor,
+    node: node.toJSON(),
+    pos
+  }))
+  return mapEditorItems(editor, groups as any, profile.handlers) as any[][]
+}
+
+function dragMenuAction(editor: Editor, index: number, label: string) {
+  const items = dragMenuItems(editor, index).flat()
+  const matches = items.filter(item => item.label === label)
+  expect(matches).toHaveLength(1)
+  return matches[0]
 }
 
 afterEach(() => {
@@ -215,6 +239,49 @@ describe('page block transaction commands', () => {
     expect(editor.state.selection.from).toBe(positionAt(editor, 2))
     expect(editor.commands.undo()).toBe(true)
     expect(titleAt(editor, 2)).toBe('pageCTA')
+  })
+
+  it('clears an atomic page-block selection without mutating content', () => {
+    const editor = createEditor()
+    selectAt(editor, 1)
+    const before = editor.getJSON()
+
+    expect(clearPageBlockSelection(editor)).toBe(true)
+    expect(editor.state.selection).toBeInstanceOf(GapCursor)
+    expect(editor.state.selection).not.toBeInstanceOf(NodeSelection)
+    expect(editor.getJSON()).toEqual(before)
+    expect(clearPageBlockSelection(editor)).toBe(false)
+  })
+
+  it('targets the clicked drag-handle position with one built-in action each', () => {
+    const duplicateEditor = createEditor()
+    selectAt(duplicateEditor, 0)
+    dragMenuAction(duplicateEditor, 1, 'Duplicate').onSelect()
+    expect(components(duplicateEditor)).toEqual(['pageHero', 'pageCard', 'pageCard', 'pageCTA'])
+    expect(duplicateEditor.state.selection).toBeInstanceOf(NodeSelection)
+    expect(duplicateEditor.state.selection.from).toBe(positionAt(duplicateEditor, 2))
+    expect(duplicateEditor.commands.undo()).toBe(true)
+    expect(components(duplicateEditor)).toEqual(['pageHero', 'pageCard', 'pageCTA'])
+
+    const moveEditor = createEditor()
+    expect(dragMenuAction(moveEditor, 0, 'Move up').disabled).toBe(true)
+    expect(dragMenuAction(moveEditor, 2, 'Move down').disabled).toBe(true)
+    dragMenuAction(moveEditor, 1, 'Move up').onSelect()
+    expect(components(moveEditor)).toEqual(['pageCard', 'pageHero', 'pageCTA'])
+    expect(moveEditor.state.selection.from).toBe(positionAt(moveEditor, 0))
+    expect(moveEditor.commands.undo()).toBe(true)
+    dragMenuAction(moveEditor, 1, 'Move down').onSelect()
+    expect(components(moveEditor)).toEqual(['pageHero', 'pageCTA', 'pageCard'])
+    expect(moveEditor.state.selection.from).toBe(positionAt(moveEditor, 2))
+    expect(moveEditor.commands.undo()).toBe(true)
+
+    const deleteEditor = createEditor()
+    dragMenuAction(deleteEditor, 1, 'Delete').onSelect()
+    expect(components(deleteEditor)).toEqual(['pageHero', 'pageCTA'])
+    expect(deleteEditor.state.selection).toBeInstanceOf(NodeSelection)
+    expect(deleteEditor.state.selection.from).toBe(positionAt(deleteEditor, 0))
+    expect(deleteEditor.commands.undo()).toBe(true)
+    expect(components(deleteEditor)).toEqual(['pageHero', 'pageCard', 'pageCTA'])
   })
 
   it('rejects commands without a registered page-block NodeSelection', () => {
