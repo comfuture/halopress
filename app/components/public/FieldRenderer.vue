@@ -13,7 +13,12 @@ const props = defineProps<{
   rendering?: PortableRichTextFieldRendering | null
   stylesheets?: string[]
 }>()
-const { theme, pending: themePending, error: themeError } = useSiteTheme()
+const {
+  theme,
+  pending: themePending,
+  error: themeError,
+  refresh: refreshTheme
+} = useSiteTheme()
 const colorMode = useColorMode()
 const renderedColorMode = computed(() => colorMode.preference === 'dark'
   ? 'dark'
@@ -58,7 +63,15 @@ useHead(() => ({
     :aria-busy="themePending"
     class="text-sm text-muted"
   >
-    {{ themeError ? 'Portable content Theme is unavailable.' : 'Loading the published Theme…' }}
+    <span>{{ themeError ? 'Portable content Theme is unavailable.' : 'Loading the published Theme…' }}</span>
+    <button
+      v-if="themeError"
+      type="button"
+      class="ml-2 underline underline-offset-4"
+      @click="refreshTheme()"
+    >
+      Retry Theme
+    </button>
   </div>
   <PublicAssetGallery v-else-if="field.renderer === 'asset_gallery'" :value="value" :label="field.title" />
   <AssetImage v-else-if="field.renderer === 'asset' && typeof value === 'string'" :src="`/assets/${value}/raw`" :alt="field.title || ''" preset="content" sizes="(max-width: 768px) 100vw, 960px" class="max-h-[70vh] w-full rounded-xl bg-elevated object-contain" />

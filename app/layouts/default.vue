@@ -7,9 +7,28 @@ const { presentation } = await useSitePresentation()
 const { theme: siteTheme } = useSiteTheme()
 const siteModeEnabled = computed(() => siteTheme.value?.siteModeEnabled === true)
 const colorMode = useColorMode()
+const systemPrefersDark = ref(false)
+const configuredColorModePreference = computed(() => siteModeEnabled.value && siteTheme.value
+  ? siteTheme.value.colorMode
+  : presentation.value.appearance.colorMode)
 const shellColorMode = computed(() => colorMode.preference === 'dark'
   ? 'dark'
   : (colorMode.preference === 'light' ? 'light' : 'default'))
+const visitorColorModeIsDark = computed(() => colorMode.preference === 'dark'
+  || (colorMode.preference === 'system' && systemPrefersDark.value))
+const visitorColorModeIcon = computed(() => visitorColorModeIsDark.value
+  ? 'i-lucide-moon'
+  : 'i-lucide-sun')
+const visitorColorModeLabel = computed(() => visitorColorModeIsDark.value
+  ? 'Switch to light mode'
+  : 'Switch to dark mode')
+const explicitColorModeClass = computed(() => shellColorMode.value === 'default'
+  ? undefined
+  : shellColorMode.value)
+const colorModeBridgeScript = computed(() => {
+  const preference = configuredColorModePreference.value
+  return `(function(){var p="${preference}",m=p==="system"?(window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"):p,e=document.documentElement,h=window.__NUXT_COLOR_MODE__;e.classList.remove("light","dark");e.classList.add(m);e.style.colorScheme=m;if(h){h.preference=p;h.value=m}})()`
+})
 const { data: membership } = await useFetch<{ registrationEnabled: boolean }>('/api/membership')
 const { data: session, status, signOut } = useAuth()
 
@@ -17,6 +36,10 @@ const navigationItems = computed(() => siteNavigationItems(presentation.value, r
 const footerLinks = computed(() => siteFooterLinks(presentation.value, route.path))
 const themeStyle = computed(() => siteThemeStyle(presentation.value, siteModeEnabled.value))
 useHead(() => ({
+  htmlAttrs: {
+    class: explicitColorModeClass.value,
+    style: explicitColorModeClass.value ? `color-scheme: ${explicitColorModeClass.value}` : undefined
+  },
   bodyAttrs: {
     class: 'site-theme-adapter',
     'data-halo-theme-enabled': String(siteModeEnabled.value),
@@ -32,13 +55,30 @@ useHead(() => ({
         rel: 'stylesheet',
         href
       }))
-    : []
+    : [],
+  script: [{
+    key: 'halo-public-color-mode-bridge',
+    id: 'halo-public-color-mode-bridge',
+    tagPriority: 'low',
+    innerHTML: colorModeBridgeScript.value
+  }]
 }))
-watchEffect(() => {
-  colorMode.preference = siteModeEnabled.value && siteTheme.value
-    ? siteTheme.value.colorMode
-    : presentation.value.appearance.colorMode
-})
+function applyConfiguredColorMode(preference: 'system' | 'light' | 'dark') {
+  colorMode.preference = preference
+}
+watch(configuredColorModePreference, applyConfiguredColorMode, { immediate: true })
+if (import.meta.client) {
+  const systemColorModeMedia = window.matchMedia('(prefers-color-scheme: dark)')
+  const syncSystemColorMode = () => {
+    systemPrefersDark.value = systemColorModeMedia.matches
+  }
+  onMounted(() => {
+    syncSystemColorMode()
+    systemColorModeMedia.addEventListener('change', syncSystemColorMode)
+  })
+  onBeforeUnmount(() => systemColorModeMedia.removeEventListener('change', syncSystemColorMode))
+  useNuxtApp().hook('app:mounted', () => applyConfiguredColorMode(configuredColorModePreference.value))
+}
 const copyright = computed(() => presentation.value.footer.copyright
   || `© ${new Date().getFullYear()} ${presentation.value.general.siteName}`)
 const headerUi = computed(() => {
@@ -48,6 +88,9 @@ const headerUi = computed(() => {
 })
 
 const isAdmin = computed(() => session.value?.user?.role === 'admin' && session.value.user.accountType === 'staff')
+function toggleVisitorColorMode() {
+  colorMode.preference = visitorColorModeIsDark.value ? 'light' : 'dark'
+}
 function logout() {
   void signOut({ callbackUrl: '/' })
 }
@@ -124,7 +167,16 @@ const accountItems = computed<DropdownMenuItem[][]>(() => {
             <USkeleton class="h-8 w-24" />
           </template>
         </ClientOnly>
-        <UColorModeButton v-if="presentation.shell.showColorMode" />
+        <UButton
+          v-if="presentation.shell.showColorMode"
+          color="neutral"
+          variant="ghost"
+          square
+          :icon="visitorColorModeIcon"
+          :aria-label="visitorColorModeLabel"
+          data-public-color-mode-toggle
+          @click="toggleVisitorColorMode"
+        />
       </template>
 
       <template #body>

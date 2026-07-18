@@ -41,6 +41,7 @@ describe('Site reactive composables', () => {
     const result = useSiteTheme()
     expect(result).not.toHaveProperty('then')
     expect(result.theme.value).toBeNull()
+    expect(result.error.value).toBeNull()
     const digest = 'a'.repeat(64)
     state.data.value = {
       contractVersion: 1,
@@ -52,7 +53,12 @@ describe('Site reactive composables', () => {
     }
     expect(result.theme.value).toEqual(state.data.value)
     state.data.value = { ...state.data.value, stylesheetUrl: `https://user@press.example.com/_halo/theme/v1/${digest}.css` }
+    state.status.value = 'success'
     expect(result.theme.value).toBeNull()
+    expect(result.error.value).toBeInstanceOf(Error)
+    expect((result.error.value as Error).message).toContain('malformed contract')
+    state.data.value = null
+    expect(result.error.value).toBeInstanceOf(Error)
     expect(useFetch).toHaveBeenCalledWith('/api/delivery/site-theme', {
       key: 'site-theme-manifest',
       dedupe: 'defer'
