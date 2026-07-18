@@ -101,7 +101,7 @@ describe('Site menu editor interaction contract', () => {
     expect(parents).toContain('<SiteMenuChildList')
     expect(children).not.toContain('<SiteMenuChildList')
     expect(editorPage).toContain('role="status" aria-live="polite"')
-    expect(editorPage).toContain('watch([sourceResource, status]')
+    expect(editorPage).toContain('watch([sourceResource, status, menuId]')
     expect(editorPage).toContain('!working.value || working.value.id !== resource.id')
     expect(editorPage).toContain('Save menu')
     expect(editorPage.match(/Save menu/g)).toHaveLength(2)
@@ -114,17 +114,28 @@ describe('Site menu editor interaction contract', () => {
   })
 
   it('offers named CRUD, one-level editing, and removes the legacy writable screen', async () => {
-    const [listPage, editPage, editor, detail, parents, legacy, layout] = await Promise.all([
+    const [listPage, editPage, editor, detail, parents, createModal, siteSection, legacy, layout] = await Promise.all([
       readFile(resolve(root, 'app/pages/_desk/site/menus/index.vue'), 'utf8'),
       readFile(resolve(root, 'app/pages/_desk/site/menus/[menuId].vue'), 'utf8'),
       readFile(resolve(root, 'app/components/site-menu/SiteMenuItemEditor.vue'), 'utf8'),
       readFile(resolve(root, 'app/components/site-menu/SiteMenuDetailEditor.vue'), 'utf8'),
       readFile(resolve(root, 'app/components/site-menu/SiteMenuItemList.vue'), 'utf8'),
+      readFile(resolve(root, 'app/components/site-menu/SiteMenuItemCreateModal.vue'), 'utf8'),
+      readFile(resolve(root, 'app/components/SiteAdminSection.vue'), 'utf8'),
       readFile(resolve(root, 'app/pages/_desk/settings/navigation.vue'), 'utf8'),
       readFile(resolve(root, 'app/layouts/default.vue'), 'utf8')
     ])
-    expect(listPage).toContain('Create a menu set')
-    expect(listPage).toContain('query: { created: resource.id }')
+    expect(listPage).toContain('<template #actions>')
+    expect(listPage).toContain('<UModal')
+    expect(listPage).toContain('<UForm')
+    expect(listPage).toContain('data-menu-create-trigger')
+    expect(listPage).toContain('data-menu-create-name')
+    expect(listPage).toContain('@after:leave="handleCreateAfterLeave"')
+    expect(listPage).toContain(':close="creating ? false : true"')
+    expect(listPage).toContain('@update:open="handleCreateOpenChange"')
+    expect(listPage).not.toContain('aria-labelledby="menu-create-heading"')
+    expect(listPage).not.toContain('<form @submit.prevent="createSet"')
+    expect(listPage).toContain('query: { created: pendingCreation.resource.id }')
     expect(listPage).toContain('data-menu-set-edit')
     expect(listPage).toContain('Delete')
     expect(listPage).not.toContain('<SiteMenuItemList')
@@ -137,8 +148,28 @@ describe('Site menu editor interaction contract', () => {
     expect(editPage).toContain('@after:leave="handleMobileEditorAfterLeave"')
     expect(editPage).toContain('<SiteMenuItemList')
     expect(editPage).toContain('<SiteMenuDetailEditor')
+    expect(editPage).toContain('v-if="currentResourceReady"')
+    expect(editPage).toContain('kind="parent"')
+    expect(editPage).toContain(':resource-id="working?.id || \'\'"')
+    expect(editPage).toContain('<template #actions>')
+    expect(editPage).toContain('data-menu-add-parent')
+    expect(editPage).toContain('@create-child="addChild"')
+    expect(editPage).not.toContain('label: \'New link\'')
     expect(editPage).not.toContain('<SiteMenuItemEditor')
     expect(parents).not.toContain('<SiteMenuItemEditor')
+    expect(parents).toContain('<SiteMenuItemCreateModal')
+    expect(parents).toContain('kind="child"')
+    expect(parents).toContain('emit(\'createChild\', parentId, draft, submittedMenuId)')
+    expect(parents).not.toContain('label: \'Child link\'')
+    expect(createModal).toContain('<UModal')
+    expect(createModal).toContain('<UForm')
+    expect(createModal).toContain(':open="open"')
+    expect(createModal).toContain('@update:open="handleOpenChange"')
+    expect(createModal).toContain('@after:leave="afterLeave"')
+    expect(createModal).toContain('autofocus-label')
+    expect(createModal).toContain('item: siteMenuLeafSchema.parse(event.data)')
+    expect(siteSection).toContain('<slot name="actions" />')
+    expect(siteSection).toContain('#actions')
     expect(detail.match(/<SiteMenuItemEditor/g)).toHaveLength(1)
     expect(detail).toContain('This link opens a submenu')
     expect(editor).toContain('Stable value')

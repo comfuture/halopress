@@ -1,8 +1,15 @@
 <script setup lang="ts">
-import type { SiteMenuAdminResource } from '~~/shared/site-menu'
+import type { FormErrorEvent, FormSubmitEvent } from '@nuxt/ui'
+
+import {
+  siteMenuCreateSchema,
+  type SiteMenuAdminResource,
+  type SiteMenuCreate
+} from '~~/shared/site-menu'
 
 definePageMeta({ layout: 'desk' })
 
+const route = useRoute()
 const toast = useToast()
 const { confirm } = useConfirmDialog()
 const {
@@ -16,32 +23,87 @@ const {
   deleteMenu
 } = useSiteMenus()
 
-const createName = ref('')
+const createOpen = ref(false)
+const createState = reactive<SiteMenuCreate>({ name: '' })
+const createErrorMessage = ref('')
+const pendingCreatedMenu = ref<{
+  resource: SiteMenuAdminResource
+  request: SiteMenuCreateNavigationIdentity
+} | null>(null)
+const createFormId = 'site-menu-set-create-form'
 const deletingId = ref('')
+let failedCreateName = ''
+let latestCreateToken = 0
 
-async function createSet() {
-  const name = createName.value.trim()
-  if (!name) return
+watch(() => createState.name, (name) => {
+  if (createErrorMessage.value && name !== failedCreateName) createErrorMessage.value = ''
+})
+
+async function focusCreateName(_event?: FormErrorEvent) {
+  await nextTick()
+  document.querySelector<HTMLElement>('[data-menu-create-name]')?.focus()
+}
+
+function handleCreateOpenChange(nextOpen: boolean) {
+  if (!shouldAcceptSiteMenuCreateOpenChange(creating.value, nextOpen)) return
+  createOpen.value = nextOpen
+}
+
+async function createSet(event: FormSubmitEvent<SiteMenuCreate>) {
+  if (creating.value) return
+  const request = {
+    token: ++latestCreateToken,
+    originRoute: route.fullPath
+  }
+  createErrorMessage.value = ''
   try {
-    const resource = await createMenu(name)
-    createName.value = ''
-    toast.add({
-      title: 'Menu set created',
-      description: resource.name,
-      color: 'success',
-      icon: 'i-lucide-check'
-    })
-    await navigateTo({
-      path: `/_desk/site/menus/${encodeURIComponent(resource.id)}`,
-      query: { created: resource.id }
-    })
+    pendingCreatedMenu.value = {
+      resource: await createMenu(event.data.name),
+      request
+    }
+    createOpen.value = false
   } catch (createError: any) {
+    const issue = siteMenuValidationIssuesFromFetchError(createError)
+      .find(item => item.path === 'name')
+    createErrorMessage.value = issue?.message
+      || createError?.data?.statusMessage
+      || createError?.statusMessage
+      || 'Choose a different name and try again.'
+    failedCreateName = createState.name
+    await focusCreateName()
     toast.add({
       title: 'Could not create menu set',
-      description: createError?.data?.statusMessage || createError?.statusMessage || 'Choose a different name and try again.',
+      description: createErrorMessage.value,
       color: 'error'
     })
   }
+}
+
+async function handleCreateAfterLeave() {
+  const pendingCreation = pendingCreatedMenu.value
+  pendingCreatedMenu.value = null
+  createState.name = ''
+  createErrorMessage.value = ''
+  failedCreateName = ''
+  if (!pendingCreation) return
+
+  toast.add({
+    title: 'Menu set created',
+    description: pendingCreation.resource.name,
+    color: 'success',
+    icon: 'i-lucide-check'
+  })
+  afterSiteMenuOverlayFocusRestored(async () => {
+    if (!shouldApplySiteMenuCreateNavigation(
+      pendingCreation.request,
+      latestCreateToken,
+      route.fullPath
+    )) return
+    await navigateTo({
+      path: `/_desk/site/menus/${encodeURIComponent(pendingCreation.resource.id)}`,
+      query: { created: pendingCreation.resource.id }
+    })
+  })
 }
 
 async function removeMenu(resource: SiteMenuAdminResource) {
@@ -62,7 +124,7 @@ async function removeMenu(resource: SiteMenuAdminResource) {
     await nextTick()
     const target = focusId
       ? document.querySelector<HTMLElement>(`[data-menu-set-edit="${CSS.escape(focusId)}"]`)
-      : document.querySelector<HTMLElement>('[data-menu-create-name]')
+      : document.querySelector<HTMLElement>('[data-menu-create-trigger]')
         ?? document.querySelector<HTMLElement>('[data-menu-list-heading]')
     target?.focus()
     toast.add({ title: 'Menu set deleted', color: 'success', icon: 'i-lucide-check' })
@@ -84,6 +146,78 @@ async function removeMenu(resource: SiteMenuAdminResource) {
     title="Menus"
     description="Manage named navigation sets, then open one to arrange and edit its links."
   >
+    <template #actions>
+      <UModal
+        :open="createOpen"
+        title="Add menu set"
+        description="Create a named menu set that Site layouts can reference by its stable ID."
+        :dismissible="!creating"
+        :close="creating ? false : true"
+        :ui="{ footer: 'justify-end' }"
+        @update:open="handleCreateOpenChange"
+        @after:leave="handleCreateAfterLeave"
+      >
+        <UButton
+          icon="i-lucide-plus"
+          :disabled="pending || Boolean(error)"
+          data-menu-create-trigger
+        >
+          Add menu set
+        </UButton>
+
+        <template #body>
+          <UForm
+            :id="createFormId"
+            :schema="siteMenuCreateSchema"
+            :state="createState"
+            :loading-auto="false"
+            @submit="createSet"
+            @error="focusCreateName"
+          >
+            <UFormField
+              name="name"
+              label="Menu name"
+              description="Names are Unicode-aware and unique regardless of case."
+              required
+              :error="createErrorMessage || undefined"
+            >
+              <UInput
+                v-model="createState.name"
+                class="w-full"
+                placeholder="Footer links"
+                maxlength="80"
+                autocomplete="off"
+                autofocus
+                data-menu-create-name
+              />
+            </UFormField>
+          </UForm>
+        </template>
+
+        <template #footer>
+          <div class="flex w-full justify-end gap-2">
+            <UButton
+              type="button"
+              color="neutral"
+              variant="outline"
+              :disabled="creating"
+              @click="handleCreateOpenChange(false)"
+            >
+              Cancel
+            </UButton>
+            <UButton
+              type="submit"
+              :form="createFormId"
+              icon="i-lucide-plus"
+              :loading="creating"
+            >
+              Create menu set
+            </UButton>
+          </div>
+        </template>
+      </UModal>
+    </template>
+
     <div class="space-y-6">
       <div v-if="pending" class="space-y-3" aria-busy="true" aria-label="Loading menu sets">
         <USkeleton class="h-32 w-full" />
@@ -106,40 +240,6 @@ async function removeMenu(resource: SiteMenuAdminResource) {
       </UAlert>
 
       <template v-else>
-        <section class="rounded-lg border border-default p-4 sm:p-5" aria-labelledby="menu-create-heading">
-          <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(20rem,28rem)] lg:items-end">
-            <div class="space-y-1">
-              <h2 id="menu-create-heading" class="text-base font-semibold text-highlighted">
-                Create a menu set
-              </h2>
-              <p class="text-sm text-muted">
-                Menu sets have stable IDs and can be reused by future HaloPress Site layouts.
-              </p>
-            </div>
-            <form @submit.prevent="createSet">
-              <UFormField label="Menu name" description="Names are Unicode-aware and unique regardless of case.">
-                <div class="flex gap-2">
-                  <UInput
-                    v-model="createName"
-                    class="min-w-0 flex-1"
-                    placeholder="Footer links"
-                    maxlength="80"
-                    data-menu-create-name
-                  />
-                  <UButton
-                    type="submit"
-                    icon="i-lucide-plus"
-                    :loading="creating"
-                    :disabled="!createName.trim()"
-                  >
-                    Create
-                  </UButton>
-                </div>
-              </UFormField>
-            </form>
-          </div>
-        </section>
-
         <section class="space-y-3" aria-labelledby="menu-list-heading">
           <div>
             <h2 id="menu-list-heading" class="text-lg font-semibold text-highlighted" data-menu-list-heading tabindex="-1">
@@ -153,7 +253,7 @@ async function removeMenu(resource: SiteMenuAdminResource) {
           <UAlert
             v-if="!data?.items.length"
             title="No menu sets"
-            description="Create a menu set to begin."
+            description="Use Add menu set in the page actions to begin."
             variant="subtle"
             icon="i-lucide-info"
           />

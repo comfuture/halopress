@@ -1,5 +1,6 @@
 import {
   SITE_MENU_ICONS,
+  siteMenuLeafSchema,
   type SiteMenuItem,
   type SiteMenuLeaf,
   type SiteMenuUsage,
@@ -53,6 +54,35 @@ export function moveSiteMenuArrayItem<T>(items: readonly T[], from: number, to: 
   const [item] = next.splice(from, 1)
   if (item !== undefined) next.splice(to, 0, item)
   return next
+}
+
+export type SiteMenuItemCreationResult = {
+  item: SiteMenuLeaf
+  parent?: SiteMenuItem
+  position: number
+}
+
+/**
+ * Commit a detached modal draft only after successful form submission. Child
+ * parents are resolved by stable ID so reordered rows cannot redirect a link.
+ */
+export function commitSiteMenuItemCreation(
+  items: SiteMenuItem[],
+  draft: SiteMenuLeaf,
+  parentId?: string
+): SiteMenuItemCreationResult | null {
+  const created = siteMenuLeafSchema.parse(draft)
+  if (parentId === undefined) {
+    if (items.length >= 12) return null
+    const item: SiteMenuItem = { ...created, children: [] }
+    items.push(item)
+    return { item, position: items.length }
+  }
+
+  const parent = items.find(item => item.id === parentId)
+  if (!parent || parent.children.length >= 8) return null
+  parent.children.push(created)
+  return { item: created, parent, position: parent.children.length }
 }
 
 export function siteMenuMoveAnnouncement(
@@ -176,7 +206,72 @@ export function restoreSiteMenuRowFocusAfterOverlay(
   itemId: string | undefined,
   schedule: (callback: FrameRequestCallback) => number = requestAnimationFrame
 ) {
-  schedule(() => schedule(() => focusSiteMenuRow(itemId)))
+  afterSiteMenuOverlayFocusRestored(() => focusSiteMenuRow(itemId), schedule)
+}
+
+export function afterSiteMenuOverlayFocusRestored(
+  callback: () => void,
+  schedule: (callback: FrameRequestCallback) => number = requestAnimationFrame
+) {
+  schedule(() => schedule(() => callback()))
+}
+
+export function shouldAcceptSiteMenuCreateOpenChange(isCreating: boolean, nextOpen: boolean) {
+  return nextOpen || !isCreating
+}
+
+export function shouldAcceptSiteMenuItemCreateOpenChange(
+  deliveryPending: boolean,
+  nextOpen: boolean
+) {
+  return !deliveryPending || !nextOpen
+}
+
+export function isCurrentSiteMenuResourceReady(
+  requestStatus: string,
+  pending: boolean,
+  hasError: boolean,
+  routeMenuId: string,
+  sourceMenuId: string | undefined,
+  workingMenuId: string | undefined
+) {
+  return requestStatus === 'success'
+    && !pending
+    && !hasError
+    && Boolean(routeMenuId)
+    && sourceMenuId === routeMenuId
+    && workingMenuId === routeMenuId
+}
+
+export function isSiteMenuCreationTargetCurrent(
+  submittedMenuId: string,
+  routeMenuId: string,
+  workingMenuId: string | undefined
+) {
+  return Boolean(submittedMenuId)
+    && submittedMenuId === routeMenuId
+    && submittedMenuId === workingMenuId
+}
+
+export type SiteMenuCreateNavigationIdentity = {
+  token: number
+  originRoute: string
+}
+
+export function shouldApplySiteMenuCreateNavigation(
+  request: SiteMenuCreateNavigationIdentity,
+  latestToken: number,
+  currentRoute: string
+) {
+  return request.token === latestToken && request.originRoute === currentRoute
+}
+
+export function shouldEmitDeferredSiteMenuCreation(
+  active: boolean,
+  scheduledGeneration: number,
+  currentGeneration: number
+) {
+  return active && scheduledGeneration === currentGeneration
 }
 
 export function focusSiteMenuEditor(menuId: string | undefined, target: 'name' | 'heading') {

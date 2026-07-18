@@ -1,17 +1,18 @@
 <script setup lang="ts">
 import type { MoveEvent, SortableEvent } from 'sortablejs'
 import { moveArrayElement, useSortable } from '@vueuse/integrations/useSortable'
-import { ulid } from 'ulid'
 
-import type { SiteMenuItem, SiteMenuValidationIssue } from '~~/shared/site-menu'
+import type { SiteMenuItem, SiteMenuLeaf, SiteMenuValidationIssue } from '~~/shared/site-menu'
 
 const model = defineModel<SiteMenuItem[]>({ required: true })
 const emit = defineEmits<{
   announce: [message: string]
+  createChild: [parentId: string, draft: SiteMenuLeaf, resourceId: string]
   select: [itemId: string]
   remove: [removedId: string, nextId?: string]
 }>()
 const props = defineProps<{
+  resourceId: string
   selectedId?: string
   validationIssues?: SiteMenuValidationIssue[]
 }>()
@@ -52,16 +53,8 @@ function removeItem(index: number) {
   nextTick(() => focusAfterSiteMenuRemoval(nextFocusId))
 }
 
-function addChild(item: SiteMenuItem) {
-  if (item.children.length >= 8) return
-  const child = {
-    id: `menu-${ulid()}`,
-    label: 'Child link',
-    destination: { type: 'home' as const }
-  }
-  item.children.push(child)
-  emit('announce', `Added child link ${item.children.length} to ${item.label}.`)
-  emit('select', child.id)
+function addChild(parentId: string, draft: SiteMenuLeaf, submittedMenuId: string) {
+  emit('createChild', parentId, draft, submittedMenuId)
 }
 
 function onChildRemoved(removedId: string, nextId: string) {
@@ -214,18 +207,24 @@ useSortable(listRef, model, {
           />
         </div>
 
-        <UButton
-          type="button"
-          icon="i-lucide-plus"
-          color="neutral"
-          variant="ghost"
-          size="sm"
-          :disabled="item.children.length >= 8"
-          :data-menu-add-child="item.id"
-          @click="addChild(item)"
+        <SiteMenuItemCreateModal
+          kind="child"
+          :resource-id="resourceId"
+          :parent-label="item.label"
+          @create="(draft, submittedMenuId) => addChild(item.id, draft, submittedMenuId)"
         >
-          Add child link
-        </UButton>
+          <UButton
+            type="button"
+            icon="i-lucide-plus"
+            color="neutral"
+            variant="ghost"
+            size="sm"
+            :disabled="item.children.length >= 8"
+            :data-menu-add-child="item.id"
+          >
+            Add child link
+          </UButton>
+        </SiteMenuItemCreateModal>
       </div>
       <div
         v-if="dropTarget?.id === item.id && dropTarget.after"

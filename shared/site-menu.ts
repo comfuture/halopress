@@ -50,7 +50,7 @@ export const siteMenuBadgeSchema = z.union([
 
 export const siteMenuLeafSchema = z.object({
   id: siteMenuIdSchema,
-  label: z.string().trim().min(1).max(80),
+  label: z.string().trim().min(1, 'Enter a label').max(80, 'Use 80 characters or fewer'),
   destination: publicNavigationDestinationSchema,
   value: siteMenuValueSchema.optional(),
   icon: z.enum(SITE_MENU_ICONS).optional(),

@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { ulid } from 'ulid'
-
 import type {
   SiteMenuAdminResource,
   SiteMenuLeaf,
@@ -48,6 +46,14 @@ const isDirty = computed(() => Boolean(working.value && isSiteMenuWorkingCopyDir
   currentSnapshot.value,
   baseline.value
 )))
+const currentResourceReady = computed(() => isCurrentSiteMenuResourceReady(
+  status.value,
+  pending.value,
+  Boolean(error.value),
+  menuId.value,
+  sourceResource.value?.id,
+  working.value?.id
+))
 const selectedSelection = computed(() => working.value
   ? findSiteMenuItemSelection(working.value.document.items, selectedItemId.value)
   : null)
@@ -87,8 +93,18 @@ function loadResource(resource: SiteMenuAdminResource) {
   }
 }
 
-watch([sourceResource, status], ([resource, requestStatus]) => {
-  if (requestStatus !== 'success' || !resource) return
+watch([sourceResource, status, menuId], ([resource, requestStatus, currentMenuId]) => {
+  if (requestStatus !== 'success') return
+  if (!resource) {
+    if (working.value && working.value.id !== currentMenuId) {
+      working.value = null
+      baseline.value = ''
+      selectedItemId.value = ''
+      mobileEditorOpen.value = false
+      validationIssues.value = []
+    }
+    return
+  }
   if (!working.value || working.value.id !== resource.id) loadResource(resource)
 }, { immediate: true })
 
@@ -132,17 +148,28 @@ async function selectItem(itemId: string) {
   document.querySelector<HTMLElement>('[data-menu-detail-heading]')?.focus()
 }
 
-function addItem() {
-  if (!working.value || working.value.document.items.length >= 12) return
-  const item = {
-    id: `menu-${ulid()}`,
-    label: 'New link',
-    destination: { type: 'home' as const },
-    children: []
-  }
-  working.value.document.items.push(item)
-  announcement.value = `Added link ${working.value.document.items.length}.`
-  selectItem(item.id)
+function addItem(draft: SiteMenuLeaf, submittedMenuId: string) {
+  if (!working.value || !currentResourceReady.value || !isSiteMenuCreationTargetCurrent(
+    submittedMenuId,
+    menuId.value,
+    working.value.id
+  )) return
+  const created = commitSiteMenuItemCreation(working.value.document.items, draft)
+  if (!created) return
+  announcement.value = `Added ${created.item.label} as link ${created.position}.`
+  selectItem(created.item.id)
+}
+
+function addChild(parentId: string, draft: SiteMenuLeaf, submittedMenuId: string) {
+  if (!working.value || !currentResourceReady.value || !isSiteMenuCreationTargetCurrent(
+    submittedMenuId,
+    menuId.value,
+    working.value.id
+  )) return
+  const created = commitSiteMenuItemCreation(working.value.document.items, draft, parentId)
+  if (!created?.parent) return
+  announcement.value = `Added ${created.item.label} as child ${created.position} of ${created.parent.label}.`
+  selectItem(created.item.id)
 }
 
 function handleItemRemoved(_removedId: string, nextId?: string) {
@@ -221,6 +248,24 @@ async function save() {
     title="Edit menu"
     description="Arrange a compact menu preview and edit one selected link at a time."
   >
+    <template #actions>
+      <SiteMenuItemCreateModal
+        v-if="currentResourceReady"
+        kind="parent"
+        :resource-id="working?.id || ''"
+        @create="addItem"
+      >
+        <UButton
+          type="button"
+          icon="i-lucide-plus"
+          :disabled="(working?.document.items.length ?? 12) >= 12"
+          data-menu-add-parent
+        >
+          Add menu item
+        </UButton>
+      </SiteMenuItemCreateModal>
+    </template>
+
     <div class="space-y-6">
       <UButton to="/_desk/site/menus" icon="i-lucide-arrow-left" color="neutral" variant="ghost">
         Back to menu sets
@@ -321,24 +366,13 @@ async function save() {
 
         <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(22rem,0.85fr)] lg:items-start">
           <section class="min-w-0 space-y-4 rounded-lg border border-default p-3 sm:p-4" aria-labelledby="menu-items-heading">
-            <div class="flex flex-wrap items-start justify-between gap-3">
+            <div>
               <div>
                 <h3 id="menu-items-heading" class="font-semibold text-highlighted">Menu items</h3>
                 <p class="text-sm text-muted">
                   Select a summary to edit it. Drag with pointer or touch, or use keyboard move controls.
                 </p>
               </div>
-              <UButton
-                type="button"
-                icon="i-lucide-plus"
-                color="neutral"
-                variant="outline"
-                :disabled="working.document.items.length >= 12"
-                data-menu-add-parent
-                @click="addItem"
-              >
-                Add link
-              </UButton>
             </div>
 
             <UAlert
@@ -351,9 +385,11 @@ async function save() {
 
             <SiteMenuItemList
               v-model="working.document.items"
+              :resource-id="working.id"
               :selected-id="selectedItemId"
               :validation-issues="validationIssues"
               @announce="announcement = $event"
+              @create-child="addChild"
               @select="selectItem"
               @remove="handleItemRemoved"
             />
