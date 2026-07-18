@@ -18,7 +18,8 @@ import {
   hasCustomDomain,
   hasImageTransformations,
   hasPublicOrigin,
-  resolveOnboardingDeployment
+  resolveOnboardingDeployment,
+  resolveOnboardingDeploymentFromEvent
 } from '../server/utils/onboarding'
 import type { OnboardingDeployment } from '../shared/types/onboarding'
 
@@ -83,6 +84,20 @@ describe('dashboard onboarding', () => {
     })
 
     expect(resolveOnboardingDeployment({ cloudflareContext: {}, development: true })).toEqual(localDeployment)
+  })
+
+  it('uses the same local-runtime classification throughout the installation flow', async () => {
+    const cloudflareEvent = onboardingEvent('localhost', true)
+
+    expect(resolveOnboardingDeploymentFromEvent(cloudflareEvent as any, true)).toEqual(localDeployment)
+    expect(resolveOnboardingDeploymentFromEvent(cloudflareEvent as any, false)).toEqual(cloudflareDeployment)
+
+    const endpointSources = await Promise.all([
+      'server/api/system/install/status.get.ts',
+      'server/api/system/install/session.post.ts',
+      'server/api/system/install.post.ts'
+    ].map(path => readFile(join(projectRoot, path), 'utf8')))
+    expect(endpointSources.every(source => source.includes('resolveOnboardingDeploymentFromEvent(event)'))).toBe(true)
   })
 
   it('distinguishes Cloudflare custom domains and Node public origins from loopback hosts', () => {

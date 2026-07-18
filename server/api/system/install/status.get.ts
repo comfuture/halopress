@@ -7,14 +7,10 @@ import {
   readSetupSessionToken
 } from '../../../utils/install-session'
 import { isAuthRuntimeReady, resolveAuthSigningSecret } from '../../../utils/install-token'
-import { resolveOnboardingDeployment } from '../../../utils/onboarding'
+import { resolveOnboardingDeploymentFromEvent } from '../../../utils/onboarding'
 
 export default defineEventHandler(async (event) => {
-  const cloudflareContext = Boolean((event as any)?.context?.cloudflare)
-  const runtime = resolveOnboardingDeployment({
-    development: import.meta.dev,
-    cloudflareContext
-  }).runtime
+  const runtime = resolveOnboardingDeploymentFromEvent(event).runtime
   const isCloudflareRuntime = runtime === 'cloudflare'
   const missingBindings = getMissingCloudflareBindings(event)
   if (missingBindings.length) {

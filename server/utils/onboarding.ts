@@ -131,6 +131,16 @@ export function resolveOnboardingDeployment(
   }
 }
 
+export function resolveOnboardingDeploymentFromEvent(
+  event: H3Event,
+  development = import.meta.dev
+) {
+  return resolveOnboardingDeployment({
+    development,
+    cloudflareContext: (event as any)?.context?.cloudflare
+  })
+}
+
 export function hasCompletedDomainGuidance(
   deployment: OnboardingDeployment,
   hostname: string

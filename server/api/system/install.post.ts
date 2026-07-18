@@ -22,11 +22,12 @@ import {
   requireSameOriginSetupRequest
 } from '../../utils/install-session'
 import { isAuthRuntimeReady, resolveAuthSigningSecret } from '../../utils/install-token'
+import { resolveOnboardingDeploymentFromEvent } from '../../utils/onboarding'
 import { upsertSetting } from '../../utils/settings'
 
 export default defineEventHandler(async (event) => {
   requireSameOriginSetupRequest(event)
-  const isCloudflareRuntime = Boolean((event as any)?.context?.cloudflare)
+  const isCloudflareRuntime = resolveOnboardingDeploymentFromEvent(event).runtime === 'cloudflare'
   const missingBindings = getMissingCloudflareBindings(event)
   if (missingBindings.length) {
     throw createError({
