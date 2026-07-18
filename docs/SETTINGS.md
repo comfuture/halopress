@@ -33,6 +33,80 @@ Migration `0008_add_site_menu_sets` creates only the menu and normalized-referen
 
 Menu saves replace the name and full document in one checked database update, so validation failures cannot partially apply a reorder. `site_menu_reference` stores public-resource usage with an `ON DELETE RESTRICT` foreign key. Deletion uses a single conditional statement and verifies the affected row, while the FK remains authoritative if a future Layout adds a reference concurrently. Persisted Layout-owned rows use the storage namespace `owner_type='site-layout'`; they never point at Nuxt `app/layouts/*.vue` files.
 
+### Typed dynamic menu sources
+
+Menu document version 1 also accepts dynamic items alongside static items, either at the top level or in one static parent's `children`. A dynamic item has a stable source ID and exactly one strict, versioned source object. It is declarative data, not a textual query language: there is no parser for pseudo-code, SQL, JavaScript, regular expressions, component names, imports, class names, HTML, URLs to data APIs, or Nuxt application-layout selectors.
+
+The supported source shapes are:
+
+```json
+{
+  "kind": "dynamic",
+  "id": "recent-articles",
+  "source": {
+    "version": 1,
+    "type": "schemaQuery",
+    "schemaKey": "article",
+    "filters": [],
+    "sort": { "type": "system", "field": "createdAt", "direction": "desc" },
+    "label": { "type": "systemTitle" },
+    "limit": 10
+  }
+}
+```
+
+```json
+{
+  "kind": "dynamic",
+  "id": "tagged-articles",
+  "source": {
+    "version": 1,
+    "type": "schemaQuery",
+    "schemaKey": "article",
+    "filters": [
+      { "fieldId": "article-tags-field-id", "operator": "exactSet", "values": ["a", "b"] }
+    ],
+    "sort": { "type": "system", "field": "createdAt", "direction": "desc" },
+    "label": { "type": "systemTitle" },
+    "limit": 10
+  }
+}
+```
+
+```json
+{
+  "kind": "dynamic",
+  "id": "foo-pages",
+  "source": {
+    "version": 1,
+    "type": "pagePrefix",
+    "scope": { "type": "fixed", "prefix": "/foo" },
+    "sort": "path",
+    "limit": 12
+  }
+}
+```
+
+```json
+{
+  "kind": "dynamic",
+  "id": "sibling-pages",
+  "source": {
+    "version": 1,
+    "type": "pagePrefix",
+    "scope": { "type": "currentParent" },
+    "sort": "title",
+    "limit": 12
+  }
+}
+```
+
+The first two documents are the typed equivalents of “recent Articles” and “Articles tagged `a` or `b`.” A Schema source selects the exact active Schema by stable key and fields by stable field ID. Save validation permits only active, anonymously readable Schemas; exact or exact-set filters supported by the published search configuration; `createdAt`, `updatedAt`, or configured sortable fields; and the system title or one validated scalar field for labels. Exact-set is an OR over the listed scalar values. Scalar filter values are always bound query parameters. Results require the published projection, a canonical public route, and anonymous read access; the document-ID tie-break makes ordering deterministic.
+
+A fixed Page prefix of `/foo` means canonical published standalone Pages whose paths are direct children of `/foo`; `/foo/bar` matches and `/foo/bar/baz` does not. `currentParent` is structural and performs no placeholder substitution. For the canonical Page `/foo/bar`, it resolves direct children of `/foo`, so siblings include the current Page. For a root-level Page such as `/foo`, the scope is `/` and resolves root direct Pages. Alias requests use the normalized canonical Page context supplied by public Layout resolution. Collection/detail routes, missing context, and non-Page context return an empty result. Page labels come from the publication revision, never the working title.
+
+Menus allow at most eight dynamic sources, four filters per Schema source, ten values per exact-set, and one through twelve requested results per source. The existing final limits of twelve top-level items, eight children, and one child level still apply after expansion. Generated item IDs and values are deterministic hashes namespaced by source ID and document identity. Metadata is prepared in bounded D1-safe chunks and source queries share a concurrency gate and render deadline; a failure or timeout omits only that source, leaving static siblings and the surrounding public Layout/page intact. When a distributed cache binding exists, every request re-reads its distributed scope revision before reusing source results. Without that binding, dynamic source results are deliberately resolved fresh instead of relying on isolate-local TTLs. Schema/content/anonymous-role changes invalidate the Schema scope, while Page publication, removal, and canonical-route changes invalidate the public Page-route scope. The final Layout/Menu digest includes the fully expanded public document and canonical Page context for contextual sources.
+
 ## Layout resources
 
 `Layout` is the HaloPress domain name for a persisted public page-layout resource and rendering contract. It is not a Nuxt application layout. The boundary is intentional:
