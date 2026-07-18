@@ -4,12 +4,20 @@ import { describe, expect, it } from 'vitest'
 
 import {
   SITE_MENU_NO_ICON_VALUE,
+  findSiteMenuItemSelection,
+  focusAfterSiteMenuRemoval,
   focusFirstSiteMenuValidationIssue,
+  focusSiteMenuEditor,
   focusSiteMenuMoveControl,
+  focusSiteMenuRow,
   isSiteMenuWorkingCopyDirty,
   moveSiteMenuArrayItem,
+  restoreSiteMenuRowFocusAfterOverlay,
+  siteMenuRemovalFocusId,
   shouldInitializeSiteMenuSelection,
+  shouldApplySiteMenuSaveResult,
   siteMenuIconFromEditorValue,
+  siteMenuItemIdForValidationPath,
   siteMenuMoveAnnouncement,
   siteMenuUsageFromFetchError,
   siteMenuValidationIssuesFromFetchError,
@@ -24,6 +32,58 @@ describe('Site menu rendered editor behavior', () => {
     expect(shouldInitializeSiteMenuSelection(null, 'error', false)).toBe(false)
     expect(shouldInitializeSiteMenuSelection({ items: [] }, 'success', false)).toBe(true)
     expect(shouldInitializeSiteMenuSelection({ items: [] }, 'success', true)).toBe(false)
+  })
+
+  it('does not let a delayed save overwrite later edits or another selection', async () => {
+    let resolveSave!: (resource: { id: string; name: string }) => void
+    const delayedSave = new Promise<{ id: string; name: string }>((resolve) => {
+      resolveSave = resolve
+    })
+    const request = { token: 1, menuId: 'menu-a', snapshot: 'Menu A:before' }
+    let selectedMenuId = 'menu-a'
+    let working = { id: 'menu-a', name: 'Menu A:before' }
+    const applyWhenCurrent = delayedSave.then((resource) => {
+      if (shouldApplySiteMenuSaveResult(
+        request,
+        1,
+        selectedMenuId,
+        working.id,
+        working.name
+      )) working = resource
+    })
+
+    working = { ...working, name: 'Menu A:edited while saving' }
+    resolveSave({ id: 'menu-a', name: 'Menu A:server response' })
+    await applyWhenCurrent
+    expect(working).toEqual({ id: 'menu-a', name: 'Menu A:edited while saving' })
+
+    let resolveSelectionSave!: (resource: { id: string; name: string }) => void
+    const delayedSelectionSave = new Promise<{ id: string; name: string }>((resolve) => {
+      resolveSelectionSave = resolve
+    })
+    const selectionRequest = { token: 2, menuId: 'menu-a', snapshot: working.name }
+    const applyAfterSelection = delayedSelectionSave.then((resource) => {
+      if (shouldApplySiteMenuSaveResult(
+        selectionRequest,
+        2,
+        selectedMenuId,
+        working.id,
+        working.name
+      )) working = resource
+    })
+    selectedMenuId = 'menu-b'
+    working = { id: 'menu-b', name: 'Menu B' }
+    resolveSelectionSave({ id: 'menu-a', name: 'Menu A:server response' })
+    await applyAfterSelection
+    expect(working).toEqual({ id: 'menu-b', name: 'Menu B' })
+
+    expect(shouldApplySiteMenuSaveResult(
+      { token: 3, menuId: 'menu-b', snapshot: 'Menu B' },
+      3,
+      selectedMenuId,
+      working.id,
+      working.name
+    )).toBe(true)
   })
 
   it.each(['pointer', 'touch', 'keyboard'] as const)(
@@ -69,17 +129,125 @@ describe('Site menu rendered editor behavior', () => {
     expect(validationMessageForPath(issues, 'document.items.0.label')).toBe('Enter a label')
   })
 
+  it('restores focus by stable identity after parent and child removals', () => {
+    const rows = [{ id: 'first' }, { id: 'second' }, { id: 'third' }]
+    expect(siteMenuRemovalFocusId(rows, 1)).toBe('third')
+    expect(siteMenuRemovalFocusId(rows, 2)).toBe('second')
+    expect(siteMenuRemovalFocusId([{ id: 'only' }], 0)).toBeUndefined()
+
+    document.body.innerHTML = `
+      <button data-menu-row-focus="second">Second row control</button>
+      <button data-menu-row-focus="third">Third row control</button>
+      <button data-menu-add-parent>Add parent link</button>
+      <button data-menu-add-child="parent-a">Add child link</button>
+    `
+    expect(focusAfterSiteMenuRemoval('third')).toBe(true)
+    expect((document.activeElement as HTMLElement).textContent).toBe('Third row control')
+    expect(focusAfterSiteMenuRemoval(undefined)).toBe(true)
+    expect((document.activeElement as HTMLElement).textContent).toBe('Add parent link')
+    expect(focusAfterSiteMenuRemoval(undefined, 'parent-a')).toBe(true)
+    expect((document.activeElement as HTMLElement).textContent).toBe('Add child link')
+  })
+
+  it('keeps one stable item selection across reorder and responsive detail hosts', () => {
+    const items = [{
+      id: 'parent-a',
+      label: 'Parent A',
+      destination: { type: 'home' as const },
+      children: [{
+        id: 'child-a',
+        label: 'Child A',
+        destination: { type: 'home' as const }
+      }]
+    }, {
+      id: 'parent-b',
+      label: 'Parent B',
+      destination: { type: 'home' as const },
+      children: []
+    }]
+    const before = findSiteMenuItemSelection(items, 'child-a')
+    expect(before).toMatchObject({
+      id: 'child-a',
+      parentId: 'parent-a',
+      pathPrefix: 'document.items.0.children.0'
+    })
+
+    const reordered = moveSiteMenuArrayItem(items, 0, 1)
+    const after = findSiteMenuItemSelection(reordered, 'child-a')
+    expect(after).toMatchObject({
+      id: 'child-a',
+      parentId: 'parent-a',
+      pathPrefix: 'document.items.1.children.0'
+    })
+    expect(after?.item).toBe(before?.item)
+    expect(siteMenuItemIdForValidationPath(reordered, 'document.items.1.children.0.label')).toBe('child-a')
+    expect(siteMenuItemIdForValidationPath(reordered, 'document.items.0.destination')).toBe('parent-b')
+
+    document.body.innerHTML = '<button data-menu-row-select="child-a">Edit Child A</button>'
+    expect(focusSiteMenuRow('child-a')).toBe(true)
+    expect((document.activeElement as HTMLElement).textContent).toBe('Edit Child A')
+  })
+
+  it('restores mobile drawer focus after the overlay focus cycle', () => {
+    document.body.innerHTML = `
+      <button id="fallback">Fallback trigger</button>
+      <button data-menu-row-select="child-a">Edit Child A</button>
+    `
+    const callbacks: FrameRequestCallback[] = []
+    const schedule = (callback: FrameRequestCallback) => {
+      callbacks.push(callback)
+      return callbacks.length
+    }
+    document.querySelector<HTMLElement>('#fallback')!.focus()
+
+    restoreSiteMenuRowFocusAfterOverlay('child-a', schedule)
+    expect((document.activeElement as HTMLElement).textContent).toBe('Fallback trigger')
+    callbacks.shift()!(0)
+    expect((document.activeElement as HTMLElement).textContent).toBe('Fallback trigger')
+    callbacks.shift()!(0)
+    expect((document.activeElement as HTMLElement).textContent).toBe('Edit Child A')
+  })
+
+  it('focuses the exact created/deleted menu target with an empty-list fallback', () => {
+    document.body.innerHTML = `
+      <h2 data-menu-selector-heading tabindex="-1">Menu set selector</h2>
+      <section data-menu-editor-id="old-menu">
+        <h2 data-menu-editor-heading tabindex="-1">Old menu heading</h2>
+        <input data-menu-name-input aria-label="Old menu name">
+      </section>
+      <section data-menu-editor-id="new-menu">
+        <h2 data-menu-editor-heading tabindex="-1">New menu heading</h2>
+        <input data-menu-name-input aria-label="New menu name">
+      </section>
+    `
+    expect(focusSiteMenuEditor('new-menu', 'name')).toBe(true)
+    expect((document.activeElement as HTMLElement).getAttribute('aria-label')).toBe('New menu name')
+    expect(focusSiteMenuEditor('new-menu', 'heading')).toBe(true)
+    expect((document.activeElement as HTMLElement).textContent).toBe('New menu heading')
+
+    document.querySelectorAll('[data-menu-editor-id]').forEach(element => element.remove())
+    expect(focusSiteMenuEditor(undefined, 'heading')).toBe(true)
+    expect((document.activeElement as HTMLElement).textContent).toBe('Menu set selector')
+  })
+
   it('parses delete-race usage and structured validation without accepting malformed metadata', () => {
     const usage = [{
       resourceType: 'site-layout' as const,
       resourceId: 'layout-1',
       label: 'Marketing header'
     }]
-    const issues = [{ path: 'document.items.1.value', message: 'Values must be unique' }]
+    const issues = [
+      { path: 'name', message: 'Names must be unique' },
+      { path: 'document.items.1.value', message: 'Values must be unique' }
+    ]
     const error = { data: { data: { usage, issues } } }
 
     expect(siteMenuUsageFromFetchError(error)).toEqual(usage)
     expect(siteMenuValidationIssuesFromFetchError(error)).toEqual(issues)
+    expect(validationMessageForPath(siteMenuValidationIssuesFromFetchError(error), 'name'))
+      .toBe('Names must be unique')
+    expect(validationMessageForPath(siteMenuValidationIssuesFromFetchError(error), 'document.items.1.value'))
+      .toBe('Values must be unique')
     expect(siteMenuUsageFromFetchError({ data: { usage: [{ resourceType: 'unsafe' }] } })).toEqual([])
   })
 

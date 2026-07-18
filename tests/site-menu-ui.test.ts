@@ -54,6 +54,7 @@ describe('Site menu Nuxt UI adapter', () => {
       badge: 2,
       type: 'trigger',
       active: true,
+      defaultOpen: true,
       to: undefined,
       children: [{ label: 'Team', value: 'team-stable', to: '/company/team', active: true }]
     })
@@ -75,10 +76,10 @@ describe('Site menu Nuxt UI adapter', () => {
 
 describe('Site menu editor interaction contract', () => {
   it('provides isolated pointer/touch sorting, exact destination indicators, and keyboard controls at both levels', async () => {
-    const [parents, children, page] = await Promise.all([
+    const [parents, children, editorPage] = await Promise.all([
       readFile(resolve(root, 'app/components/site-menu/SiteMenuItemList.vue'), 'utf8'),
       readFile(resolve(root, 'app/components/site-menu/SiteMenuChildList.vue'), 'utf8'),
-      readFile(resolve(root, 'app/pages/_desk/site/menus.vue'), 'utf8')
+      readFile(resolve(root, 'app/pages/_desk/site/menus/[menuId].vue'), 'utf8')
     ])
 
     for (const list of [parents, children]) {
@@ -99,11 +100,11 @@ describe('Site menu editor interaction contract', () => {
     }
     expect(parents).toContain('<SiteMenuChildList')
     expect(children).not.toContain('<SiteMenuChildList')
-    expect(page).toContain('role="status" aria-live="polite"')
-    expect(page).toContain('watch([data, status]')
-    expect(page).toContain('shouldInitializeSiteMenuSelection(response, requestStatus, Boolean(working.value))')
-    expect(page).toContain('Save menu')
-    expect(page.match(/Save menu/g)).toHaveLength(1)
+    expect(editorPage).toContain('role="status" aria-live="polite"')
+    expect(editorPage).toContain('watch([sourceResource, status]')
+    expect(editorPage).toContain('!working.value || working.value.id !== resource.id')
+    expect(editorPage).toContain('Save menu')
+    expect(editorPage.match(/Save menu/g)).toHaveLength(2)
   })
 
   it('initializes after a failed request is refreshed successfully without clobbering edits', () => {
@@ -113,18 +114,33 @@ describe('Site menu editor interaction contract', () => {
   })
 
   it('offers named CRUD, one-level editing, and removes the legacy writable screen', async () => {
-    const [page, editor, parents, legacy, layout] = await Promise.all([
-      readFile(resolve(root, 'app/pages/_desk/site/menus.vue'), 'utf8'),
+    const [listPage, editPage, editor, detail, parents, legacy, layout] = await Promise.all([
+      readFile(resolve(root, 'app/pages/_desk/site/menus/index.vue'), 'utf8'),
+      readFile(resolve(root, 'app/pages/_desk/site/menus/[menuId].vue'), 'utf8'),
       readFile(resolve(root, 'app/components/site-menu/SiteMenuItemEditor.vue'), 'utf8'),
+      readFile(resolve(root, 'app/components/site-menu/SiteMenuDetailEditor.vue'), 'utf8'),
       readFile(resolve(root, 'app/components/site-menu/SiteMenuItemList.vue'), 'utf8'),
       readFile(resolve(root, 'app/pages/_desk/settings/navigation.vue'), 'utf8'),
       readFile(resolve(root, 'app/layouts/default.vue'), 'utf8')
     ])
-    expect(page).toContain('Create a menu set')
-    expect(page).toContain('Stable menu ID:')
-    expect(page).toContain('Delete')
-    expect(page).toContain('Save menu')
-    expect(parents).toContain('Parent links act as submenu triggers')
+    expect(listPage).toContain('Create a menu set')
+    expect(listPage).toContain('query: { created: resource.id }')
+    expect(listPage).toContain('data-menu-set-edit')
+    expect(listPage).toContain('Delete')
+    expect(listPage).not.toContain('<SiteMenuItemList')
+    expect(editPage).toContain('Stable menu ID:')
+    expect(editPage).toContain('Back to menu sets')
+    expect(editPage).toContain('focusSiteMenuEditor(resource.id, \'name\')')
+    expect(editPage).toContain('lg:grid-cols-[minmax(0,1fr)_minmax(22rem,0.85fr)]')
+    expect(editPage).toContain('<USlideover')
+    expect(editPage).toContain('side="right"')
+    expect(editPage).toContain('@after:leave="handleMobileEditorAfterLeave"')
+    expect(editPage).toContain('<SiteMenuItemList')
+    expect(editPage).toContain('<SiteMenuDetailEditor')
+    expect(editPage).not.toContain('<SiteMenuItemEditor')
+    expect(parents).not.toContain('<SiteMenuItemEditor')
+    expect(detail.match(/<SiteMenuItemEditor/g)).toHaveLength(1)
+    expect(detail).toContain('This link opens a submenu')
     expect(editor).toContain('Stable value')
     expect(editor).toContain('SITE_MENU_ICONS')
     expect(editor).toContain('SITE_MENU_NO_ICON_VALUE')

@@ -6,15 +6,27 @@ import { ulid } from 'ulid'
 import type { SiteMenuItem, SiteMenuValidationIssue } from '~~/shared/site-menu'
 
 const model = defineModel<SiteMenuItem[]>({ required: true })
-const emit = defineEmits<{ announce: [message: string] }>()
-const props = defineProps<{ validationIssues?: SiteMenuValidationIssue[] }>()
+const emit = defineEmits<{
+  announce: [message: string]
+  select: [itemId: string]
+  remove: [removedId: string, nextId?: string]
+}>()
+const props = defineProps<{
+  selectedId?: string
+  validationIssues?: SiteMenuValidationIssue[]
+}>()
 
 const listRef = ref<HTMLOListElement | null>(null)
-const dropTarget = ref<{ id: string; after: boolean } | null>(null)
+const dropTarget = ref<{ id: string, after: boolean } | null>(null)
 const draggedLabel = ref('Menu item')
 
 function labelAt(index: number) {
   return model.value[index]?.label || `Link ${index + 1}`
+}
+
+function issueCount(index: number) {
+  const prefix = `document.items.${index}`
+  return (props.validationIssues ?? []).filter(issue => issue.path === prefix || issue.path.startsWith(`${prefix}.`)).length
 }
 
 function immutableIdError(index: number) {
@@ -32,18 +44,28 @@ function moveWithControls(index: number, direction: -1 | 1) {
 }
 
 function removeItem(index: number) {
+  const nextFocusId = siteMenuRemovalFocusId(model.value, index)
   const [removed] = model.value.splice(index, 1)
-  if (removed) emit('announce', `Removed ${removed.label}.`)
+  if (!removed) return
+  emit('announce', `Removed ${removed.label}.`)
+  emit('remove', removed.id, nextFocusId)
+  nextTick(() => focusAfterSiteMenuRemoval(nextFocusId))
 }
 
 function addChild(item: SiteMenuItem) {
   if (item.children.length >= 8) return
-  item.children.push({
+  const child = {
     id: `menu-${ulid()}`,
     label: 'Child link',
-    destination: { type: 'home' }
-  })
+    destination: { type: 'home' as const }
+  }
+  item.children.push(child)
   emit('announce', `Added child link ${item.children.length} to ${item.label}.`)
+  emit('select', child.id)
+}
+
+function onChildRemoved(removedId: string, nextId: string) {
+  emit('remove', removedId, nextId)
 }
 
 function onMove(event: MoveEvent) {
@@ -91,7 +113,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <ol ref="listRef" class="space-y-4" aria-label="Menu items">
+  <ol ref="listRef" class="space-y-3" aria-label="Menu items">
     <li
       v-for="(item, index) in model"
       :key="item.id"
@@ -104,112 +126,111 @@ onMounted(() => {
         class="mb-2 h-0.5 rounded-full bg-primary"
         data-drop-indicator="before"
       />
-      <fieldset
-        class="space-y-4 rounded-lg border border-default p-4"
+      <div
+        class="space-y-3 rounded-lg border p-3"
+        :class="selectedId === item.id ? 'border-primary bg-primary/5' : 'border-default'"
         :data-validation-path="`document.items.${index}.id`"
         :aria-invalid="Boolean(immutableIdError(index))"
         tabindex="-1"
       >
-        <legend class="sr-only">
-          Link {{ index + 1 }}
-        </legend>
-        <div class="flex flex-wrap items-center justify-between gap-2">
-          <div class="flex items-center gap-2">
-            <UButton
-              type="button"
-              icon="i-lucide-grip-vertical"
-              color="neutral"
-              variant="ghost"
-              square
-              class="hp-menu-drag-handle min-h-11 min-w-11 touch-none cursor-grab active:cursor-grabbing"
-              :aria-label="`Drag ${item.label || `link ${index + 1}`}`"
-            />
-            <span class="text-sm font-medium text-highlighted">{{ item.label || `Link ${index + 1}` }}</span>
-            <span class="text-xs text-muted">Position {{ index + 1 }} of {{ model.length }}</span>
-          </div>
-          <div class="flex items-center gap-1">
-            <UButton
-              type="button"
-              icon="i-lucide-arrow-up"
-              color="neutral"
-              variant="ghost"
-              square
-              class="min-h-11 min-w-11"
-              :data-menu-item-id="item.id"
-              data-menu-move="up"
-              :disabled="index === 0"
-              :aria-label="`Move ${item.label || `link ${index + 1}`} up`"
-              @click="moveWithControls(index, -1)"
-            />
-            <UButton
-              type="button"
-              icon="i-lucide-arrow-down"
-              color="neutral"
-              variant="ghost"
-              square
-              class="min-h-11 min-w-11"
-              :data-menu-item-id="item.id"
-              data-menu-move="down"
-              :disabled="index === model.length - 1"
-              :aria-label="`Move ${item.label || `link ${index + 1}`} down`"
-              @click="moveWithControls(index, 1)"
-            />
-            <UButton
-              type="button"
-              icon="i-lucide-trash-2"
-              color="error"
-              variant="ghost"
-              square
-              class="min-h-11 min-w-11"
-              :aria-label="`Remove ${item.label || `link ${index + 1}`}`"
-              @click="removeItem(index)"
-            />
-          </div>
+        <div class="flex items-center gap-1">
+          <UButton
+            type="button"
+            icon="i-lucide-grip-vertical"
+            color="neutral"
+            variant="ghost"
+            square
+            class="hp-menu-drag-handle min-h-11 min-w-11 touch-none cursor-grab active:cursor-grabbing"
+            :data-menu-row-focus="item.id"
+            :aria-label="`Drag ${item.label || `link ${index + 1}`}`"
+          />
+          <button
+            type="button"
+            class="min-w-0 flex-1 rounded px-2 py-1 text-left focus-visible:outline-2 focus-visible:outline-primary"
+            :data-menu-row-select="item.id"
+            :aria-current="selectedId === item.id ? 'true' : undefined"
+            @click="emit('select', item.id)"
+          >
+            <span class="flex items-center gap-2">
+              <span class="truncate text-sm font-medium text-highlighted">{{ item.label || `Link ${index + 1}` }}</span>
+              <UBadge v-if="issueCount(index)" color="error" variant="soft" size="sm">
+                {{ issueCount(index) }}
+              </UBadge>
+            </span>
+            <span class="block truncate text-xs text-muted">
+              {{ siteMenuDestinationSummary(item) }}
+              <template v-if="item.children.length"> · {{ item.children.length }} children</template>
+            </span>
+          </button>
+          <UButton
+            type="button"
+            icon="i-lucide-arrow-up"
+            color="neutral"
+            variant="ghost"
+            square
+            class="min-h-11 min-w-11"
+            :data-menu-item-id="item.id"
+            data-menu-move="up"
+            :disabled="index === 0"
+            :aria-label="`Move ${item.label || `link ${index + 1}`} up`"
+            @click="moveWithControls(index, -1)"
+          />
+          <UButton
+            type="button"
+            icon="i-lucide-arrow-down"
+            color="neutral"
+            variant="ghost"
+            square
+            class="min-h-11 min-w-11"
+            :data-menu-item-id="item.id"
+            data-menu-move="down"
+            :disabled="index === model.length - 1"
+            :aria-label="`Move ${item.label || `link ${index + 1}`} down`"
+            @click="moveWithControls(index, 1)"
+          />
+          <UButton
+            type="button"
+            icon="i-lucide-trash-2"
+            color="error"
+            variant="ghost"
+            square
+            class="min-h-11 min-w-11"
+            :aria-label="`Remove ${item.label || `link ${index + 1}`}`"
+            @click="removeItem(index)"
+          />
         </div>
 
-        <UAlert
-          v-if="immutableIdError(index)"
-          title="This item's immutable ID conflicts with another item"
-          :description="immutableIdError(index)"
-          color="error"
-          variant="subtle"
-          icon="i-lucide-circle-alert"
-        />
+        <p v-if="immutableIdError(index)" class="text-xs text-error">
+          {{ immutableIdError(index) }}
+        </p>
 
-        <SiteMenuItemEditor
-          v-model="model[index]!"
-          :path-prefix="`document.items.${index}`"
-          :validation-issues="validationIssues"
-        />
-
-        <UAlert
-          v-if="item.children.length"
-          title="Parent links act as submenu triggers"
-          description="The saved parent destination becomes active again if all children are removed."
-          icon="i-lucide-info"
-          variant="subtle"
-        />
-
-        <div v-if="item.children.length" class="space-y-3 border-s border-muted ps-4">
+        <div v-if="item.children.length" class="space-y-2 border-l border-muted pl-3">
+          <p class="text-xs font-medium text-muted">Child links</p>
           <SiteMenuChildList
             v-model="item.children"
             :path-prefix="`document.items.${index}.children`"
+            :parent-item-id="item.id"
+            :selected-id="selectedId"
             :validation-issues="validationIssues"
             @announce="emit('announce', $event)"
+            @select="emit('select', $event)"
+            @remove="onChildRemoved"
           />
         </div>
 
         <UButton
           type="button"
+          icon="i-lucide-plus"
           color="neutral"
-          variant="link"
-          icon="i-lucide-corner-down-right"
+          variant="ghost"
+          size="sm"
           :disabled="item.children.length >= 8"
+          :data-menu-add-child="item.id"
           @click="addChild(item)"
         >
           Add child link
         </UButton>
-      </fieldset>
+      </div>
       <div
         v-if="dropTarget?.id === item.id && dropTarget.after"
         class="mt-2 h-0.5 rounded-full bg-primary"

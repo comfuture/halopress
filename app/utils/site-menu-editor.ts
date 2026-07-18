@@ -1,5 +1,7 @@
 import {
   SITE_MENU_ICONS,
+  type SiteMenuItem,
+  type SiteMenuLeaf,
   type SiteMenuUsage,
   type SiteMenuValidationIssue
 } from '~~/shared/site-menu'
@@ -24,6 +26,25 @@ export function isSiteMenuWorkingCopyDirty(
   baselineSnapshot: string
 ) {
   return malformedStoredValue || currentSnapshot !== baselineSnapshot
+}
+
+export type SiteMenuSaveIdentity = {
+  token: number
+  menuId: string
+  snapshot: string
+}
+
+export function shouldApplySiteMenuSaveResult(
+  request: SiteMenuSaveIdentity,
+  latestToken: number,
+  selectedMenuId: string,
+  workingMenuId: string | undefined,
+  currentSnapshot: string
+) {
+  return request.token === latestToken
+    && request.menuId === selectedMenuId
+    && request.menuId === workingMenuId
+    && request.snapshot === currentSnapshot
 }
 
 export function moveSiteMenuArrayItem<T>(items: readonly T[], from: number, to: number) {
@@ -55,6 +76,119 @@ export function focusSiteMenuMoveControl(
     : itemControls.find(candidate => !candidate.hasAttribute('disabled'))
   if (!control) return false
   control.focus()
+  return true
+}
+
+export function siteMenuRemovalFocusId<T extends { id: string }>(items: readonly T[], removedIndex: number) {
+  return items[removedIndex + 1]?.id ?? items[removedIndex - 1]?.id
+}
+
+export type SiteMenuItemSelection = {
+  id: string
+  parentId?: string
+  item: SiteMenuLeaf
+  pathPrefix: string
+  parentIndex: number
+  childIndex?: number
+}
+
+export function findSiteMenuItemSelection(
+  items: readonly SiteMenuItem[],
+  selectedId: string
+): SiteMenuItemSelection | null {
+  for (const [parentIndex, item] of items.entries()) {
+    if (item.id === selectedId) {
+      return {
+        id: item.id,
+        item,
+        pathPrefix: `document.items.${parentIndex}`,
+        parentIndex
+      }
+    }
+    const childIndex = item.children.findIndex(child => child.id === selectedId)
+    if (childIndex !== -1) {
+      return {
+        id: item.children[childIndex]!.id,
+        parentId: item.id,
+        item: item.children[childIndex]!,
+        pathPrefix: `document.items.${parentIndex}.children.${childIndex}`,
+        parentIndex,
+        childIndex
+      }
+    }
+  }
+  return null
+}
+
+export function siteMenuItemIdForValidationPath(
+  items: readonly SiteMenuItem[],
+  path: string
+) {
+  const match = /^document\.items\.(\d+)(?:\.children\.(\d+))?/.exec(path)
+  if (!match) return undefined
+  const parent = items[Number(match[1])]
+  if (!parent) return undefined
+  return match[2] === undefined ? parent.id : parent.children[Number(match[2])]?.id
+}
+
+export function siteMenuDestinationSummary(item: SiteMenuLeaf) {
+  switch (item.destination.type) {
+    case 'home':
+      return 'Home page'
+    case 'page':
+      return `Page · ${item.destination.pageId || 'Not selected'}`
+    case 'collection':
+      return `Collection · ${item.destination.schemaKey || 'Not selected'}`
+    case 'content':
+      return `Content · ${item.destination.schemaKey || 'schema'} / ${item.destination.contentId || 'item'}`
+    case 'external':
+      return `External · ${item.destination.url || 'URL required'}`
+  }
+}
+
+function elementWithDataValue(attribute: string, value: string) {
+  return [...document.querySelectorAll<HTMLElement>(`[${attribute}]`)]
+    .find(candidate => candidate.getAttribute(attribute) === value)
+}
+
+export function focusAfterSiteMenuRemoval(nextItemId: string | undefined, parentItemId?: string) {
+  const nextControl = nextItemId
+    ? elementWithDataValue('data-menu-row-focus', nextItemId)
+    : undefined
+  const fallback = parentItemId
+    ? elementWithDataValue('data-menu-add-child', parentItemId)
+    : document.querySelector<HTMLElement>('[data-menu-add-parent]')
+  const target = nextControl ?? fallback
+  if (!target) return false
+  target.focus()
+  return true
+}
+
+export function focusSiteMenuRow(itemId: string | undefined) {
+  if (!itemId) return false
+  const target = elementWithDataValue('data-menu-row-select', itemId)
+  if (!target) return false
+  target.focus()
+  return true
+}
+
+export function restoreSiteMenuRowFocusAfterOverlay(
+  itemId: string | undefined,
+  schedule: (callback: FrameRequestCallback) => number = requestAnimationFrame
+) {
+  schedule(() => schedule(() => focusSiteMenuRow(itemId)))
+}
+
+export function focusSiteMenuEditor(menuId: string | undefined, target: 'name' | 'heading') {
+  const editor = menuId ? elementWithDataValue('data-menu-editor-id', menuId) : undefined
+  const preferred = editor?.querySelector<HTMLElement>(
+    target === 'name' ? '[data-menu-name-input]' : '[data-menu-editor-heading]'
+  )
+  const fallback = editor?.querySelector<HTMLElement>('[data-menu-editor-heading]')
+    ?? document.querySelector<HTMLElement>('[data-menu-selector-heading]')
+  const focusTarget = preferred ?? fallback
+  if (!focusTarget) return false
+  focusTarget.focus()
   return true
 }
 

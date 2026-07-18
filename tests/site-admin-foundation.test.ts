@@ -57,7 +57,8 @@ describe('Site administration foundation', () => {
       'app/pages/_desk/site/index.vue',
       'app/pages/_desk/site/themes.vue',
       'app/pages/_desk/site/layouts.vue',
-      'app/pages/_desk/site/menus.vue'
+      'app/pages/_desk/site/menus/index.vue',
+      'app/pages/_desk/site/menus/[menuId].vue'
     ]
     const [component, deskLayout, settingsPage, composable, presentationComposable, ...pages] = await Promise.all([
       readFile(resolve(root, 'app/components/SiteAdminSection.vue'), 'utf8'),
@@ -102,11 +103,12 @@ describe('Site administration foundation', () => {
 
   it('provides useful, resilient status and compatibility links without resource mutation controls', async () => {
     const root = resolve(import.meta.dirname, '..')
-    const [overview, themes, layouts, menus] = await Promise.all([
+    const [overview, themes, layouts, menus, menuEditor] = await Promise.all([
       readFile(resolve(root, 'app/pages/_desk/site/index.vue'), 'utf8'),
       readFile(resolve(root, 'app/pages/_desk/site/themes.vue'), 'utf8'),
       readFile(resolve(root, 'app/pages/_desk/site/layouts.vue'), 'utf8'),
-      readFile(resolve(root, 'app/pages/_desk/site/menus.vue'), 'utf8')
+      readFile(resolve(root, 'app/pages/_desk/site/menus/index.vue'), 'utf8'),
+      readFile(resolve(root, 'app/pages/_desk/site/menus/[menuId].vue'), 'utf8')
     ])
 
     expect(overview).toContain('Active presentation')
@@ -121,8 +123,11 @@ describe('Site administration foundation', () => {
     expect(overview).toContain('/_desk/site/menus')
     expect(themes).toContain('/_desk/settings/appearance')
     expect(menus).toContain('Create a menu set')
-    expect(menus).toContain('Save menu')
-    expect(menus).toContain('SiteMenuItemList')
+    expect(menus).not.toContain('Save menu')
+    expect(menus).not.toContain('SiteMenuItemList')
+    expect(menuEditor).toContain('Save menu')
+    expect(menuEditor).toContain('SiteMenuItemList')
+    expect(menuEditor).toContain('Back to menu sets')
     expect(layouts).toContain('SiteLayouts are persisted HaloPress resources')
 
     for (const placeholder of [themes, layouts]) {

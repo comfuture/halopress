@@ -30,6 +30,14 @@ export const siteMenuIdSchema = z.string().trim().min(1).max(128).regex(
 
 export const siteMenuNameSchema = z.string().trim().min(1, 'Enter a menu name').max(80)
 
+/**
+ * Stable application-side identity for menu names. SQLite's lower() only
+ * handles ASCII, so storage must not derive Unicode uniqueness in SQL.
+ */
+export function siteMenuNameKey(name: string) {
+  return name.trim().normalize('NFKC').toLowerCase()
+}
+
 export const siteMenuValueSchema = z.string().trim().min(1).max(128).regex(
   /^[A-Za-z0-9][A-Za-z0-9._:-]*$/,
   'Menu values may use letters, numbers, dots, colons, underscores, or hyphens'

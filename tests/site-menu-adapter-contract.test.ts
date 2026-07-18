@@ -8,7 +8,11 @@ import { defaultSitePresentation, toPublicSitePresentation } from '../shared/sit
 
 type RenderedNavigationItem = ReturnType<typeof siteNavigationItems>[number]
 
-const NavigationMenuSsrContract = defineComponent({
+// This fixture exercises HaloPress's NavigationMenuItem adapter only. Actual
+// public-route horizontal Nuxt UI SSR is covered by the built Worker smoke;
+// the vertical UHeader drawer is intentionally unmounted until opened and is a
+// browser/runtime contract.
+const NavigationItemAdapterFixture = defineComponent({
   props: {
     items: { type: Array as PropType<RenderedNavigationItem[]>, required: true },
     orientation: { type: String as PropType<'horizontal' | 'vertical'>, required: true }
@@ -16,19 +20,19 @@ const NavigationMenuSsrContract = defineComponent({
   setup(props) {
     const renderItem = (item: RenderedNavigationItem) => h('li', {
       'data-value': item.value,
-      'data-active': String(Boolean(item.active))
+      'data-active': String(Boolean(item.active)),
+      'data-default-open': String(Boolean(item.defaultOpen))
     }, [
       item.children?.length
-        ? h('button', { type: 'button', 'aria-expanded': 'false' }, item.label)
+        ? h('span', { 'data-trigger': 'true' }, item.label)
         : h('a', { href: String(item.to), target: item.target, rel: item.rel }, item.label),
       item.children?.length
         ? h('ul', item.children.map(child => renderItem(child)))
         : null
     ])
-    return () => h('nav', {
-      'aria-orientation': props.orientation,
-      'data-orientation': props.orientation
-    }, h('ul', { role: props.orientation === 'horizontal' ? 'menubar' : 'menu' }, props.items.map(renderItem)))
+    return () => h('div', {
+      'data-adapter-consumer': props.orientation
+    }, h('ul', props.items.map(renderItem)))
   }
 })
 
@@ -38,8 +42,8 @@ function presentation(document: PublicSiteMenuDocument) {
   return value
 }
 
-describe('public Site menu SSR contract', () => {
-  it.each(['horizontal', 'vertical'] as const)('renders stable canonical navigation in %s orientation', async (orientation) => {
+describe('public Site menu adapter contract', () => {
+  it.each(['horizontal', 'vertical'] as const)('maps stable canonical navigation for a %s consumer', async (orientation) => {
     const items = siteNavigationItems(presentation({
       version: 1,
       items: [{
@@ -63,12 +67,12 @@ describe('public Site menu SSR contract', () => {
         children: []
       }]
     }), '/company/team')
-    const html = await renderToString(createSSRApp(NavigationMenuSsrContract, { items, orientation }))
+    const html = await renderToString(createSSRApp(NavigationItemAdapterFixture, { items, orientation }))
 
-    expect(html).toContain(`data-orientation="${orientation}"`)
-    expect(html).toContain(`aria-orientation="${orientation}"`)
+    expect(html).toContain(`data-adapter-consumer="${orientation}"`)
     expect(html).toContain('data-value="company-stable"')
     expect(html).toContain('data-value="team-stable"')
+    expect(html).toContain('data-default-open="true"')
     expect(html).toContain('href="/company/team"')
     expect(html).toContain('href="https://example.com"')
     expect(html).toContain('target="_blank"')

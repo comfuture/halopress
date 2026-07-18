@@ -5,18 +5,29 @@ import { moveArrayElement, useSortable } from '@vueuse/integrations/useSortable'
 import type { SiteMenuLeaf, SiteMenuValidationIssue } from '~~/shared/site-menu'
 
 const model = defineModel<SiteMenuLeaf[]>({ required: true })
-const emit = defineEmits<{ announce: [message: string] }>()
+const emit = defineEmits<{
+  announce: [message: string]
+  select: [itemId: string]
+  remove: [removedId: string, nextId: string]
+}>()
 const props = defineProps<{
   pathPrefix: string
+  parentItemId: string
+  selectedId?: string
   validationIssues?: SiteMenuValidationIssue[]
 }>()
 
 const listRef = ref<HTMLOListElement | null>(null)
-const dropTarget = ref<{ id: string; after: boolean } | null>(null)
-const draggedLabel = ref('Menu item')
+const dropTarget = ref<{ id: string, after: boolean } | null>(null)
+const draggedLabel = ref('Child menu item')
 
 function labelAt(index: number) {
   return model.value[index]?.label || `Child link ${index + 1}`
+}
+
+function issueCount(index: number) {
+  const prefix = `${props.pathPrefix}.${index}`
+  return (props.validationIssues ?? []).filter(issue => issue.path === prefix || issue.path.startsWith(`${prefix}.`)).length
 }
 
 function immutableIdError(index: number) {
@@ -34,8 +45,12 @@ function moveWithControls(index: number, direction: -1 | 1) {
 }
 
 function removeItem(index: number) {
+  const nextFocusId = siteMenuRemovalFocusId(model.value, index)
   const [removed] = model.value.splice(index, 1)
-  if (removed) emit('announce', `Removed ${removed.label}.`)
+  if (!removed) return
+  emit('announce', `Removed ${removed.label}.`)
+  emit('remove', removed.id, nextFocusId ?? props.parentItemId)
+  nextTick(() => focusAfterSiteMenuRemoval(nextFocusId, props.parentItemId))
 }
 
 function onMove(event: MoveEvent) {
@@ -83,7 +98,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <ol ref="listRef" class="space-y-3" aria-label="Child menu items">
+  <ol ref="listRef" class="space-y-2" aria-label="Child menu items">
     <li
       v-for="(item, index) in model"
       :key="item.id"
@@ -93,88 +108,84 @@ onMounted(() => {
     >
       <div
         v-if="dropTarget?.id === item.id && !dropTarget.after"
-        class="mb-2 h-0.5 rounded-full bg-primary"
+        class="mb-1 h-0.5 rounded-full bg-primary"
         data-drop-indicator="before"
       />
-      <fieldset
-        class="rounded-md border border-muted bg-elevated/40 p-4"
-        :data-validation-path="`${props.pathPrefix}.${index}.id`"
+      <div
+        class="flex items-center gap-1 rounded-md border p-2"
+        :class="selectedId === item.id ? 'border-primary bg-primary/5' : 'border-muted bg-elevated/30'"
+        :data-validation-path="`${pathPrefix}.${index}.id`"
         :aria-invalid="Boolean(immutableIdError(index))"
         tabindex="-1"
       >
-        <legend class="sr-only">
-          Child link {{ index + 1 }}
-        </legend>
-        <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <div class="flex items-center gap-2">
-            <UButton
-              type="button"
-              icon="i-lucide-grip-vertical"
-              color="neutral"
-              variant="ghost"
-              square
-              class="hp-menu-child-drag-handle min-h-11 min-w-11 touch-none cursor-grab active:cursor-grabbing"
-              :aria-label="`Drag ${item.label || `child link ${index + 1}`}`"
-            />
-            <span class="text-xs text-muted">Child {{ index + 1 }} of {{ model.length }}</span>
-          </div>
-          <div class="flex items-center gap-1">
-            <UButton
-              type="button"
-              icon="i-lucide-arrow-up"
-              color="neutral"
-              variant="ghost"
-              square
-              class="min-h-11 min-w-11"
-              :data-menu-item-id="item.id"
-              data-menu-move="up"
-              :disabled="index === 0"
-              :aria-label="`Move ${item.label || `child link ${index + 1}`} up`"
-              @click="moveWithControls(index, -1)"
-            />
-            <UButton
-              type="button"
-              icon="i-lucide-arrow-down"
-              color="neutral"
-              variant="ghost"
-              square
-              class="min-h-11 min-w-11"
-              :data-menu-item-id="item.id"
-              data-menu-move="down"
-              :disabled="index === model.length - 1"
-              :aria-label="`Move ${item.label || `child link ${index + 1}`} down`"
-              @click="moveWithControls(index, 1)"
-            />
-            <UButton
-              type="button"
-              icon="i-lucide-x"
-              color="error"
-              variant="ghost"
-              square
-              class="min-h-11 min-w-11"
-              :aria-label="`Remove ${item.label || `child link ${index + 1}`}`"
-              @click="removeItem(index)"
-            />
-          </div>
-        </div>
-        <UAlert
-          v-if="immutableIdError(index)"
-          title="This child's immutable ID conflicts with another item"
-          :description="immutableIdError(index)"
+        <UButton
+          type="button"
+          icon="i-lucide-grip-vertical"
+          color="neutral"
+          variant="ghost"
+          square
+          class="hp-menu-child-drag-handle min-h-11 min-w-11 touch-none cursor-grab active:cursor-grabbing"
+          :data-menu-row-focus="item.id"
+          :aria-label="`Drag ${item.label || `child link ${index + 1}`}`"
+        />
+        <button
+          type="button"
+          class="min-w-0 flex-1 rounded px-2 py-1 text-left focus-visible:outline-2 focus-visible:outline-primary"
+          :data-menu-row-select="item.id"
+          :aria-current="selectedId === item.id ? 'true' : undefined"
+          @click="emit('select', item.id)"
+        >
+          <span class="flex items-center gap-2">
+            <span class="truncate text-sm font-medium text-highlighted">{{ item.label || `Child link ${index + 1}` }}</span>
+            <UBadge v-if="issueCount(index)" color="error" variant="soft" size="sm">
+              {{ issueCount(index) }}
+            </UBadge>
+          </span>
+          <span class="block truncate text-xs text-muted">{{ siteMenuDestinationSummary(item) }}</span>
+        </button>
+        <UButton
+          type="button"
+          icon="i-lucide-arrow-up"
+          color="neutral"
+          variant="ghost"
+          square
+          class="min-h-11 min-w-11"
+          :data-menu-item-id="item.id"
+          data-menu-move="up"
+          :disabled="index === 0"
+          :aria-label="`Move ${item.label || `child link ${index + 1}`} up`"
+          @click="moveWithControls(index, -1)"
+        />
+        <UButton
+          type="button"
+          icon="i-lucide-arrow-down"
+          color="neutral"
+          variant="ghost"
+          square
+          class="min-h-11 min-w-11"
+          :data-menu-item-id="item.id"
+          data-menu-move="down"
+          :disabled="index === model.length - 1"
+          :aria-label="`Move ${item.label || `child link ${index + 1}`} down`"
+          @click="moveWithControls(index, 1)"
+        />
+        <UButton
+          type="button"
+          icon="i-lucide-x"
           color="error"
-          variant="subtle"
-          icon="i-lucide-circle-alert"
-          class="mb-3"
+          variant="ghost"
+          square
+          class="min-h-11 min-w-11"
+          :aria-label="`Remove ${item.label || `child link ${index + 1}`}`"
+          @click="removeItem(index)"
         />
-        <SiteMenuItemEditor
-          v-model="model[index]!"
-          :path-prefix="`${props.pathPrefix}.${index}`"
-          :validation-issues="validationIssues"
-        />
-      </fieldset>
+      </div>
+      <p v-if="immutableIdError(index)" class="mt-1 text-xs text-error">
+        {{ immutableIdError(index) }}
+      </p>
       <div
         v-if="dropTarget?.id === item.id && dropTarget.after"
-        class="mt-2 h-0.5 rounded-full bg-primary"
+        class="mt-1 h-0.5 rounded-full bg-primary"
         data-drop-indicator="after"
       />
     </li>

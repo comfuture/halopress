@@ -36,6 +36,7 @@ export function siteNavigationItems(presentation: PublicSitePresentation, curren
     const parent = navigationLeaf(item, currentPath)
     const children = item.children.map(child => navigationLeaf(child, currentPath))
     if (!children.length) return parent
+    const activeChild = children.some(child => child.active)
 
     // Nuxt UI otherwise treats child-bearing parents as horizontal triggers but
     // vertical links with a separate chevron. Make both orientations explicit:
@@ -47,7 +48,8 @@ export function siteNavigationItems(presentation: PublicSitePresentation, curren
       target: undefined,
       rel: undefined,
       type: 'trigger',
-      active: Boolean(parent.active || children.some(child => child.active)),
+      active: Boolean(parent.active || activeChild),
+      defaultOpen: activeChild,
       children
     }
   })

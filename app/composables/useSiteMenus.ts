@@ -25,10 +25,13 @@ export function useSiteMenus() {
   const result = useSiteMenusData()
 
   function replaceResource(resource: SiteMenuAdminResource) {
-    if (!result.data.value) return
-    const index = result.data.value.items.findIndex(item => item.id === resource.id)
-    if (index === -1) result.data.value.items.push(resource)
-    else result.data.value.items[index] = resource
+    const response = result.data.value
+    if (!response) return
+    const index = response.items.findIndex(item => item.id === resource.id)
+    const items = index === -1
+      ? [...response.items, resource]
+      : response.items.map(item => item.id === resource.id ? resource : item)
+    result.data.value = { ...response, items }
   }
 
   async function createMenu(name: string) {
@@ -65,14 +68,16 @@ export function useSiteMenus() {
     try {
       await $fetch(`/api/site/menus/${encodeURIComponent(menuId)}`, { method: 'DELETE' })
       if (result.data.value) {
-        result.data.value.items = result.data.value.items.filter(item => item.id !== menuId)
+        result.data.value = {
+          ...result.data.value,
+          items: result.data.value.items.filter(item => item.id !== menuId)
+        }
       }
     } catch (error) {
       const usage = siteMenuUsageFromFetchError(error)
       const resource = result.data.value?.items.find(item => item.id === menuId)
       if (usage && resource) {
-        resource.usage = usage
-        resource.canDelete = false
+        replaceResource({ ...resource, usage, canDelete: false })
       }
       throw error
     } finally {
