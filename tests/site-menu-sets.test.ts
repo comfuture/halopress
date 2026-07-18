@@ -88,9 +88,14 @@ describe('Site menu contracts', () => {
     expect(publicSiteMenuDocumentSchema.safeParse(document([aboutItem])).success).toBe(false)
   })
 
-  it('derives a locale-independent Unicode-normalized name identity', () => {
+  it('derives a Unicode-normalized full case-folded name identity', () => {
     expect(siteMenuNameKey('  Älpha  ')).toBe('älpha')
     expect(siteMenuNameKey('Café')).toBe(siteMenuNameKey('Cafe\u0301'))
+    expect(siteMenuNameKey('Straße')).toBe(siteMenuNameKey('STRASSE'))
+    expect(siteMenuNameKey('Σ')).toBe(siteMenuNameKey('ς'))
+    expect(siteMenuNameKey('σ')).toBe(siteMenuNameKey('ς'))
+    expect(siteMenuNameKey('\u1FC3')).toBe('ηι')
+    expect(siteMenuNameKey('\u03B7\u0345')).toBe('ηι')
   })
 })
 
@@ -137,6 +142,12 @@ describe('Site menu persistence', () => {
         .rejects.toBeInstanceOf(SiteMenuNameConflictError)
       await createSiteMenu({} as any, { name: 'Café' }, 'admin-1')
       await expect(createSiteMenu({} as any, { name: 'Cafe\u0301' }, 'admin-2'))
+        .rejects.toBeInstanceOf(SiteMenuNameConflictError)
+      await createSiteMenu({} as any, { name: 'Straße links' }, 'admin-1')
+      await expect(createSiteMenu({} as any, { name: 'STRASSE LINKS' }, 'admin-2'))
+        .rejects.toBeInstanceOf(SiteMenuNameConflictError)
+      await createSiteMenu({} as any, { name: 'Σ menu' }, 'admin-1')
+      await expect(createSiteMenu({} as any, { name: 'ς MENU' }, 'admin-2'))
         .rejects.toBeInstanceOf(SiteMenuNameConflictError)
 
       const saved = await updateSiteMenu({} as any, created.id, {
@@ -207,16 +218,16 @@ describe('Site menu persistence', () => {
     try {
       await runMigrations(fixture.db)
       const { createSiteMenu, listSiteMenus } = await import('../server/utils/site-menus')
-      const created = await createSiteMenu({} as any, { name: 'Cafe\u0301 archive' }, 'admin-1')
+      const created = await createSiteMenu({} as any, { name: 'Straße archive' }, 'admin-1')
       await fixture.db.update(siteMenuSet).set({ nameKey: 'malformed-legacy-key' })
         .where(eq(siteMenuSet.id, created.id))
 
       const listed = await listSiteMenus({} as any)
-      expect(listed.items.find(item => item.id === created.id)?.name).toBe('Cafe\u0301 archive')
+      expect(listed.items.find(item => item.id === created.id)?.name).toBe('Straße archive')
       expect(await fixture.db.select({ name: siteMenuSet.name, nameKey: siteMenuSet.nameKey })
         .from(siteMenuSet).where(eq(siteMenuSet.id, created.id)).get()).toEqual({
-        name: 'Cafe\u0301 archive',
-        nameKey: 'café archive'
+        name: 'Straße archive',
+        nameKey: 'strasse archive'
       })
     } finally {
       fixture.close()
@@ -255,7 +266,7 @@ describe('Site menu persistence', () => {
     }
   })
 
-  it('keeps true normalized-name duplicates listable until either resource is renamed', async () => {
+  it('repairs full-case-fold duplicates deterministically until either resource is renamed', async () => {
     const fixture = await createTestSqliteDb()
     dbState.current = fixture.db
     try {
@@ -266,18 +277,18 @@ describe('Site menu persistence', () => {
         listSiteMenus,
         updateSiteMenu
       } = await import('../server/utils/site-menus')
-      const first = await createSiteMenu({} as any, { name: 'Älpha' }, 'admin-1')
+      const first = await createSiteMenu({} as any, { name: 'Straße' }, 'admin-1')
       const second = await createSiteMenu({} as any, { name: 'Temporary name' }, 'admin-1')
       await fixture.db.update(siteMenuSet).set({ nameKey: 'legacy-first-key' })
         .where(eq(siteMenuSet.id, first.id))
       await fixture.db.update(siteMenuSet).set({
-        name: 'A\u0308lpha',
+        name: 'STRASSE',
         nameKey: 'legacy-second-key'
       }).where(eq(siteMenuSet.id, second.id))
 
       const duplicated = await listSiteMenus({} as any)
       expect(duplicated.items.filter(item => [first.id, second.id].includes(item.id)).map(item => item.name))
-        .toEqual(expect.arrayContaining(['Älpha', 'A\u0308lpha']))
+        .toEqual(expect.arrayContaining(['Straße', 'STRASSE']))
       const conflictRows = await fixture.db.select({ id: siteMenuSet.id, nameKey: siteMenuSet.nameKey })
         .from(siteMenuSet)
       const firstConflictKey = conflictRows.find(row => row.id === first.id)!.nameKey
@@ -286,7 +297,7 @@ describe('Site menu persistence', () => {
       expect(firstConflictKey.startsWith('halopress:reserved:site-menu-name-conflict:')).toBe(true)
       expect(secondConflictKey.startsWith('halopress:reserved:site-menu-name-conflict:')).toBe(true)
 
-      await expect(createSiteMenu({} as any, { name: 'äLPHA' }, 'admin-2'))
+      await expect(createSiteMenu({} as any, { name: 'strasse' }, 'admin-2'))
         .rejects.toBeInstanceOf(SiteMenuNameConflictError)
       await updateSiteMenu({} as any, first.id, {
         name: 'Renamed unique menu',
@@ -299,7 +310,7 @@ describe('Site menu persistence', () => {
         .toEqual({ id: first.id, nameKey: 'renamed unique menu' })
       expect(await fixture.db.select({ id: siteMenuSet.id, nameKey: siteMenuSet.nameKey })
         .from(siteMenuSet).where(eq(siteMenuSet.id, second.id)).get())
-        .toEqual({ id: second.id, nameKey: 'älpha' })
+        .toEqual({ id: second.id, nameKey: 'strasse' })
     } finally {
       fixture.close()
       dbState.current = null
@@ -413,6 +424,55 @@ describe('Global navigation compatibility and cache revision', () => {
         .where(eq(siteMenuReference.menuSetId, GLOBAL_SITE_MENU_ID))).toHaveLength(1)
     } finally {
       fixture.close()
+    }
+  })
+
+  it('keeps a settled bootstrap-owned public read write-free while admin access repairs its reference', async () => {
+    const fixture = await createTestSqliteDb()
+    dbState.current = fixture.db
+    try {
+      await runMigrations(fixture.db)
+      const {
+        ensureGlobalSiteMenu,
+        getGlobalSiteMenuDocument,
+        listSiteMenus
+      } = await import('../server/utils/site-menus')
+      await ensureGlobalSiteMenu({} as any, fixture.db, { repairReference: true })
+      await fixture.db.delete(siteMenuReference)
+        .where(eq(siteMenuReference.menuSetId, GLOBAL_SITE_MENU_ID))
+
+      const writes: string[] = []
+      const trackedDb = new Proxy(fixture.db, {
+        get(target, property, receiver) {
+          const value = Reflect.get(target, property, receiver)
+          if (!['insert', 'update', 'delete', 'batch'].includes(String(property)) || typeof value !== 'function') {
+            return value
+          }
+          return (...args: unknown[]) => {
+            writes.push(String(property))
+            return value.apply(target, args)
+          }
+        }
+      })
+      dbState.current = trackedDb
+
+      await expect(getGlobalSiteMenuDocument({} as any, []))
+        .resolves.toEqual({ version: 1, items: [] })
+      expect(writes).toEqual([])
+      expect(await fixture.db.select().from(siteMenuReference)
+        .where(eq(siteMenuReference.menuSetId, GLOBAL_SITE_MENU_ID))).toEqual([])
+      expect(await fixture.db.select().from(siteMenuSet)
+        .where(eq(siteMenuSet.id, GLOBAL_SITE_MENU_ID)).get()).toMatchObject({
+        bootstrapOwned: true
+      })
+
+      await listSiteMenus({} as any)
+      expect(writes).toContain('insert')
+      expect(await fixture.db.select().from(siteMenuReference)
+        .where(eq(siteMenuReference.menuSetId, GLOBAL_SITE_MENU_ID))).toHaveLength(1)
+    } finally {
+      fixture.close()
+      dbState.current = null
     }
   })
 
@@ -533,7 +593,7 @@ describe('Global navigation compatibility and cache revision', () => {
         updatedBy: 'interleaved-old-worker'
       })
       expect(await fixture.db.select().from(siteMenuReference)
-        .where(eq(siteMenuReference.menuSetId, GLOBAL_SITE_MENU_ID))).toHaveLength(1)
+        .where(eq(siteMenuReference.menuSetId, GLOBAL_SITE_MENU_ID))).toEqual([])
 
       const unrelatedSettingsAt = new Date('2026-07-18T00:50:00.000Z')
       await fixture.db.update(settings).set({
@@ -563,6 +623,8 @@ describe('Global navigation compatibility and cache revision', () => {
         bootstrapSourceUpdatedAt: null,
         updatedBy: 'named-menu-admin'
       })
+      expect(await fixture.db.select().from(siteMenuReference)
+        .where(eq(siteMenuReference.menuSetId, GLOBAL_SITE_MENU_ID))).toHaveLength(1)
 
       await fixture.db.update(settings).set({
         value: JSON.stringify({ ...firstLegacy, navigation: { items: [] } }),

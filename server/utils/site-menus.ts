@@ -377,7 +377,7 @@ export async function ensureGlobalSiteMenu(
       continue
     }
 
-    await ensurePublicSiteMenuReference(db, now)
+    if (options.repairReference) await ensurePublicSiteMenuReference(db, now)
 
     if (bootstrapSourceMatches(existing, seed)) {
       // A second source read closes the old-writer interleaving between the

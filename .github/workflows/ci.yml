@@ -35,3 +35,6 @@ jobs:
 
       - name: Typecheck
         run: pnpm run typecheck
+
+      - name: Built Site menu SSR
+        run: pnpm run test:site-menu:built-ssr

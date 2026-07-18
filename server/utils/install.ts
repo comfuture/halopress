@@ -505,15 +505,21 @@ export async function completeInstallation(
   // Migration 0001 marks legacy databases with users/roles complete, so this
   // browser-setup completion path is fresh-install-only (including retries).
   // Complete the installation and transfer Global to the named-menu owner in
-  // one transaction/batch. Rolling upgrades remain bootstrap-owned and keep
-  // reconciling old-Worker writes until their first named-menu save.
+  // one transaction/batch. Keep the exact lease token as a permanent internal
+  // completion marker: owner and timestamp are not unique enough to authorize
+  // finalization when two attempts share the same actor and stored second, and
+  // retaining it makes response-loss and duplicate same-token retries
+  // idempotent. Complete rows never expose or treat this token as an active
+  // lease because every lease path also requires state = installing.
+  // Rolling upgrades remain bootstrap-owned and keep reconciling old-Worker
+  // writes until their first named-menu save.
   await withDbTransaction(transactionEvent, db, async (tx, statements) => {
     await executeDbStatement(tx.update(installation).set({
       state: 'complete',
       owner,
       setupSessionHash: null,
       setupSessionExpiresAt: null,
-      leaseToken: null,
+      leaseToken,
       leaseExpiresAt: null,
       completedAt: now,
       updatedAt: now,
@@ -533,11 +539,12 @@ export async function completeInstallation(
       updatedAt: now
     }).where(and(
       eq(siteMenuSet.id, 'global-navigation'),
+      eq(siteMenuSet.bootstrapOwned, true),
       exists(tx.select({ key: installation.key }).from(installation).where(and(
         eq(installation.key, INSTALLATION_KEY),
         eq(installation.state, 'complete'),
         eq(installation.owner, owner),
-        eq(installation.completedAt, now)
+        eq(installation.leaseToken, leaseToken)
       )))
     )), statements)
   })
@@ -545,15 +552,11 @@ export async function completeInstallation(
   const completed = await db.select({
     state: installation.state,
     owner: installation.owner,
-    completedAt: installation.completedAt
+    leaseToken: installation.leaseToken
   }).from(installation).where(eq(installation.key, INSTALLATION_KEY)).get()
   if (completed?.state !== 'complete'
     || completed.owner !== owner
-    // Drizzle's SQLite timestamp mode persists seconds, while callers can
-    // provide millisecond-precision Dates. Compare at the stored precision so
-    // a successful conditional completion is accepted without letting a later
-    // stale lease reuse an older completion row.
-    || Math.floor((completed.completedAt?.getTime() ?? 0) / 1000) !== Math.floor(now.getTime() / 1000)) {
+    || completed.leaseToken !== leaseToken) {
     throw new Error('Installation lease is no longer owned by this request')
   }
   const globalMenu = await db.select({ bootstrapOwned: siteMenuSet.bootstrapOwned })

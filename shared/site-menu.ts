@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { caseFold } from 'unicode-case-folding'
 
 import { publicNavigationDestinationSchema } from './site-presentation'
 
@@ -32,10 +33,11 @@ export const siteMenuNameSchema = z.string().trim().min(1, 'Enter a menu name').
 
 /**
  * Stable application-side identity for menu names. SQLite's lower() only
- * handles ASCII, so storage must not derive Unicode uniqueness in SQL.
+ * handles ASCII, so normalize compatibility forms and apply Unicode's full
+ * default case folding in application code before persistence.
  */
 export function siteMenuNameKey(name: string) {
-  return name.trim().normalize('NFKC').toLowerCase()
+  return caseFold(name.trim().normalize('NFKC')).normalize('NFKC')
 }
 
 export const siteMenuValueSchema = z.string().trim().min(1).max(128).regex(
