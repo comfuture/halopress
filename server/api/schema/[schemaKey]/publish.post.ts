@@ -132,6 +132,7 @@ export default defineEventHandler(async (event) => {
       event,
       db,
       schemaKey,
+      expectedDraftRevision: draft.revision,
       version: nextVersion,
       previousVersion: latest?.version ?? null,
       title: ast.title,
