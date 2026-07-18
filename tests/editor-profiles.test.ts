@@ -87,6 +87,26 @@ describe('richText and page profiles', () => {
     expect(page.readOnlyExtensions.map(extension => extension.name)).toContain('pageBlock')
   })
 
+  it('does not expose rich-text transforms for atomic page blocks', () => {
+    const page = createPageProfile()
+    const context = { editor: {} as any, pos: 0 }
+    const pageBlockItems = page.quickMenuGroups
+      .flatMap(create => create({ ...context, node: { type: 'pageBlock' } }))
+      .flat()
+    const paragraphItems = page.quickMenuGroups
+      .flatMap(create => create({ ...context, node: { type: 'paragraph' } }))
+      .flat()
+
+    expect(pageBlockItems.map(item => item.label)).not.toContain('Turn into')
+    expect(pageBlockItems.map(item => item.label)).not.toContain('Reset formatting')
+    expect(pageBlockItems.map(item => item.label)).toEqual(expect.arrayContaining([
+      'Duplicate', 'Copy to clipboard', 'Move up', 'Move down', 'Delete'
+    ]))
+    expect(paragraphItems.map(item => item.label)).toEqual(expect.arrayContaining([
+      'Turn into', 'Reset formatting'
+    ]))
+  })
+
   it('supports named customization without changing the component implementation', () => {
     const custom = Extension.create({ name: 'customCapability' })
     const profile = createRichTextProfile({
