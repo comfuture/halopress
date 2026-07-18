@@ -9,8 +9,8 @@ import {
 } from '../shared/portable-content'
 import { portableContentFixture } from './fixtures/portable-content'
 
-describe('portable standalone browser document', () => {
-  it('hydrates a separate-origin DOM using only semantic output and the versioned stylesheet', () => {
+describe('portable standalone DOM contract', () => {
+  it('parses separate-origin semantic output in happy-dom with the versioned stylesheet', () => {
     const pressOrigin = 'https://press.example.com'
     const rendering = createPortablePageRendering(portableContentFixture, { origin: pressOrigin })
     const standalone = createPortableStandaloneDocument(rendering, { title: 'Portable browser fixture' })

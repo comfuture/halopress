@@ -341,6 +341,20 @@ describe('portable authored-content renderer', () => {
     expect(JSON.stringify(rendering).length).toBeLessThan(4_000)
   })
 
+  it('marks a structured projection truncated when its shared budget cannot fit the fallback', () => {
+    const rendering = createPortableStructuredContentRendering({
+      b: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'bounded' }] }] }
+    }, [
+      { fieldId: 'f', key: 'b', kind: 'richtext' }
+    ], {
+      origin,
+      limits: { maxOutputLength: 200 }
+    })
+
+    expect(rendering.fields.b).toMatchObject({ fieldId: 'f', fieldKey: 'b', html: '' })
+    expect(rendering.truncated).toBe(true)
+  })
+
   it('counts projected rich-text fields separately from the bounded schema scan', () => {
     const scalarFields = Array.from({ length: 256 }, (_, index) => ({
       fieldId: `scalar-${index}`,

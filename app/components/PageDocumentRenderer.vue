@@ -42,7 +42,7 @@ useHead(() => ({
     v-if="isolated"
     class="halo-preview-frame"
     :srcdoc="standaloneDocument"
-    sandbox=""
+    sandbox="allow-same-origin"
     referrerpolicy="no-referrer"
     title="Portable page preview"
     data-portable-content-isolated
