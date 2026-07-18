@@ -82,6 +82,38 @@ export const settings = sqliteTable('settings', {
   byGroup: index('idx_settings_group').on(t.groupKey)
 }))
 
+export const siteMenuSet = sqliteTable('site_menu_set', {
+  id: text('id').notNull(),
+  name: text('name').notNull(),
+  documentJson: text('document_json').notNull(),
+  bootstrapOwned: integer('bootstrap_owned', { mode: 'boolean' }).notNull().default(false),
+  bootstrapSourceUpdatedAt: integer('bootstrap_source_updated_at', { mode: 'timestamp' }),
+  createdBy: text('created_by'),
+  updatedBy: text('updated_by'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull()
+}, t => ({
+  pk: primaryKey({ columns: [t.id] }),
+  nameUnique: uniqueIndex('idx_site_menu_set_name_unique').on(sql`lower(${t.name})`),
+  byUpdatedAt: index('idx_site_menu_set_updated_at').on(t.updatedAt)
+}))
+
+// Normalized references are the deletion-integrity seam for public Site
+// resources. Site Layouts (#70) can add rows without changing menu storage, and
+// the restrictive FK closes the usage-check/delete race.
+export const siteMenuReference = sqliteTable('site_menu_reference', {
+  ownerType: text('owner_type').notNull(),
+  ownerId: text('owner_id').notNull(),
+  slot: text('slot').notNull(),
+  menuSetId: text('menu_set_id').notNull().references(() => siteMenuSet.id, { onDelete: 'restrict' }),
+  label: text('label').notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull()
+}, t => ({
+  pk: primaryKey({ columns: [t.ownerType, t.ownerId, t.slot] }),
+  byMenu: index('idx_site_menu_reference_menu').on(t.menuSetId)
+}))
+
 export const installation = sqliteTable('installation', {
   key: text('key').notNull(),
   state: text('state').notNull().default('pending'),

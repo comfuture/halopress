@@ -3,17 +3,22 @@ import { inArray } from 'drizzle-orm'
 
 import {
   defaultSitePresentation,
+  resolvePublicNavigationTarget,
   sitePresentationPatchSchema,
   sitePresentationSchema,
   toPublicSitePresentation,
+  type PublicNavigationLeaf,
+  type PublicSiteFooterLink,
   type PublicSitePresentation,
-  type SitePresentation
+  type SitePresentation,
+  type SitePresentationAdminValue
 } from '../../shared/site-presentation'
 import { syncDocumentAssetRefs } from '../cms/asset-refs'
 import { getDb } from '../db/db'
 import { asset as assetTable } from '../db/schema'
 import { getSetting, upsertSetting } from './settings'
 import { canonicalPathMap, type PublicDocumentKind } from '../cms/public-routes'
+import { getGlobalSiteMenuDocument, resolvePublicSiteMenu } from './site-menus'
 
 export const SITE_PRESENTATION_SETTING_KEY = 'site.presentation'
 export const SITE_PRESENTATION_GROUP = 'site.presentation'
@@ -25,6 +30,16 @@ export class SitePresentationValidationError extends Error {
   }
 }
 
+export class SitePresentationNavigationMigratedError extends Error {
+  readonly menuId = 'global-navigation'
+  readonly location = '/_desk/site/menus'
+
+  constructor() {
+    super('Navigation is managed as the Global navigation menu set. Save it from Site > Menus.')
+    this.name = 'SitePresentationNavigationMigratedError'
+  }
+}
+
 type ResolvedSitePresentation = {
   value: SitePresentation
   configured: boolean
@@ -33,7 +48,8 @@ type ResolvedSitePresentation = {
   updatedBy: string | null
 }
 
-export type SitePresentationAdminResponse = ResolvedSitePresentation & {
+export type SitePresentationAdminResponse = Omit<ResolvedSitePresentation, 'value'> & {
+  value: SitePresentationAdminValue
   management: {
     source: 'default' | 'desk'
     editable: true
@@ -50,7 +66,7 @@ function brandingAssetIds(value: SitePresentation) {
   ].filter((assetId): assetId is string => Boolean(assetId))
 }
 
-function revisionFor(value: SitePresentation) {
+function revisionFor(value: unknown) {
   const input = JSON.stringify(value)
   let hash = 2166136261
   for (let index = 0; index < input.length; index++) {
@@ -130,8 +146,13 @@ export async function getSitePresentationAdmin(event: H3Event): Promise<SitePres
   const resolved = await resolveSitePresentation(event)
   const availableIds = await availableBrandingAssetIds(event, resolved.value)
   const missingAssetIds = brandingAssetIds(resolved.value).filter(assetId => !availableIds.has(assetId))
+  const navigation = await getGlobalSiteMenuDocument(event, resolved.value.navigation.items)
   return {
     ...resolved,
+    value: {
+      ...resolved.value,
+      navigation: { items: navigation.items }
+    },
     management: {
       source: resolved.configured ? 'desk' : 'default',
       editable: true,
@@ -141,14 +162,26 @@ export async function getSitePresentationAdmin(event: H3Event): Promise<SitePres
   }
 }
 
+function resolvePublicFooterLink(item: PublicNavigationLeaf, paths: ReadonlyMap<string, string>): PublicSiteFooterLink {
+  const key = item.destination.type === 'page'
+    ? `page:${item.destination.pageId}`
+    : item.destination.type === 'collection'
+      ? `schema:${item.destination.schemaKey}`
+      : item.destination.type === 'content'
+        ? `content:${item.destination.contentId}`
+        : null
+  return {
+    ...item,
+    to: key && paths.get(key) ? paths.get(key)! : resolvePublicNavigationTarget(item.destination)
+  }
+}
+
 export async function getPublicSitePresentation(event: H3Event): Promise<PublicSitePresentation> {
   const resolved = await resolveSitePresentation(event)
   const availableIds = await availableBrandingAssetIds(event, resolved.value)
-  const presentation = toPublicSitePresentation(resolved.value, availableIds, revisionFor(resolved.value))
-  const destinations = [
-    ...presentation.navigation.items.flatMap(item => [item.destination, ...item.children.map(child => child.destination)]),
-    ...presentation.footer.links.map(item => item.destination)
-  ]
+  const presentation = toPublicSitePresentation(resolved.value, availableIds, 'pending')
+  const menu = await resolvePublicSiteMenu(event, resolved.value.navigation.items)
+  const destinations = resolved.value.footer.links.map(item => item.destination)
   const identities = destinations.flatMap((destination) => {
     if (destination.type === 'page') return [{ documentKind: 'page' as PublicDocumentKind, documentId: destination.pageId }]
     if (destination.type === 'collection') return [{ documentKind: 'schema' as PublicDocumentKind, documentId: destination.schemaKey }]
@@ -156,30 +189,22 @@ export async function getPublicSitePresentation(event: H3Event): Promise<PublicS
     return []
   })
   const paths = await canonicalPathMap(await getDb(event), identities)
-  const withPath = (destination: typeof destinations[number]) => {
-    const key = destination.type === 'page'
-      ? `page:${destination.pageId}`
-      : destination.type === 'collection'
-        ? `schema:${destination.schemaKey}`
-        : destination.type === 'content'
-          ? `content:${destination.contentId}`
-          : null
-    return key && paths.get(key) ? { ...destination, publicPath: paths.get(key)! } : destination
-  }
-  return {
-    ...presentation,
-    navigation: {
-      items: presentation.navigation.items.map(item => ({
-        ...item,
-        destination: withPath(item.destination),
-        children: item.children.map(child => ({ ...child, destination: withPath(child.destination) }))
-      }))
-    },
+  const projected: PublicSitePresentation = {
+    version: presentation.version,
+    revision: presentation.revision,
+    general: presentation.general,
+    appearance: presentation.appearance,
+    shell: presentation.shell,
+    navigation: menu.document,
     footer: {
-      ...presentation.footer,
-      links: presentation.footer.links.map(item => ({ ...item, destination: withPath(item.destination) }))
+      variant: presentation.footer.variant,
+      copyright: presentation.footer.copyright,
+      showRoute: presentation.footer.showRoute,
+      links: resolved.value.footer.links.map(item => resolvePublicFooterLink(item, paths))
     }
-  } as PublicSitePresentation
+  }
+  const { revision: _pendingRevision, ...revisionInput } = projected
+  return { ...projected, revision: revisionFor(revisionInput) }
 }
 
 export async function updateSitePresentation(
@@ -187,6 +212,9 @@ export async function updateSitePresentation(
   body: unknown,
   actorId: string | null
 ): Promise<SitePresentationAdminResponse> {
+  if (body && typeof body === 'object' && Object.hasOwn(body, 'navigation')) {
+    throw new SitePresentationNavigationMigratedError()
+  }
   const parsedPatch = sitePresentationPatchSchema.safeParse(body)
   if (!parsedPatch.success) {
     throw new SitePresentationValidationError(parsedPatch.error.issues[0]?.message || 'Invalid site presentation settings')

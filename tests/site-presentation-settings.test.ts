@@ -125,6 +125,11 @@ describe('site presentation settings', () => {
     value.general.logoAssetId = 'missing-logo'
     value.general.faviconAssetId = 'favicon'
     value.general.socialImageAssetId = 'social'
+    value.footer.links = [{
+      id: 'privacy',
+      label: 'Privacy',
+      destination: { type: 'page', pageId: 'privacy-page' }
+    }]
     const projected = toPublicSitePresentation(value, new Set(['favicon']), 'v1-test')
 
     expect(projected.general).toMatchObject({
@@ -134,6 +139,12 @@ describe('site presentation settings', () => {
     })
     expect(JSON.stringify(projected)).not.toContain('AssetId')
     expect(JSON.stringify(projected)).not.toContain('updatedBy')
+    expect(projected.footer.links[0]).toEqual({
+      id: 'privacy',
+      label: 'Privacy',
+      destination: { type: 'page', pageId: 'privacy-page' },
+      to: '/p/privacy-page'
+    })
   })
 
   it('falls back intentionally when a stored row is malformed or encrypted', async () => {

@@ -22,6 +22,7 @@ import { executeDbStatement, withDbTransaction } from '../db/transaction'
 import { newId } from './ids'
 import { SETUP_SESSION_TTL_MILLISECONDS } from './install-session'
 import { hashPassword } from './password'
+import { ensureGlobalSiteMenu } from './site-menus'
 import {
   BOOTSTRAP_CONTENT_ID,
   BOOTSTRAP_PUBLICATION_REVISION_ID,
@@ -55,6 +56,8 @@ export const REQUIRED_INSTALL_TABLES = [
   'schema_role',
   'search_config',
   'settings',
+  'site_menu_reference',
+  'site_menu_set',
   'user',
   'user_role'
 ] as const
@@ -488,7 +491,17 @@ export async function failInstallation(db: any, leaseToken: string, error: unkno
     ))
 }
 
-export async function completeInstallation(db: any, leaseToken: string, owner: string, now = new Date()) {
+export async function completeInstallation(
+  db: any,
+  leaseToken: string,
+  owner: string,
+  event?: H3Event,
+  now = new Date()
+) {
+  // New installations establish the stable Global resource before becoming
+  // ready. Upgrades still use the same bootstrap-owned reconciliation lazily,
+  // so migration 0008 never captures an old Worker's stale legacy snapshot.
+  await ensureGlobalSiteMenu(event ?? ({} as H3Event), db)
   const completed = await db
     .update(installation)
     .set({

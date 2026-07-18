@@ -1,10 +1,10 @@
 import type {
-  SitePresentation,
+  SitePresentationAdminValue,
   SitePresentationPatch
 } from '~~/shared/site-presentation'
 
 export type SitePresentationAdminResponse = {
-  value: SitePresentation
+  value: SitePresentationAdminValue
   configured: boolean
   malformedStoredValue: boolean
   updatedAt: string | null

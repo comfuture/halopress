@@ -114,15 +114,18 @@ describe('Site administration foundation', () => {
     expect(overview).toContain('useSitePresentationStatus()')
     expect(overview).not.toContain('await useSitePresentationSettings()')
     expect(overview).toContain('Default SiteLayout: none')
-    expect(overview).toContain('Not available yet')
+    expect(overview).toContain('menuSetCount')
+    expect(overview).toContain('useSiteMenusStatus()')
     expect(overview).toContain('/_desk/site/themes')
     expect(overview).toContain('/_desk/site/layouts')
     expect(overview).toContain('/_desk/site/menus')
     expect(themes).toContain('/_desk/settings/appearance')
-    expect(menus).toContain('/_desk/settings/navigation')
+    expect(menus).toContain('Create a menu set')
+    expect(menus).toContain('Save menu')
+    expect(menus).toContain('SiteMenuItemList')
     expect(layouts).toContain('SiteLayouts are persisted HaloPress resources')
 
-    for (const placeholder of [themes, layouts, menus]) {
+    for (const placeholder of [themes, layouts]) {
       expect(placeholder).not.toContain('method: \'POST\'')
       expect(placeholder).not.toContain('method: \'PUT\'')
       expect(placeholder).not.toContain('method: \'DELETE\'')
