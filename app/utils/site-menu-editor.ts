@@ -1,8 +1,14 @@
 import {
   SITE_MENU_ICONS,
-  siteMenuLeafSchema,
+  SITE_MENU_MAX_CHILDREN,
+  SITE_MENU_MAX_ITEMS,
+  isSiteMenuDynamicItem,
+  isSiteMenuStaticItem,
+  siteMenuChildSchema,
+  type SiteMenuChild,
+  type SiteMenuDynamicItem,
   type SiteMenuItem,
-  type SiteMenuLeaf,
+  type SiteMenuSourceOptionsResponse,
   type SiteMenuUsage,
   type SiteMenuValidationIssue
 } from '~~/shared/site-menu'
@@ -35,6 +41,8 @@ export type SiteMenuSaveIdentity = {
   snapshot: string
 }
 
+export type SiteMenuPreviewIdentity = SiteMenuSaveIdentity
+
 export function shouldApplySiteMenuSaveResult(
   request: SiteMenuSaveIdentity,
   latestToken: number,
@@ -48,6 +56,19 @@ export function shouldApplySiteMenuSaveResult(
     && request.snapshot === currentSnapshot
 }
 
+export function shouldApplySiteMenuPreviewResult(
+  request: SiteMenuPreviewIdentity,
+  latestToken: number,
+  routeMenuId: string,
+  workingMenuId: string | undefined,
+  currentSnapshot: string
+) {
+  return request.token === latestToken
+    && request.menuId === routeMenuId
+    && request.menuId === workingMenuId
+    && request.snapshot === currentSnapshot
+}
+
 export function moveSiteMenuArrayItem<T>(items: readonly T[], from: number, to: number) {
   if (from < 0 || from >= items.length || to < 0 || to >= items.length || from === to) return [...items]
   const next = [...items]
@@ -57,8 +78,8 @@ export function moveSiteMenuArrayItem<T>(items: readonly T[], from: number, to: 
 }
 
 export type SiteMenuItemCreationResult = {
-  item: SiteMenuLeaf
-  parent?: SiteMenuItem
+  item: SiteMenuChild
+  parent?: Exclude<SiteMenuItem, SiteMenuDynamicItem>
   position: number
 }
 
@@ -68,19 +89,21 @@ export type SiteMenuItemCreationResult = {
  */
 export function commitSiteMenuItemCreation(
   items: SiteMenuItem[],
-  draft: SiteMenuLeaf,
+  draft: SiteMenuChild,
   parentId?: string
 ): SiteMenuItemCreationResult | null {
-  const created = siteMenuLeafSchema.parse(draft)
+  const created = siteMenuChildSchema.parse(draft)
   if (parentId === undefined) {
-    if (items.length >= 12) return null
-    const item: SiteMenuItem = { ...created, children: [] }
+    if (items.length >= SITE_MENU_MAX_ITEMS) return null
+    const item: SiteMenuItem = isSiteMenuDynamicItem(created)
+      ? created
+      : { ...created, children: [] }
     items.push(item)
     return { item, position: items.length }
   }
 
   const parent = items.find(item => item.id === parentId)
-  if (!parent || parent.children.length >= 8) return null
+  if (!parent || !isSiteMenuStaticItem(parent) || parent.children.length >= SITE_MENU_MAX_CHILDREN) return null
   parent.children.push(created)
   return { item: created, parent, position: parent.children.length }
 }
@@ -116,7 +139,7 @@ export function siteMenuRemovalFocusId<T extends { id: string }>(items: readonly
 export type SiteMenuItemSelection = {
   id: string
   parentId?: string
-  item: SiteMenuLeaf
+  item: SiteMenuItem | SiteMenuChild
   pathPrefix: string
   parentIndex: number
   childIndex?: number
@@ -135,6 +158,7 @@ export function findSiteMenuItemSelection(
         parentIndex
       }
     }
+    if (isSiteMenuDynamicItem(item)) continue
     const childIndex = item.children.findIndex(child => child.id === selectedId)
     if (childIndex !== -1) {
       return {
@@ -158,10 +182,31 @@ export function siteMenuItemIdForValidationPath(
   if (!match) return undefined
   const parent = items[Number(match[1])]
   if (!parent) return undefined
-  return match[2] === undefined ? parent.id : parent.children[Number(match[2])]?.id
+  return match[2] === undefined || isSiteMenuDynamicItem(parent)
+    ? parent.id
+    : parent.children[Number(match[2])]?.id
 }
 
-export function siteMenuDestinationSummary(item: SiteMenuLeaf) {
+export function siteMenuAuthoredItemLabel(item: SiteMenuItem | SiteMenuChild) {
+  if (!isSiteMenuDynamicItem(item)) return item.label
+  return item.source.type === 'schemaQuery'
+    ? `${item.source.schemaKey || 'Content'} query`
+    : item.source.scope.type === 'currentParent'
+      ? 'Current Page siblings'
+      : `Pages under ${item.source.scope.prefix}`
+}
+
+export function siteMenuDestinationSummary(item: SiteMenuItem | SiteMenuChild) {
+  if (isSiteMenuDynamicItem(item)) {
+    if (item.source.type === 'schemaQuery') {
+      const filters = item.source.filters.length
+      return `Content query · ${item.source.schemaKey || 'Schema required'} · ${filters} ${filters === 1 ? 'filter' : 'filters'} · up to ${item.source.limit}`
+    }
+    const scope = item.source.scope.type === 'currentParent'
+      ? 'Current Page parent'
+      : `Direct children of ${item.source.scope.prefix}`
+    return `Page list · ${scope} · up to ${item.source.limit}`
+  }
   switch (item.destination.type) {
     case 'home':
       return 'Home page'
@@ -174,6 +219,50 @@ export function siteMenuDestinationSummary(item: SiteMenuLeaf) {
     case 'external':
       return `External · ${item.destination.url || 'URL required'}`
   }
+}
+
+export function countSiteMenuDynamicSources(items: readonly SiteMenuItem[]) {
+  return items.reduce((count, item) => count + (isSiteMenuDynamicItem(item)
+    ? 1
+    : item.children.filter(isSiteMenuDynamicItem).length), 0)
+}
+
+export type SiteMenuCreateItemKind = 'static' | 'schemaQuery' | 'pagePrefix'
+
+export function createSiteMenuItemDraft(
+  kind: SiteMenuCreateItemKind,
+  id: string,
+  options?: SiteMenuSourceOptionsResponse | null
+): SiteMenuChild {
+  if (kind === 'schemaQuery') {
+    return {
+      kind: 'dynamic',
+      id,
+      source: {
+        version: 1,
+        type: 'schemaQuery',
+        schemaKey: options?.schemas[0]?.schemaKey ?? '',
+        filters: [],
+        sort: { type: 'system', field: 'createdAt', direction: 'desc' },
+        label: { type: 'systemTitle' },
+        limit: 10
+      }
+    }
+  }
+  if (kind === 'pagePrefix') {
+    return {
+      kind: 'dynamic',
+      id,
+      source: {
+        version: 1,
+        type: 'pagePrefix',
+        scope: { type: 'fixed', prefix: '/' },
+        sort: 'title',
+        limit: 10
+      }
+    }
+  }
+  return { id, label: '', destination: { type: 'home' } }
 }
 
 function elementWithDataValue(attribute: string, value: string) {
@@ -214,6 +303,42 @@ export function afterSiteMenuOverlayFocusRestored(
   schedule: (callback: FrameRequestCallback) => number = requestAnimationFrame
 ) {
   schedule(() => schedule(() => callback()))
+}
+
+export const SITE_MENU_OVERLAY_FINALIZE_FALLBACK_MS = 500
+
+type SiteMenuOverlayFallbackSchedule = (callback: () => void, delay: number) => unknown
+type SiteMenuOverlayFallbackCancel = (handle: unknown) => void
+
+/**
+ * Keep the overlay transition event authoritative, but provide a bounded
+ * fallback when a responsive UModal/USlideover swap unmounts the closing host
+ * before it can emit after:leave.
+ */
+export function createSiteMenuOverlayFinalizationFallback(
+  schedule: SiteMenuOverlayFallbackSchedule = (callback, delay) => setTimeout(callback, delay),
+  cancel: SiteMenuOverlayFallbackCancel = handle => clearTimeout(handle as ReturnType<typeof setTimeout>)
+) {
+  let handle: unknown | null = null
+
+  function cancelPending() {
+    if (handle === null) return
+    cancel(handle)
+    handle = null
+  }
+
+  function scheduleFinalization(callback: () => void) {
+    cancelPending()
+    handle = schedule(() => {
+      handle = null
+      callback()
+    }, SITE_MENU_OVERLAY_FINALIZE_FALLBACK_MS)
+  }
+
+  return {
+    schedule: scheduleFinalization,
+    cancel: cancelPending
+  }
 }
 
 export function shouldAcceptSiteMenuCreateOpenChange(isCreating: boolean, nextOpen: boolean) {

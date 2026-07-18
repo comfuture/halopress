@@ -1,15 +1,26 @@
 <script setup lang="ts">
 import type {
   SiteMenuAdminResource,
-  SiteMenuLeaf,
+  SiteMenuChild,
+  SiteMenuItem,
+  SiteMenuPreviewResponse,
   SiteMenuUpdate,
   SiteMenuValidationIssue
+} from '~~/shared/site-menu'
+import {
+  SITE_MENU_MAX_ITEMS,
+  isSiteMenuDynamicItem,
+  isSiteMenuStaticItem
 } from '~~/shared/site-menu'
 
 definePageMeta({ layout: 'desk' })
 
 const route = useRoute()
 const toast = useToast()
+const [menuEditor, sourceOptionEditor] = await Promise.all([
+  useSiteMenusEditor(),
+  useSiteMenuSourceOptionsEditor()
+])
 const {
   data,
   pending,
@@ -17,8 +28,16 @@ const {
   error,
   refresh,
   saving,
-  saveMenu
-} = useSiteMenus()
+  previewing,
+  saveMenu,
+  previewMenu
+} = menuEditor
+const {
+  data: sourceOptions,
+  pending: sourceOptionsPending,
+  error: sourceOptionsError,
+  refresh: refreshSourceOptions
+} = sourceOptionEditor
 
 const menuId = computed(() => {
   const value = route.params.menuId
@@ -32,10 +51,19 @@ const baseline = ref('')
 const selectedItemId = ref('')
 const mobileEditorOpen = ref(false)
 const isDesktop = ref(false)
+const wideItemOverlay = ref(false)
 const announcement = ref('')
 const validationIssues = ref<SiteMenuValidationIssue[]>([])
+const previewOrientation = ref<'horizontal' | 'vertical'>('horizontal')
+const noPreviewPageContext = '__no-page-context__'
+const previewPageId = ref(noPreviewPageContext)
+const previewResult = ref<SiteMenuPreviewResponse | null>(null)
+const previewError = ref('')
+const previewSnapshot = ref('')
 let desktopMediaQuery: MediaQueryList | null = null
+let itemOverlayMediaQuery: MediaQueryList | null = null
 let latestSaveToken = 0
+let latestPreviewToken = 0
 let shouldFocusCreatedResource = import.meta.client && route.query.created === menuId.value
 
 const currentSnapshot = computed(() => working.value
@@ -57,7 +85,7 @@ const currentResourceReady = computed(() => isCurrentSiteMenuResourceReady(
 const selectedSelection = computed(() => working.value
   ? findSiteMenuItemSelection(working.value.document.items, selectedItemId.value)
   : null)
-const selectedItem = computed<SiteMenuLeaf>({
+const selectedItem = computed<SiteMenuItem | SiteMenuChild>({
   get() {
     if (!selectedSelection.value) throw new Error('No menu item is selected')
     return selectedSelection.value.item
@@ -68,20 +96,57 @@ const selectedItem = computed<SiteMenuLeaf>({
     if (selection.childIndex === undefined) {
       const previous = working.value.document.items[selection.parentIndex]
       if (!previous) return
-      working.value.document.items[selection.parentIndex] = { ...next, children: previous.children }
+      working.value.document.items[selection.parentIndex] = isSiteMenuStaticItem(previous) && !isSiteMenuDynamicItem(next)
+        ? { ...next, children: previous.children }
+        : next as SiteMenuItem
       return
     }
     const parent = working.value.document.items[selection.parentIndex]
-    if (parent) parent.children[selection.childIndex] = next
+    if (parent && isSiteMenuStaticItem(parent)) parent.children[selection.childIndex] = next as SiteMenuChild
   }
 })
+const dynamicSourceCount = computed(() => working.value
+  ? countSiteMenuDynamicSources(working.value.document.items)
+  : 0)
+const selectedParentHasChildren = computed(() => {
+  if (!working.value || !selectedSelection.value || selectedSelection.value.childIndex !== undefined) return false
+  const item = working.value.document.items[selectedSelection.value.parentIndex]
+  return Boolean(item && isSiteMenuStaticItem(item) && item.children.length)
+})
+const previewContextPath = computed(() => previewResult.value?.context?.canonicalPath ?? '/')
+const previewItems = computed(() => previewResult.value
+  ? resolvedMenuNavigationItems(previewResult.value.menu.document, previewContextPath.value)
+  : [])
+const previewRequestSnapshot = computed(() => working.value
+  ? JSON.stringify({ document: working.value.document, examplePageId: previewPageId.value })
+  : '')
+const previewIsStale = computed(() => Boolean(previewResult.value && previewSnapshot.value !== previewRequestSnapshot.value))
+const previewPageItems = computed(() => [
+  { label: 'No Page context', value: noPreviewPageContext },
+  ...(sourceOptions.value?.pages ?? []).map(page => ({
+    label: `${page.title} · ${page.path}`,
+    value: page.id
+  }))
+])
+const orientationItems = [
+  { label: 'Horizontal', value: 'horizontal' },
+  { label: 'Vertical', value: 'vertical' }
+]
 
 useUnsavedNavigationGuard(isDirty, 'You have unsaved menu changes. Leave and discard them?')
+
+function clearPreview() {
+  latestPreviewToken++
+  previewResult.value = null
+  previewError.value = ''
+  previewSnapshot.value = ''
+}
 
 function loadResource(resource: SiteMenuAdminResource) {
   const previousSelection = selectedItemId.value
   working.value = structuredClone(resource)
   validationIssues.value = []
+  clearPreview()
   baseline.value = JSON.stringify({ name: working.value.name, document: working.value.document })
   selectedItemId.value = findSiteMenuItemSelection(working.value.document.items, previousSelection)?.id
     ?? working.value.document.items[0]?.id
@@ -102,6 +167,7 @@ watch([sourceResource, status, menuId], ([resource, requestStatus, currentMenuId
       selectedItemId.value = ''
       mobileEditorOpen.value = false
       validationIssues.value = []
+      clearPreview()
     }
     return
   }
@@ -124,14 +190,22 @@ function handleBreakpointChange(event: MediaQueryListEvent) {
   }
 }
 
+function handleItemOverlayBreakpoint(event: MediaQueryListEvent) {
+  wideItemOverlay.value = event.matches
+}
+
 onMounted(() => {
   desktopMediaQuery = window.matchMedia('(min-width: 1024px)')
+  itemOverlayMediaQuery = window.matchMedia('(min-width: 640px)')
   isDesktop.value = desktopMediaQuery.matches
+  wideItemOverlay.value = itemOverlayMediaQuery.matches
   desktopMediaQuery.addEventListener('change', handleBreakpointChange)
+  itemOverlayMediaQuery.addEventListener('change', handleItemOverlayBreakpoint)
 })
 
 onBeforeUnmount(() => {
   desktopMediaQuery?.removeEventListener('change', handleBreakpointChange)
+  itemOverlayMediaQuery?.removeEventListener('change', handleItemOverlayBreakpoint)
 })
 
 function handleMobileEditorAfterLeave() {
@@ -148,7 +222,7 @@ async function selectItem(itemId: string) {
   document.querySelector<HTMLElement>('[data-menu-detail-heading]')?.focus()
 }
 
-function addItem(draft: SiteMenuLeaf, submittedMenuId: string) {
+function addItem(draft: SiteMenuChild, submittedMenuId: string) {
   if (!working.value || !currentResourceReady.value || !isSiteMenuCreationTargetCurrent(
     submittedMenuId,
     menuId.value,
@@ -156,11 +230,11 @@ function addItem(draft: SiteMenuLeaf, submittedMenuId: string) {
   )) return
   const created = commitSiteMenuItemCreation(working.value.document.items, draft)
   if (!created) return
-  announcement.value = `Added ${created.item.label} as link ${created.position}.`
+  announcement.value = `Added ${siteMenuAuthoredItemLabel(created.item)} as item ${created.position}.`
   selectItem(created.item.id)
 }
 
-function addChild(parentId: string, draft: SiteMenuLeaf, submittedMenuId: string) {
+function addChild(parentId: string, draft: SiteMenuChild, submittedMenuId: string) {
   if (!working.value || !currentResourceReady.value || !isSiteMenuCreationTargetCurrent(
     submittedMenuId,
     menuId.value,
@@ -168,7 +242,7 @@ function addChild(parentId: string, draft: SiteMenuLeaf, submittedMenuId: string
   )) return
   const created = commitSiteMenuItemCreation(working.value.document.items, draft, parentId)
   if (!created?.parent) return
-  announcement.value = `Added ${created.item.label} as child ${created.position} of ${created.parent.label}.`
+  announcement.value = `Added ${siteMenuAuthoredItemLabel(created.item)} as child ${created.position} of ${created.parent.label}.`
   selectItem(created.item.id)
 }
 
@@ -240,6 +314,49 @@ async function save() {
     })
   }
 }
+
+async function runPreview() {
+  if (!working.value || previewing.value) return
+  previewError.value = ''
+  const request = {
+    token: ++latestPreviewToken,
+    menuId: working.value.id,
+    snapshot: previewRequestSnapshot.value
+  }
+  const submittedDocument = JSON.parse(JSON.stringify(working.value.document))
+  const submittedPageId = previewPageId.value === noPreviewPageContext
+    ? undefined
+    : previewPageId.value
+  try {
+    const result = await previewMenu(
+      request.menuId,
+      submittedDocument,
+      submittedPageId
+    )
+    if (!shouldApplySiteMenuPreviewResult(
+      request,
+      latestPreviewToken,
+      menuId.value,
+      working.value?.id,
+      previewRequestSnapshot.value
+    )) return
+    previewResult.value = result
+    previewSnapshot.value = request.snapshot
+  } catch (error: any) {
+    if (!shouldApplySiteMenuPreviewResult(
+      request,
+      latestPreviewToken,
+      menuId.value,
+      working.value?.id,
+      previewRequestSnapshot.value
+    )) return
+    previewResult.value = null
+    previewSnapshot.value = ''
+    previewError.value = error?.data?.statusMessage
+      || error?.statusMessage
+      || 'The authenticated Menu preview could not be resolved.'
+  }
+}
 </script>
 
 <template>
@@ -253,16 +370,24 @@ async function save() {
         v-if="currentResourceReady"
         kind="parent"
         :resource-id="working?.id || ''"
+        :wide="wideItemOverlay"
+        :dynamic-source-count="dynamicSourceCount"
+        :source-options="sourceOptions"
+        :source-options-pending="sourceOptionsPending"
+        :source-options-error="Boolean(sourceOptionsError)"
         @create="addItem"
       >
-        <UButton
-          type="button"
-          icon="i-lucide-plus"
-          :disabled="(working?.document.items.length ?? 12) >= 12"
-          data-menu-add-parent
-        >
-          Add menu item
-        </UButton>
+        <template #default="{ open }">
+          <UButton
+            type="button"
+            icon="i-lucide-plus"
+            :disabled="(working?.document.items.length ?? SITE_MENU_MAX_ITEMS) >= SITE_MENU_MAX_ITEMS"
+            data-menu-add-parent
+            @click="open"
+          >
+            Add menu item
+          </UButton>
+        </template>
       </SiteMenuItemCreateModal>
     </template>
 
@@ -349,7 +474,7 @@ async function save() {
         <UAlert
           v-if="working.malformedStoredValue"
           title="This menu needs repair"
-          description="Its stored document was malformed, so the safe empty fallback is shown. Saving replaces it atomically."
+          description="Invalid stored entries were omitted from this repair copy. Saving replaces the stored document atomically."
           color="warning"
           variant="subtle"
           icon="i-lucide-triangle-alert"
@@ -378,7 +503,7 @@ async function save() {
             <UAlert
               v-if="working.document.items.length === 0"
               title="This menu is empty"
-              description="Add a link to start building its ordered navigation."
+              description="Add a static link, content query, or Page list to start building its ordered navigation."
               icon="i-lucide-info"
               variant="subtle"
             />
@@ -388,6 +513,11 @@ async function save() {
               :resource-id="working.id"
               :selected-id="selectedItemId"
               :validation-issues="validationIssues"
+              :wide-create-overlay="wideItemOverlay"
+              :dynamic-source-count="dynamicSourceCount"
+              :source-options="sourceOptions"
+              :source-options-pending="sourceOptionsPending"
+              :source-options-error="Boolean(sourceOptionsError)"
               @announce="announcement = $event"
               @create-child="addChild"
               @select="selectItem"
@@ -401,8 +531,11 @@ async function save() {
               v-model="selectedItem"
               :path-prefix="selectedSelection.pathPrefix"
               :is-parent="selectedSelection.childIndex === undefined"
-              :has-children="selectedSelection.childIndex === undefined && Boolean(working.document.items[selectedSelection.parentIndex]?.children.length)"
+              :has-children="selectedParentHasChildren"
               :validation-issues="validationIssues"
+              :source-options="sourceOptions"
+              :source-options-pending="sourceOptionsPending"
+              :source-options-error="Boolean(sourceOptionsError)"
             />
             <UAlert
               v-else
@@ -413,6 +546,131 @@ async function save() {
             />
           </aside>
         </div>
+
+        <section class="space-y-4 rounded-lg border border-default p-3 sm:p-4" aria-labelledby="menu-preview-heading" data-menu-authenticated-preview>
+          <UDashboardToolbar :ui="{ right: 'ml-auto' }">
+            <template #left>
+              <div>
+                <h3 id="menu-preview-heading" class="font-semibold text-highlighted">Authenticated public preview</h3>
+                <p class="text-sm text-muted">Resolves this unsaved typed document through the public Menu compiler. Responses are private and not stored.</p>
+              </div>
+            </template>
+            <template #right>
+              <UButton
+                type="button"
+                icon="i-lucide-refresh-cw"
+                :loading="previewing"
+                :disabled="previewing"
+                data-menu-preview-refresh
+                @click="runPreview"
+              >
+                {{ previewResult ? 'Refresh preview' : 'Preview menu' }}
+              </UButton>
+            </template>
+          </UDashboardToolbar>
+
+          <div class="grid min-w-0 gap-3 sm:grid-cols-2">
+            <UFormField label="Orientation" description="Uses the same safe NavigationMenu adapter as Layout rendering.">
+              <USelect
+                v-model="previewOrientation"
+                :items="orientationItems"
+                value-key="value"
+                class="w-full"
+                data-menu-preview-orientation
+              />
+            </UFormField>
+            <UFormField label="Example canonical Page" description="Required to resolve Current Page parent sources contextually.">
+              <USelect
+                v-model="previewPageId"
+                :items="previewPageItems"
+                value-key="value"
+                class="w-full"
+                :loading="sourceOptionsPending"
+                data-menu-preview-page
+              />
+            </UFormField>
+          </div>
+
+          <UAlert
+            v-if="sourceOptionsError"
+            title="Preview context choices are unavailable"
+            description="Refresh the typed source choices, then try the preview again."
+            color="warning"
+            variant="subtle"
+            icon="i-lucide-triangle-alert"
+          >
+            <template #actions>
+              <UButton type="button" color="neutral" variant="outline" icon="i-lucide-rotate-cw" @click="refreshSourceOptions()">
+                Refresh choices
+              </UButton>
+            </template>
+          </UAlert>
+
+          <UAlert
+            v-if="previewError"
+            title="Menu preview is unavailable"
+            :description="previewError"
+            color="error"
+            variant="subtle"
+            icon="i-lucide-circle-alert"
+          />
+          <UAlert
+            v-else-if="previewIsStale"
+            title="Preview is out of date"
+            description="The authored document or example Page changed. Refresh to resolve the current values."
+            color="warning"
+            variant="subtle"
+            icon="i-lucide-refresh-cw"
+          />
+
+          <div v-if="previewResult" class="space-y-3 rounded-lg border border-muted bg-elevated/30 p-4" data-menu-preview-result>
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <p class="text-sm text-muted">
+                {{ previewResult.context ? `Canonical context: ${previewResult.context.canonicalPath}` : 'No Page context selected' }}
+              </p>
+              <UBadge color="neutral" variant="soft">{{ previewResult.menu.document.items.length }} resolved items</UBadge>
+            </div>
+
+            <nav aria-label="Menu preview">
+              <UNavigationMenu
+                v-if="previewItems.length"
+                :items="previewItems"
+                :orientation="previewOrientation"
+                data-menu-preview-navigation
+              />
+              <UAlert
+                v-else
+                title="No public items resolved"
+                description="Static destinations may be unavailable, dynamic sources may be empty, or a contextual Page may still be required."
+                variant="subtle"
+                icon="i-lucide-info"
+              />
+            </nav>
+
+            <div v-if="previewResult.diagnostics.length" class="space-y-2" data-menu-preview-diagnostics>
+              <div
+                v-for="diagnostic in previewResult.diagnostics"
+                :key="diagnostic.sourceId"
+                class="flex flex-wrap items-start justify-between gap-3 rounded-md border border-muted p-3"
+              >
+                <div class="min-w-0">
+                  <p class="break-all text-sm font-medium text-highlighted">{{ diagnostic.sourceId }}</p>
+                  <p class="text-xs text-muted">{{ diagnostic.message }}</p>
+                </div>
+                <UBadge :color="diagnostic.status === 'ready' ? 'success' : diagnostic.status === 'empty' || diagnostic.status === 'context-unavailable' ? 'neutral' : 'warning'" variant="soft">
+                  {{ diagnostic.status }} · {{ diagnostic.count }}
+                </UBadge>
+              </div>
+            </div>
+          </div>
+          <UAlert
+            v-else-if="!previewError"
+            title="Preview has not run"
+            description="Choose an example Page when needed, then resolve this Menu without saving it first."
+            variant="subtle"
+            icon="i-lucide-eye"
+          />
+        </section>
 
         <p class="sr-only" role="status" aria-live="polite" aria-atomic="true">{{ announcement }}</p>
 
@@ -435,7 +693,7 @@ async function save() {
           v-if="!isDesktop"
           v-model:open="mobileEditorOpen"
           side="right"
-          :title="selectedSelection ? `Edit ${selectedSelection.item.label || 'menu item'}` : 'Edit menu item'"
+          :title="selectedSelection ? `Edit ${siteMenuAuthoredItemLabel(selectedSelection.item) || 'menu item'}` : 'Edit menu item'"
           description="Update the selected link without leaving the ordered menu preview."
           :ui="{ content: 'w-full max-w-xl', body: 'min-h-0 overflow-y-auto' }"
           @after:leave="handleMobileEditorAfterLeave"
@@ -446,8 +704,11 @@ async function save() {
               v-model="selectedItem"
               :path-prefix="selectedSelection.pathPrefix"
               :is-parent="selectedSelection.childIndex === undefined"
-              :has-children="selectedSelection.childIndex === undefined && Boolean(working.document.items[selectedSelection.parentIndex]?.children.length)"
+              :has-children="selectedParentHasChildren"
               :validation-issues="validationIssues"
+              :source-options="sourceOptions"
+              :source-options-pending="sourceOptionsPending"
+              :source-options-error="Boolean(sourceOptionsError)"
             />
           </template>
           <template #footer>

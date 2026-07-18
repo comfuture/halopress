@@ -15,6 +15,7 @@ import {
   layoutAssignmentHttpError,
   prepareLayoutAssignmentChange
 } from '../../../utils/layout-assignments'
+import { queueWidgetCacheInvalidation } from '../../../utils/widget-cache'
 
 export default defineEventHandler(async (event) => {
   const session = await requireAdmin(event)
@@ -41,7 +42,7 @@ export default defineEventHandler(async (event) => {
     const layoutId = await prepareLayoutAssignmentChange({ event, db, body, currentLayoutId: existing.layoutId })
     // Revalidate unchanged working metadata before it becomes a public snapshot.
     await assertReadyLayoutAssignment(db, layoutId)
-    return {
+    const result = {
       ok: true,
       ...(await publishPageWorking({
         event,
@@ -56,6 +57,8 @@ export default defineEventHandler(async (event) => {
         expectedRevision
       }))
     }
+    queueWidgetCacheInvalidation(event, 'public-routes:page')
+    return result
   } catch (error) {
     throw layoutAssignmentHttpError(error)
   }

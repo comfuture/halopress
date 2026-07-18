@@ -1,10 +1,14 @@
 import type {
   SiteMenuAdminResource,
+  SiteMenuDocument,
   SiteMenuListResponse,
+  SiteMenuPreviewResponse,
+  SiteMenuSourceOptionsResponse,
   SiteMenuUpdate
 } from '~~/shared/site-menu'
 
 const SITE_MENUS_DATA_KEY = 'site-menu-sets'
+const SITE_MENU_SOURCE_OPTIONS_DATA_KEY = 'site-menu-source-options'
 
 function useSiteMenusData() {
   return useFetch<SiteMenuListResponse>('/api/site/menus', {
@@ -18,11 +22,36 @@ export function useSiteMenusStatus() {
   return { data, pending, status, error, refresh, execute, clear }
 }
 
-export function useSiteMenus() {
+export function useSiteMenuSourceOptions() {
+  const { data, pending, status, error, refresh, execute, clear } = useFetch<SiteMenuSourceOptionsResponse>(
+    '/api/site/menus/options',
+    {
+      key: SITE_MENU_SOURCE_OPTIONS_DATA_KEY,
+      dedupe: 'defer'
+    }
+  )
+  return { data, pending, status, error, refresh, execute, clear }
+}
+
+export async function useSiteMenuSourceOptionsEditor() {
+  const { data, pending, status, error, refresh, execute, clear } = await useFetch<SiteMenuSourceOptionsResponse>(
+    '/api/site/menus/options',
+    {
+      key: SITE_MENU_SOURCE_OPTIONS_DATA_KEY,
+      dedupe: 'defer'
+    }
+  )
+  return { data, pending, status, error, refresh, execute, clear }
+}
+
+type SiteMenusDataState = Pick<Awaited<ReturnType<typeof useSiteMenusData>>,
+  'data' | 'pending' | 'status' | 'error' | 'refresh' | 'execute' | 'clear'>
+
+function createSiteMenusEditor(result: SiteMenusDataState) {
   const saving = ref(false)
   const creating = ref(false)
   const deleting = ref(false)
-  const result = useSiteMenusData()
+  const previewing = ref(false)
 
   function replaceResource(resource: SiteMenuAdminResource) {
     const response = result.data.value
@@ -85,6 +114,24 @@ export function useSiteMenus() {
     }
   }
 
+  async function previewMenu(menuId: string, document: SiteMenuDocument, examplePageId?: string) {
+    previewing.value = true
+    try {
+      return await $fetch<SiteMenuPreviewResponse>(
+        `/api/site/menus/${encodeURIComponent(menuId)}/preview`,
+        {
+          method: 'POST',
+          body: {
+            document,
+            examplePageId: examplePageId || undefined
+          }
+        }
+      )
+    } finally {
+      previewing.value = false
+    }
+  }
+
   // Keep this synchronous wrapper a plain object. Nuxt AsyncData exposes
   // Promise methods that a raw spread can leak and an accidental await can assimilate.
   return {
@@ -98,8 +145,20 @@ export function useSiteMenus() {
     saving,
     creating,
     deleting,
+    previewing,
     createMenu,
     saveMenu,
-    deleteMenu
+    deleteMenu,
+    previewMenu
   }
+}
+
+export function useSiteMenus() {
+  return createSiteMenusEditor(useSiteMenusData())
+}
+
+export async function useSiteMenusEditor() {
+  // Mutable Menu forms intentionally wait for the persisted payload so SSR
+  // and hydration start from the same document instead of a loading shell.
+  return createSiteMenusEditor(await useSiteMenusData())
 }

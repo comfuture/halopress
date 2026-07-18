@@ -7,6 +7,7 @@ import { getDb } from '../../db/db'
 import { page as pageTable } from '../../db/schema'
 import { requireAdmin } from '../../utils/auth'
 import { notFound } from '../../utils/http'
+import { queueWidgetCacheInvalidation } from '../../utils/widget-cache'
 
 export default defineEventHandler(async (event) => {
   const session = await requireAdmin(event)
@@ -17,7 +18,7 @@ export default defineEventHandler(async (event) => {
   const db = await getDb(event)
   const existing = await db.select().from(pageTable).where(eq(pageTable.id, id)).get()
   if (!existing) throw notFound('Page not found')
-  return {
+  const result = {
     ok: true,
     ...(await deletePage({
       event,
@@ -27,4 +28,6 @@ export default defineEventHandler(async (event) => {
       expectedRevision
     }))
   }
+  queueWidgetCacheInvalidation(event, 'public-routes:page')
+  return result
 })

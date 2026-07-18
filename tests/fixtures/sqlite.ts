@@ -15,7 +15,17 @@ type NodeSqlite = {
   close: () => void
 }
 
-export async function createTestSqliteDb(options: { path?: string } = {}) {
+type TestSqliteQuery = {
+  sql: string
+  params: any[]
+  method: SqlMethod
+}
+
+export async function createTestSqliteDb(options: {
+  path?: string
+  onQueryStart?: (query: TestSqliteQuery) => void | Promise<void>
+  onQueryEnd?: (query: TestSqliteQuery) => void | Promise<void>
+} = {}) {
   const { DatabaseSync } = await import('node:sqlite')
   const path = options.path ?? ':memory:'
 
@@ -28,21 +38,26 @@ export async function createTestSqliteDb(options: { path?: string } = {}) {
   sqlite.exec('PRAGMA foreign_keys = ON;')
 
   const callback = async (sql: string, params: any[], method: SqlMethod) => {
-    const stmt = sqlite.prepare(sql)
     const safeParams = params ?? []
-
-    if (method === 'run') {
-      stmt.run(...safeParams)
-      return { rows: [] }
-    }
-    if (method === 'get') {
-      const row = stmt.get(...safeParams)
-      return { rows: row ? Object.values(row) : undefined }
-    }
-    if (method === 'values') {
+    const query = { sql, params: safeParams, method }
+    await options.onQueryStart?.(query)
+    try {
+      const stmt = sqlite.prepare(sql)
+      if (method === 'run') {
+        stmt.run(...safeParams)
+        return { rows: [] }
+      }
+      if (method === 'get') {
+        const row = stmt.get(...safeParams)
+        return { rows: row ? Object.values(row) : undefined }
+      }
+      if (method === 'values') {
+        return { rows: stmt.all(...safeParams).map(row => Object.values(row)) }
+      }
       return { rows: stmt.all(...safeParams).map(row => Object.values(row)) }
+    } finally {
+      await options.onQueryEnd?.(query)
     }
-    return { rows: stmt.all(...safeParams).map(row => Object.values(row)) }
   }
 
   return {

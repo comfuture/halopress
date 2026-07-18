@@ -5,6 +5,7 @@ import { getDb } from '../../../db/db'
 import { schemaRole as schemaRoleTable, userRole as userRoleTable } from '../../../db/schema'
 import { requireAdmin } from '../../../utils/auth'
 import { badRequest, forbidden, notFound } from '../../../utils/http'
+import { queueWidgetCacheInvalidation } from '../../../utils/widget-cache'
 
 export default defineEventHandler(async (event) => {
   await requireAdmin(event)
@@ -57,6 +58,8 @@ export default defineEventHandler(async (event) => {
       target: [schemaRoleTable.schemaKey, schemaRoleTable.roleKey],
       set: { canRead, canWrite, canPublish, canArchive, canDelete, canAdmin }
     })
+
+  if (roleKey === 'anonymous') queueWidgetCacheInvalidation(event, `schema:${schemaKey}`)
 
   return { ok: true }
 })
