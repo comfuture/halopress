@@ -237,7 +237,7 @@ function canonicalizeValidatedLayoutDocument(document: ValidatedLayoutDocument):
   }
 }
 
-export const layoutDocumentSchema = layoutDocumentObjectSchema.superRefine((document, context) => {
+const validatedLayoutDocumentSchema = layoutDocumentObjectSchema.superRefine((document, context) => {
   const regionIds = new Set<LayoutRegionKey>()
   for (const [index, region] of document.grid.regions.entries()) {
     if (regionIds.has(region.id)) {
@@ -316,18 +316,22 @@ export const layoutDocumentSchema = layoutDocumentObjectSchema.superRefine((docu
   if (pageContentCount !== 1) {
     context.addIssue({ code: 'custom', message: 'Every Layout requires exactly one Page content element', path: ['elements'] })
   }
+}).transform(canonicalizeValidatedLayoutDocument)
 
-  // Exported schema consumers (#71/#73) receive the same framework boundary as
-  // the persistence parser. parseLayoutDocument still scans the raw input first
-  // so forbidden unknown keys retain explicit `kind: forbidden` diagnostics.
-  for (const issue of findForbiddenLayoutData(document)) {
+// Run the forbidden scan before strict structural parsing. This keeps direct
+// exported-schema consumers (#71/#73) from receiving Zod unrecognized-key
+// diagnostics that echo a forbidden framework/runtime property name.
+const guardedLayoutDocumentInputSchema = z.unknown().superRefine((value, context) => {
+  for (const issue of findForbiddenLayoutData(value)) {
     context.addIssue({
       code: 'custom',
       message: issue.message,
       path: issue.path.split('.').filter(Boolean)
     })
   }
-}).transform(canonicalizeValidatedLayoutDocument)
+})
+
+export const layoutDocumentSchema = guardedLayoutDocumentInputSchema.pipe(validatedLayoutDocumentSchema)
 
 export type LayoutElement = z.output<typeof layoutElementSchema>
 export type LayoutDocument = z.output<typeof layoutDocumentSchema>

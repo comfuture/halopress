@@ -198,6 +198,37 @@ describe('Layout domain contract', () => {
         document
       }).success, name).toBe(false)
     }
+
+    const forbiddenKey = 'app/layouts/desk.vue'
+    const document = { ...structuredClone(base), [forbiddenKey]: true }
+    const directResult = layoutDocumentSchema.safeParse(document)
+    expect(directResult.success).toBe(false)
+    if (!directResult.success) {
+      expect(directResult.error.issues).toEqual([expect.objectContaining({
+        code: 'custom',
+        path: [],
+        message: 'Persisted Layout contains a forbidden framework or runtime property name'
+      })])
+      expect(JSON.stringify(directResult.error.issues)).not.toContain(forbiddenKey)
+    }
+
+    const projectionResult = resolvedLayoutProjectionSchema.safeParse({
+      status: 'ready',
+      version: 1,
+      layoutId: document.layoutId,
+      name: document.name,
+      revision: 1,
+      document
+    })
+    expect(projectionResult.success).toBe(false)
+    if (!projectionResult.success) {
+      expect(projectionResult.error.issues).toEqual([expect.objectContaining({
+        code: 'custom',
+        path: ['document'],
+        message: 'Persisted Layout contains a forbidden framework or runtime property name'
+      })])
+      expect(JSON.stringify(projectionResult.error.issues)).not.toContain(forbiddenKey)
+    }
   })
 
   it('canonicalizes region and element arrays for deterministic serialization and projections', () => {
