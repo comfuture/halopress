@@ -48,7 +48,10 @@ export function useSiteModeSettings() {
         body: { enabled }
       })
       result.data.value = response
-      await refreshNuxtData(SITE_MODE_DATA_KEY)
+      await Promise.all([
+        refreshNuxtData(SITE_MODE_DATA_KEY),
+        refreshNuxtData('site-theme-manifest')
+      ])
       return response
     } finally {
       saving.value = false

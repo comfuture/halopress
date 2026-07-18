@@ -1,5 +1,5 @@
 import type { H3Event } from 'h3'
-import { inArray } from 'drizzle-orm'
+import { and, eq, inArray, notExists, sql } from 'drizzle-orm'
 
 import {
   defaultSitePresentation,
@@ -15,8 +15,10 @@ import {
 } from '../../shared/site-presentation'
 import { syncDocumentAssetRefs } from '../cms/asset-refs'
 import { getDb } from '../db/db'
-import { asset as assetTable } from '../db/schema'
+import { asset as assetTable, settings as settingsTable } from '../db/schema'
 import { getSetting, upsertSetting } from './settings'
+import { siteThemeSchema } from '../../shared/site-theme'
+import { getSiteMode } from './site-mode-settings'
 import { canonicalPathMap, type PublicDocumentKind } from '../cms/public-routes'
 import { getGlobalSiteMenuDocument, resolvePublicSiteMenu } from './site-menus'
 
@@ -38,6 +40,41 @@ export class SitePresentationNavigationMigratedError extends Error {
     super('Navigation is managed as the Global navigation menu set. Save it from Site > Menus.')
     this.name = 'SitePresentationNavigationMigratedError'
   }
+}
+
+export class SitePresentationAppearanceMigratedError extends Error {
+  readonly location = '/_desk/site/themes'
+
+  constructor() {
+    super('Appearance is managed by the active HaloPress Theme. Save it from Site > Themes.')
+    this.name = 'SitePresentationAppearanceMigratedError'
+  }
+}
+
+async function hasCanonicalSiteTheme(event: H3Event) {
+  const row = await getSetting('global', 'site.theme.active', event)
+  if (!row || row.isEncrypted || row.valueType !== 'json') return false
+  try {
+    const value = JSON.parse(row.value)
+    return value?.version === 1
+      && value?.bootstrapOwned === false
+      && siteThemeSchema.safeParse(value?.theme).success
+  } catch {
+    return false
+  }
+}
+
+function canonicalThemeRowQuery(db: any) {
+  return db.select({ key: settingsTable.key }).from(settingsTable).where(and(
+    eq(settingsTable.scope, 'global'),
+    eq(settingsTable.key, 'site.theme.active'),
+    eq(settingsTable.valueType, 'json'),
+    eq(settingsTable.isEncrypted, false),
+    sql`json_valid(${settingsTable.value})`,
+    sql`json_extract(${settingsTable.value}, '$.version') = 1`,
+    sql`json_extract(${settingsTable.value}, '$.bootstrapOwned') = 0`,
+    sql`json_extract(${settingsTable.value}, '$.theme.version') = 1`
+  ))
 }
 
 type ResolvedSitePresentation = {
@@ -215,12 +252,23 @@ export async function updateSitePresentation(
   if (body && typeof body === 'object' && Object.hasOwn(body, 'navigation')) {
     throw new SitePresentationNavigationMigratedError()
   }
+  const appearancePatch = Boolean(body && typeof body === 'object' && Object.hasOwn(body, 'appearance'))
+  let modeEnabled = false
+  if (appearancePatch) {
+    const [mode, canonicalTheme] = await Promise.all([
+      getSiteMode(event),
+      hasCanonicalSiteTheme(event)
+    ])
+    modeEnabled = mode.enabled
+    if (mode.enabled && canonicalTheme) throw new SitePresentationAppearanceMigratedError()
+  }
   const parsedPatch = sitePresentationPatchSchema.safeParse(body)
   if (!parsedPatch.success) {
     throw new SitePresentationValidationError(parsedPatch.error.issues[0]?.message || 'Invalid site presentation settings')
   }
 
-  const current = await resolveSitePresentation(event)
+  const currentRow = await getSetting('global', SITE_PRESENTATION_SETTING_KEY, event)
+  const current = parseStoredSitePresentation(currentRow)
   const nextResult = sitePresentationSchema.safeParse({
     ...current.value,
     ...parsedPatch.data
@@ -235,18 +283,59 @@ export async function updateSitePresentation(
     throw new SitePresentationValidationError(`Choose ready image assets for branding: ${missingAssetIds.join(', ')}`)
   }
 
-  await upsertSetting({
-    scope: 'global',
-    key: SITE_PRESENTATION_SETTING_KEY,
-    value: JSON.stringify(next),
-    valueType: 'json',
-    isEncrypted: false,
-    groupKey: SITE_PRESENTATION_GROUP,
-    updatedBy: actorId,
-    note: 'Managed from Desk site presentation settings'
-  }, event)
-
   const db = await getDb(event)
+  const nextJson = JSON.stringify(next)
+  if (appearancePatch && modeEnabled) {
+    const now = new Date()
+    const values = {
+      value: nextJson,
+      valueType: 'json' as const,
+      isEncrypted: false,
+      groupKey: SITE_PRESENTATION_GROUP,
+      updatedBy: actorId,
+      updatedAt: now,
+      note: 'Managed from Desk site presentation settings'
+    }
+    if (currentRow) {
+      await db.update(settingsTable).set(values).where(and(
+        eq(settingsTable.scope, 'global'),
+        eq(settingsTable.key, SITE_PRESENTATION_SETTING_KEY),
+        eq(settingsTable.value, currentRow.value),
+        eq(settingsTable.updatedAt, currentRow.updatedAt),
+        notExists(canonicalThemeRowQuery(db))
+      ))
+    } else {
+      await db.insert(settingsTable).select(db.select({
+        scope: sql<string>`${'global'}`,
+        key: sql<string>`${SITE_PRESENTATION_SETTING_KEY}`,
+        value: sql<string>`${nextJson}`,
+        valueType: sql<string>`${'json'}`,
+        isEncrypted: sql<boolean>`0`,
+        groupKey: sql<string>`${SITE_PRESENTATION_GROUP}`,
+        updatedBy: actorId === null ? sql<string | null>`null` : sql<string>`${actorId}`,
+        updatedAt: sql<Date>`${now.getTime()}`,
+        note: sql<string>`${'Managed from Desk site presentation settings'}`
+      }).from(settingsTable).where(and(
+        eq(settingsTable.scope, 'global'),
+        eq(settingsTable.key, 'site.mode'),
+        notExists(canonicalThemeRowQuery(db))
+      )).limit(1)).onConflictDoNothing()
+    }
+    const stored = await getSetting('global', SITE_PRESENTATION_SETTING_KEY, event)
+    if (!stored || stored.value !== nextJson) throw new SitePresentationAppearanceMigratedError()
+  } else {
+    await upsertSetting({
+      scope: 'global',
+      key: SITE_PRESENTATION_SETTING_KEY,
+      value: nextJson,
+      valueType: 'json',
+      isEncrypted: false,
+      groupKey: SITE_PRESENTATION_GROUP,
+      updatedBy: actorId,
+      note: 'Managed from Desk site presentation settings'
+    }, event)
+  }
+
   await syncDocumentAssetRefs({
     db,
     documentKind: 'settings',

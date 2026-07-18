@@ -62,10 +62,19 @@ asset, or stylesheet URLs. A provider-assigned hostname and a custom domain are 
 origins; loopback, private-address, single-label, and
 internal-only hosts remain incomplete in the advisory Desk checklist.
 
+The same authority qualifies `GET /api/delivery/site-theme` and every Theme digest
+stylesheet URL. Theme CSS bytes remain origin-independent and are retained in the
+persistent settings database under their SHA-256 digest; do not store or rewrite a
+deployment hostname in Theme data. The source-controlled v1 default is available
+during pre-install missing-table requests, but legacy-derived and customized
+artifacts must be durably snapshotted before their URLs are advertised.
+
 Node uses the same SQLite and filesystem asset adapters as local development.
 Mount persistent storage for `.data/halopress.sqlite` and `.data/r2/`; an
 ephemeral application filesystem will lose content and uploads when the instance
-is replaced. Database or asset adapter redesign and provider-specific packaging
+is replaced. The database must also persist immutable historical Theme artifacts;
+cached Page/headless envelopes may continue to request their digest URLs after a
+new Theme is active. Database or asset adapter redesign and provider-specific packaging
 are outside this guide.
 
 ## Cloudflare production

@@ -52,8 +52,9 @@
 - [x] Published-only page resolver and `/p/:id` public route
 - [x] Authenticated private/noindex draft preview
 - [x] Safe fallback for unknown, retired, or malformed page blocks
+- [x] One active validated Theme with retained standalone `--halo-*` CSS artifacts
 - [ ] Public slugs and custom paths (post-MVP)
-- [ ] Themes and expanded block catalog (post-MVP)
+- [ ] Multiple themes, marketplace, and expanded block catalog (post-MVP)
 
 ## 7. UI
 - [x] Viewer: home / collection / detail pages

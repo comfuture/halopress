@@ -2,6 +2,24 @@ import { getRequestHeader, send, setResponseHeaders, setResponseStatus } from 'h
 import { defineNitroErrorHandler } from 'nitropack/runtime'
 
 export default defineNitroErrorHandler((error, event) => {
+  if (event.context.portablePublicResourceNoStore === true) {
+    const statusMessage = 'Theme stylesheet not found'
+    setResponseStatus(event, 404, statusMessage)
+    setResponseHeaders(event, {
+      'Cache-Control': 'no-store',
+      'Access-Control-Allow-Origin': '*',
+      'Cross-Origin-Resource-Policy': 'cross-origin',
+      'X-Content-Type-Options': 'nosniff',
+      'Content-Type': 'application/json'
+    })
+    return send(event, JSON.stringify({
+      error: true,
+      url: event.path,
+      statusCode: 404,
+      statusMessage,
+      message: statusMessage
+    }))
+  }
   if (event.context.publicDeliveryPrivateNoindex !== true) return
 
   const statusCode = Number(error.statusCode) === 404 ? 404 : 500

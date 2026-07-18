@@ -121,7 +121,13 @@ describe('Site administration foundation', () => {
     expect(overview).toContain('/_desk/site/themes')
     expect(overview).toContain('/_desk/site/layouts')
     expect(overview).toContain('/_desk/site/menus')
-    expect(themes).toContain('/_desk/settings/appearance')
+    expect(themes).toContain('Active theme')
+    expect(themes).toContain('<UForm')
+    expect(themes).toContain('<UInputNumber')
+    expect(themes).toContain('<USlideover')
+    expect(themes).toContain('useUnsavedNavigationGuard')
+    expect(themes).toContain('siteThemeAccessibilityWarnings')
+    expect(themes).not.toContain('unmount-on-hide')
     expect(menus).toContain('<template #actions>')
     expect(menus).toContain('<UModal')
     expect(menus).toContain('data-menu-create-trigger')
@@ -133,7 +139,7 @@ describe('Site administration foundation', () => {
     expect(menuEditor).toContain('Back to menu sets')
     expect(layouts).toContain('SiteLayouts are persisted HaloPress resources')
 
-    for (const placeholder of [themes, layouts]) {
+    for (const placeholder of [layouts]) {
       expect(placeholder).not.toContain('method: \'POST\'')
       expect(placeholder).not.toContain('method: \'PUT\'')
       expect(placeholder).not.toContain('method: \'DELETE\'')

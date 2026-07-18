@@ -204,7 +204,7 @@ export default defineEventHandler(async (event) => {
     ...(includeSchema ? { schema: sourceSchema } : {}),
     createdAt: row.createdAt,
     updatedAt: sourceUpdatedAt,
-    rendering: createPortableStructuredRenderingForEvent(
+    rendering: await createPortableStructuredRenderingForEvent(
       event,
       content,
       sourceSchema.registry?.fields ?? []

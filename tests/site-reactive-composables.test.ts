@@ -32,6 +32,33 @@ afterEach(() => {
 })
 
 describe('Site reactive composables', () => {
+  it('exposes a validated public Theme synchronously without leaking thenable methods', async () => {
+    const { state, promise } = createNuxtLikeAsyncData<any>()
+    const useFetch = vi.fn(() => promise)
+    vi.stubGlobal('computed', computed)
+    vi.stubGlobal('useFetch', useFetch)
+    const { useSiteTheme } = await import('../app/composables/useSiteTheme')
+    const result = useSiteTheme()
+    expect(result).not.toHaveProperty('then')
+    expect(result.theme.value).toBeNull()
+    const digest = 'a'.repeat(64)
+    state.data.value = {
+      contractVersion: 1,
+      siteModeEnabled: true,
+      revision: digest,
+      stylesheetRevision: digest,
+      stylesheetUrl: `https://press.example.com/_halo/theme/v1/${digest}.css`,
+      colorMode: 'system'
+    }
+    expect(result.theme.value).toEqual(state.data.value)
+    state.data.value = { ...state.data.value, stylesheetUrl: `https://user@press.example.com/_halo/theme/v1/${digest}.css` }
+    expect(result.theme.value).toBeNull()
+    expect(useFetch).toHaveBeenCalledWith('/api/delivery/site-theme', {
+      key: 'site-theme-manifest',
+      dedupe: 'defer'
+    })
+  })
+
   it('exposes Site mode refs synchronously without leaking Nuxt thenable methods', async () => {
     const { state, promise } = createNuxtLikeAsyncData<{
       value: { version: 1; enabled: boolean }

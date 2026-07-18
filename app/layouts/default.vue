@@ -1,14 +1,44 @@
 <script setup lang="ts">
 import type { DropdownMenuItem } from '@nuxt/ui'
+import { PORTABLE_CONTENT_STYLESHEET_PATH } from '~~/shared/portable-content'
 
 const route = useRoute()
 const { presentation } = await useSitePresentation()
+const { theme: siteTheme } = useSiteTheme()
+const siteModeEnabled = computed(() => siteTheme.value?.siteModeEnabled === true)
+const colorMode = useColorMode()
+const shellColorMode = computed(() => colorMode.preference === 'dark'
+  ? 'dark'
+  : (colorMode.preference === 'light' ? 'light' : 'default'))
 const { data: membership } = await useFetch<{ registrationEnabled: boolean }>('/api/membership')
 const { data: session, status, signOut } = useAuth()
 
 const navigationItems = computed(() => siteNavigationItems(presentation.value, route.path))
 const footerLinks = computed(() => siteFooterLinks(presentation.value, route.path))
-const themeStyle = computed(() => siteThemeStyle(presentation.value))
+const themeStyle = computed(() => siteThemeStyle(presentation.value, siteModeEnabled.value))
+useHead(() => ({
+  bodyAttrs: {
+    class: 'site-theme-adapter',
+    'data-halo-theme-enabled': String(siteModeEnabled.value),
+    'data-halo-color-mode': siteModeEnabled.value ? shellColorMode.value : undefined,
+    style: themeStyle.value
+  },
+  link: siteModeEnabled.value && siteTheme.value
+    ? [
+        new URL(PORTABLE_CONTENT_STYLESHEET_PATH, siteTheme.value.stylesheetUrl).href,
+        siteTheme.value.stylesheetUrl
+      ].map(href => ({
+        key: `halo-stylesheet-${href}`,
+        rel: 'stylesheet',
+        href
+      }))
+    : []
+}))
+watchEffect(() => {
+  colorMode.preference = siteModeEnabled.value && siteTheme.value
+    ? siteTheme.value.colorMode
+    : presentation.value.appearance.colorMode
+})
 const copyright = computed(() => presentation.value.footer.copyright
   || `© ${new Date().getFullYear()} ${presentation.value.general.siteName}`)
 const headerUi = computed(() => {
@@ -41,6 +71,9 @@ const accountItems = computed<DropdownMenuItem[][]>(() => {
     class="site-shell"
     :style="themeStyle"
     :data-theme-preset="presentation.appearance.preset"
+    :data-theme-revision="siteModeEnabled ? siteTheme?.revision : undefined"
+    :data-halo-theme-enabled="siteModeEnabled"
+    :data-halo-color-mode="siteModeEnabled ? shellColorMode : undefined"
     :data-shell-width="presentation.shell.width"
   >
     <UHeader

@@ -1,9 +1,17 @@
 <script setup lang="ts">
 const { presentation } = await useSitePresentation()
 const colorMode = useColorMode()
+const route = useRoute()
+const { theme: portableTheme } = useSiteTheme()
 
 watchEffect(() => {
-  colorMode.preference = presentation.value.appearance.colorMode
+  // Desk retains its compatibility appearance preference. The public default
+  // layout is the sole owner of the canonical active Theme preference.
+  if (route.path === '/_desk' || route.path.startsWith('/_desk/')) {
+    colorMode.preference = presentation.value.appearance.colorMode
+  } else if ((route.path === '/_preview' || route.path.startsWith('/_preview/')) && portableTheme.value) {
+    colorMode.preference = portableTheme.value.colorMode
+  }
 })
 
 useHead(() => ({

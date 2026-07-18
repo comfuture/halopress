@@ -42,13 +42,24 @@
         if (rendering?.contractVersion !== 1 || typeof rendering.html !== 'string' || !Array.isArray(rendering.stylesheets)) {
           throw new Error('The response has no supported portable Page rendering envelope')
         }
+        const nextStylesheets = new Set(rendering.stylesheets)
+        for (const [href, link] of stylesheetLinks) {
+          if (nextStylesheets.has(href)) continue
+          link.remove()
+          stylesheetLinks.delete(href)
+        }
         for (const href of rendering.stylesheets) {
-          if (stylesheetLinks.has(href)) continue
-          const link = document.createElement('link')
-          link.rel = 'stylesheet'
-          link.href = href
+          let link = stylesheetLinks.get(href)
+          if (!link) {
+            link = document.createElement('link')
+            link.rel = 'stylesheet'
+            link.href = href
+            link.dataset.haloStylesheet = 'true'
+            stylesheetLinks.set(href, link)
+          }
+          // Appending an existing node moves it, preserving the envelope's
+          // deterministic [base CSS, active Theme CSS] cascade order.
           document.head.append(link)
-          stylesheetLinks.set(href, link)
         }
         target.innerHTML = rendering.html
         status.textContent = `Rendered contract v${rendering.contractVersion} without the HaloPress application bundle.`

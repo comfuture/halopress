@@ -131,7 +131,7 @@ function goPrev() {
   <UContainer v-if="standalonePage" class="py-8">
     <UPage>
       <UPageHeader :title="standalonePage.title || 'Untitled page'" />
-      <UPageBody><PageDocumentRenderer :document="standalonePage.content" /></UPageBody>
+      <UPageBody><PageDocumentRenderer :document="standalonePage.content" :rendering="standalonePage.rendering" /></UPageBody>
     </UPage>
   </UContainer>
 

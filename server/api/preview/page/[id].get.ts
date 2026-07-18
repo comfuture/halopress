@@ -27,7 +27,7 @@ export default defineEventHandler(async (event) => {
     title: row.title,
     status: row.status,
     content,
-    rendering: createPortablePageRenderingForEvent(event, content),
+    rendering: await createPortablePageRenderingForEvent(event, content),
     updatedAt: row.updatedAt,
     ...publicationMetadata(row)
   }
