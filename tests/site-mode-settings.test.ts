@@ -100,7 +100,7 @@ describe('Site mode settings', () => {
           groupKey: 'site.layout',
           updatedBy: 'admin-before',
           updatedAt: new Date('2026-07-17T00:00:00.000Z'),
-          note: 'Future SiteLayout resource'
+          note: 'Future Layout resource'
         }
       ]
       await fixture.db.insert(settings).values(unchangedRows)

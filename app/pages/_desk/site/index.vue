@@ -37,7 +37,7 @@ const menuLinkCount = computed(() => (menuData.value?.items ?? []).reduce((total
     <div v-else class="space-y-6">
       <UAlert
         title="Site administration is enabled"
-        description="Desk tools are available. Public pages continue to use the current presentation contract until a HaloPress SiteLayout is explicitly created and selected."
+        description="Desk tools are available. Public pages continue to use the current presentation contract until a HaloPress Layout is explicitly created and selected."
         color="success"
         variant="subtle"
         icon="i-lucide-circle-check"
@@ -88,7 +88,7 @@ const menuLinkCount = computed(() => (menuData.value?.items ?? []).reduce((total
               <UBadge color="neutral" variant="soft">
                 Not available yet
               </UBadge>
-              <span class="text-xs text-muted">Default SiteLayout: none</span>
+              <span class="text-xs text-muted">Default Layout: none</span>
             </div>
           </template>
         </UPageCard>

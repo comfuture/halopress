@@ -2,6 +2,13 @@
 
 - Use the nuxt-ui MCP to learn the API and implement components and code correctly.
 
+## Public Layout resource boundary
+
+- HaloPress Site Layouts are persisted public rendering contracts. They are not Nuxt application layouts in `app/layouts/**`; never use Nuxt layouts as the resource store or registry, and never add a Vue file under `app/layouts/` for a persisted Layout.
+- Persisted/API Layout documents contain only validated semantic element types, stable instance IDs, finite placement data, and typed properties. They must never contain or resolve Nuxt layout selectors (including `default`, `desk`, or `blank` as Nuxt names), Desk/Vue component IDs, import paths, dynamic component keys, Tailwind classes, Nuxt UI `ui` payloads, slots/templates, arbitrary HTML/CSS/JavaScript, or executable/runtime lookup data.
+- Runtime rendering must map validated semantic element types through a code-owned registry. Never dynamically import or resolve a component from a database/API string.
+- Use `LayoutDocument`, `LayoutResource`, `LayoutElement`, `LayoutPreset`, and later `LayoutRenderer` as the internal/domain vocabulary. A `site/layouts` file or API namespace is acceptable for collision clarity; do not introduce `SiteWorkspaceShell` or exported `SiteLayout*` domain model names.
+
 ## PR authoring
 
 - When writing PR bodies, do not leave literal `\n` sequences in the text; use real line breaks instead.

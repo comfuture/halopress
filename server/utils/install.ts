@@ -46,6 +46,8 @@ export const REQUIRED_INSTALL_TABLES = [
   'document_revision',
   'external_identity',
   'installation',
+  'site_layout_reference',
+  'site_layout_resource',
   'membership_invitation',
   'page',
   'publication_revision',

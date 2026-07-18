@@ -102,7 +102,7 @@ describe('installation state', () => {
 
     await runCloudflareMigrations(db)
 
-    expect(batches).toHaveLength(9)
+    expect(batches).toHaveLength(10)
     expect(batches.every(batch => batch.every(statement => typeof statement.query === 'string'))).toBe(true)
     expect(batches.flat().some(statement => statement.query === 'PRAGMA foreign_keys = OFF')).toBe(false)
     expect(batches.flat().some(statement => statement.query === 'PRAGMA defer_foreign_keys = ON')).toBe(true)
@@ -115,7 +115,8 @@ describe('installation state', () => {
       '0005_add_schema_lifecycle_status.sql',
       '0006_add_public_member_identities.sql',
       '0007_add_public_routes_and_aliases.sql',
-      '0008_add_site_menu_sets.sql'
+      '0008_add_site_menu_sets.sql',
+      '0009_add_site_layout_documents.sql'
     ].map(name => ({
       query: 'INSERT INTO d1_migrations (name) VALUES (?)',
       params: [name]
@@ -136,7 +137,7 @@ describe('installation state', () => {
     })
   })
 
-  it.each(['site_menu_set', 'site_menu_reference'])('requires the %s table before reporting installation readiness', async (table) => {
+  it.each(['site_menu_set', 'site_menu_reference', 'site_layout_resource', 'site_layout_reference'])('requires the %s table before reporting installation readiness', async (table) => {
     await withDatabase(async (db) => {
       await runMigrations(db)
       await db.run(sql.raw(`DROP TABLE ${table}`))
