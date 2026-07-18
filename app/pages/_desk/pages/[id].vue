@@ -339,6 +339,7 @@ const actionMenuItems = computed<DropdownMenuItem[][]>(() => {
         <template #actions>
           <CmsEditorActions
             :preview-to="isDeleted ? undefined : `/_preview/pages/${id}`"
+            :show-preview="false"
             :show-save-draft="!isDeleted"
             :can-save-draft="canSaveDraft"
             :saving-draft="savingDraft"

@@ -9,20 +9,27 @@ import type {
   EditorQuickMenuContext
 } from './types'
 
-const pageBlockToolbarKinds = new Set(['undo', 'redo'])
+const pageBlockHistoryKinds = new Set(['undo', 'redo'])
+
+function disablePageBlockToolbarItem(item: any): any {
+  if (pageBlockHistoryKinds.has(item.kind)) return item
+  const { kind: _kind, ...disabledItem } = item
+  if (Array.isArray(item.items)) {
+    disabledItem.items = item.items.map((entry: any) => (
+      Array.isArray(entry)
+        ? entry.map(disablePageBlockToolbarItem)
+        : disablePageBlockToolbarItem(entry)
+    ))
+  }
+  return { ...disabledItem, disabled: true }
+}
 
 export function getPageToolbarGroups(
   groups: EditorProfileToolbarGroup[],
   selectedNodeType: string | null
 ) {
   if (selectedNodeType !== 'pageBlock') return groups
-  return groups
-    .map(group => group.filter(item => (
-      'kind' in item
-      && typeof item.kind === 'string'
-      && pageBlockToolbarKinds.has(item.kind)
-    )))
-    .filter(group => group.length > 0)
+  return groups.map(group => group.map(disablePageBlockToolbarItem))
 }
 
 const pageQuickMenuGroups = richTextProfileDefinition.quickMenuGroups.map((contribution) => {

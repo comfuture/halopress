@@ -4,6 +4,7 @@ import type { Editor } from '@tiptap/vue-3'
 const props = defineProps<{
   editor: Editor
   autoOpen?: boolean
+  disabled?: boolean
 }>()
 
 const open = ref(false)
@@ -11,6 +12,7 @@ const url = ref('')
 
 const active = computed(() => props.editor.isActive('link'))
 const disabled = computed(() => {
+  if (props.disabled) return true
   if (!props.editor.isEditable) return true
   const { selection } = props.editor.state
   return selection.empty && !props.editor.isActive('link')
@@ -33,7 +35,7 @@ watch(() => props.editor, (editor, _, onCleanup) => {
 }, { immediate: true })
 
 watch(active, (isActive) => {
-  if (isActive && props.autoOpen) {
+  if (isActive && props.autoOpen && !disabled.value) {
     open.value = true
   }
 })

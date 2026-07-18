@@ -4,6 +4,7 @@ import type { DropdownMenuItem } from '@nuxt/ui'
 withDefaults(defineProps<{
   previewTo?: string
   previewLabel?: string
+  showPreview?: boolean
   canSaveDraft: boolean
   savingDraft: boolean
   showSaveDraft?: boolean
@@ -15,6 +16,7 @@ withDefaults(defineProps<{
 }>(), {
   previewTo: undefined,
   previewLabel: 'Preview draft',
+  showPreview: true,
   showSaveDraft: true,
   showPublish: true,
   menuItems: () => [],
@@ -34,7 +36,7 @@ function openPreview() {
 </script>
 
 <template>
-  <UTooltip v-if="previewTo" :text="previewLabel">
+  <UTooltip v-if="previewTo && showPreview" :text="previewLabel">
     <UButton
       color="neutral"
       variant="ghost"

@@ -108,12 +108,18 @@ describe('richText and page profiles', () => {
     ]))
   })
 
-  it('keeps only history controls in the toolbar for atomic page blocks', () => {
+  it('keeps the full toolbar visible but disables non-history controls for atomic page blocks', () => {
     const page = createPageProfile()
     const pageBlockGroups = getPageToolbarGroups(page.toolbarGroups, 'pageBlock')
     const paragraphGroups = getPageToolbarGroups(page.toolbarGroups, 'paragraph')
+    const pageBlockItems = pageBlockGroups.flat()
 
-    expect(pageBlockGroups.flat().map(item => 'kind' in item ? item.kind : null)).toEqual(['undo', 'redo'])
+    expect(pageBlockGroups.map(group => group.length)).toEqual(page.toolbarGroups.map(group => group.length))
+    expect(pageBlockItems[0]).toMatchObject({ kind: 'undo' })
+    expect(pageBlockItems[1]).toMatchObject({ kind: 'redo' })
+    expect(pageBlockItems.slice(2).every(item => item.disabled === true && !('kind' in item))).toBe(true)
+    const headingMenu = pageBlockItems[2] as any
+    expect(headingMenu.items.every((item: any) => item.disabled === true && !('kind' in item))).toBe(true)
     expect(paragraphGroups).toBe(page.toolbarGroups)
     expect(paragraphGroups.flat().some(item => 'kind' in item && item.kind === 'blockquote')).toBe(true)
   })
