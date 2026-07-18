@@ -109,8 +109,12 @@ describe('portable content v1 stylesheet', () => {
     const root = resolve(import.meta.dirname, '..')
     const portableFiles = [
       'shared/portable-content.ts',
+      'shared/site-theme.ts',
       'shared/page-blocks.ts',
       'server/utils/portable-content-delivery.ts',
+      'server/utils/site-theme-settings.ts',
+      'server/api/delivery/site-theme.get.ts',
+      'server/routes/_halo/theme/v1/[revision].css.get.ts',
       `server/routes${PORTABLE_CONTENT_STYLESHEET_PATH}.get.ts`,
       'server/assets/portable-content-v1.css',
       'app/components/PageDocumentRenderer.vue',

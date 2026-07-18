@@ -252,7 +252,7 @@ describe('page document renderer', () => {
     expect(nodeView).toContain('<PageBlockView')
     expect(renderer).toContain('createPortablePageRendering')
     expect(renderer).toContain('data-portable-content-renderer')
-    expect(renderer).toContain('v-html="activeRendering.html"')
+    expect(renderer).toContain('v-html="renderedHtml"')
     expect(renderer).not.toContain('<PageBlockView')
     expect(renderer).not.toContain('PageBlockNodeView')
     expect(renderer).not.toContain('ring-2')

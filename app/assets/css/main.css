@@ -165,3 +165,141 @@
 .site-shell {
   line-height: var(--site-line-height, 1.6);
 }
+
+/*
+ * App-only Site Theme adapter. This must live in the globally linked entry
+ * stylesheet so SSR first paint and body teleports resolve the same Halo
+ * aliases before the default layout's client chunk hydrates.
+ */
+.site-shell[data-halo-theme-enabled="true"] {
+  color: var(--halo-site-color-text);
+  background: var(--halo-site-color-background);
+  font-family: var(--halo-font-family-body);
+  font-size: var(--halo-font-size-base);
+  line-height: var(--halo-line-height-body);
+}
+
+body.site-theme-adapter[data-halo-theme-enabled="true"],
+.site-shell[data-halo-theme-enabled="true"] {
+  --halo-site-color-primary: var(--halo-color-primary-light);
+  --halo-site-color-on-primary: var(--halo-color-on-primary-light);
+  --halo-site-color-secondary: var(--halo-color-secondary-light);
+  --halo-site-color-on-secondary: var(--halo-color-on-secondary-light);
+  --halo-site-color-neutral: var(--halo-color-neutral-light);
+  --halo-site-color-on-neutral: var(--halo-color-on-neutral-light);
+  --halo-site-color-background: var(--halo-color-background-light);
+  --halo-site-color-background-muted: var(--halo-color-background-muted-light);
+  --halo-site-color-background-elevated: var(--halo-color-background-elevated-light);
+  --halo-site-color-background-accented: var(--halo-color-background-accented-light);
+  --halo-site-color-background-inverted: var(--halo-color-background-inverted-light);
+  --halo-site-color-text: var(--halo-color-text-light);
+  --halo-site-color-text-dimmed: var(--halo-color-text-dimmed-light);
+  --halo-site-color-text-muted: var(--halo-color-text-muted-light);
+  --halo-site-color-text-toned: var(--halo-color-text-toned-light);
+  --halo-site-color-text-highlighted: var(--halo-color-text-highlighted-light);
+  --halo-site-color-text-inverted: var(--halo-color-text-inverted-light);
+  --halo-site-color-border: var(--halo-color-border-light);
+  --halo-site-color-border-muted: var(--halo-color-border-muted-light);
+  --halo-site-color-border-accented: var(--halo-color-border-accented-light);
+  --halo-site-color-border-inverted: var(--halo-color-border-inverted-light);
+  --halo-site-color-success: var(--halo-color-success-light);
+  --halo-site-color-on-success: var(--halo-color-on-success-light);
+  --halo-site-color-info: var(--halo-color-info-light);
+  --halo-site-color-on-info: var(--halo-color-on-info-light);
+  --halo-site-color-warning: var(--halo-color-warning-light);
+  --halo-site-color-on-warning: var(--halo-color-on-warning-light);
+  --halo-site-color-error: var(--halo-color-error-light);
+  --halo-site-color-on-error: var(--halo-color-on-error-light);
+}
+
+body.site-theme-adapter[data-halo-theme-enabled="true"][data-halo-color-mode="dark"],
+.site-shell[data-halo-theme-enabled="true"][data-halo-color-mode="dark"] {
+  --halo-site-color-primary: var(--halo-color-primary-dark);
+  --halo-site-color-on-primary: var(--halo-color-on-primary-dark);
+  --halo-site-color-secondary: var(--halo-color-secondary-dark);
+  --halo-site-color-on-secondary: var(--halo-color-on-secondary-dark);
+  --halo-site-color-neutral: var(--halo-color-neutral-dark);
+  --halo-site-color-on-neutral: var(--halo-color-on-neutral-dark);
+  --halo-site-color-background: var(--halo-color-background-dark);
+  --halo-site-color-background-muted: var(--halo-color-background-muted-dark);
+  --halo-site-color-background-elevated: var(--halo-color-background-elevated-dark);
+  --halo-site-color-background-accented: var(--halo-color-background-accented-dark);
+  --halo-site-color-background-inverted: var(--halo-color-background-inverted-dark);
+  --halo-site-color-text: var(--halo-color-text-dark);
+  --halo-site-color-text-dimmed: var(--halo-color-text-dimmed-dark);
+  --halo-site-color-text-muted: var(--halo-color-text-muted-dark);
+  --halo-site-color-text-toned: var(--halo-color-text-toned-dark);
+  --halo-site-color-text-highlighted: var(--halo-color-text-highlighted-dark);
+  --halo-site-color-text-inverted: var(--halo-color-text-inverted-dark);
+  --halo-site-color-border: var(--halo-color-border-dark);
+  --halo-site-color-border-muted: var(--halo-color-border-muted-dark);
+  --halo-site-color-border-accented: var(--halo-color-border-accented-dark);
+  --halo-site-color-border-inverted: var(--halo-color-border-inverted-dark);
+  --halo-site-color-success: var(--halo-color-success-dark);
+  --halo-site-color-on-success: var(--halo-color-on-success-dark);
+  --halo-site-color-info: var(--halo-color-info-dark);
+  --halo-site-color-on-info: var(--halo-color-on-info-dark);
+  --halo-site-color-warning: var(--halo-color-warning-dark);
+  --halo-site-color-on-warning: var(--halo-color-on-warning-dark);
+  --halo-site-color-error: var(--halo-color-error-dark);
+  --halo-site-color-on-error: var(--halo-color-on-error-dark);
+}
+
+@media (prefers-color-scheme: dark) {
+  body.site-theme-adapter[data-halo-theme-enabled="true"][data-halo-color-mode="default"],
+  .site-shell[data-halo-theme-enabled="true"][data-halo-color-mode="default"] {
+    --halo-site-color-primary: var(--halo-color-primary-dark);
+    --halo-site-color-on-primary: var(--halo-color-on-primary-dark);
+    --halo-site-color-secondary: var(--halo-color-secondary-dark);
+    --halo-site-color-on-secondary: var(--halo-color-on-secondary-dark);
+    --halo-site-color-neutral: var(--halo-color-neutral-dark);
+    --halo-site-color-on-neutral: var(--halo-color-on-neutral-dark);
+    --halo-site-color-background: var(--halo-color-background-dark);
+    --halo-site-color-background-muted: var(--halo-color-background-muted-dark);
+    --halo-site-color-background-elevated: var(--halo-color-background-elevated-dark);
+    --halo-site-color-background-accented: var(--halo-color-background-accented-dark);
+    --halo-site-color-background-inverted: var(--halo-color-background-inverted-dark);
+    --halo-site-color-text: var(--halo-color-text-dark);
+    --halo-site-color-text-dimmed: var(--halo-color-text-dimmed-dark);
+    --halo-site-color-text-muted: var(--halo-color-text-muted-dark);
+    --halo-site-color-text-toned: var(--halo-color-text-toned-dark);
+    --halo-site-color-text-highlighted: var(--halo-color-text-highlighted-dark);
+    --halo-site-color-text-inverted: var(--halo-color-text-inverted-dark);
+    --halo-site-color-border: var(--halo-color-border-dark);
+    --halo-site-color-border-muted: var(--halo-color-border-muted-dark);
+    --halo-site-color-border-accented: var(--halo-color-border-accented-dark);
+    --halo-site-color-border-inverted: var(--halo-color-border-inverted-dark);
+    --halo-site-color-success: var(--halo-color-success-dark);
+    --halo-site-color-on-success: var(--halo-color-on-success-dark);
+    --halo-site-color-info: var(--halo-color-info-dark);
+    --halo-site-color-on-info: var(--halo-color-on-info-dark);
+    --halo-site-color-warning: var(--halo-color-warning-dark);
+    --halo-site-color-on-warning: var(--halo-color-on-warning-dark);
+    --halo-site-color-error: var(--halo-color-error-dark);
+    --halo-site-color-on-error: var(--halo-color-on-error-dark);
+  }
+}
+
+body.site-theme-adapter[data-halo-theme-enabled="true"] :where(.bg-primary) {
+  --ui-text-inverted: var(--halo-site-color-on-primary);
+}
+
+body.site-theme-adapter[data-halo-theme-enabled="true"] :where(.bg-secondary) {
+  --ui-text-inverted: var(--halo-site-color-on-secondary);
+}
+
+body.site-theme-adapter[data-halo-theme-enabled="true"] :where(.bg-success) {
+  --ui-text-inverted: var(--halo-site-color-on-success);
+}
+
+body.site-theme-adapter[data-halo-theme-enabled="true"] :where(.bg-info) {
+  --ui-text-inverted: var(--halo-site-color-on-info);
+}
+
+body.site-theme-adapter[data-halo-theme-enabled="true"] :where(.bg-warning) {
+  --ui-text-inverted: var(--halo-site-color-on-warning);
+}
+
+body.site-theme-adapter[data-halo-theme-enabled="true"] :where(.bg-error) {
+  --ui-text-inverted: var(--halo-site-color-on-error);
+}

@@ -10,6 +10,13 @@ import {
 
 definePageMeta({ layout: 'desk' })
 
+const { enabled: siteModeEnabled, pending: siteModePending } = useSiteMode()
+watchEffect(() => {
+  if (!siteModePending.value && siteModeEnabled.value) {
+    void navigateTo('/_desk/site/themes', { replace: true })
+  }
+})
+
 const toast = useToast()
 const state = reactive<SitePresentation['appearance']>({ ...defaultSitePresentation().appearance })
 const { data, pending, error, refresh, saving, savePatch } = await useSitePresentationSettings()
@@ -47,7 +54,7 @@ async function save() {
     section="appearance"
     title="Appearance"
     description="Choose source-controlled presets and allowlisted semantic design tokens."
-    :pending="pending"
+    :pending="pending || siteModePending || siteModeEnabled"
     @refresh="refresh()"
   >
     <UAlert
@@ -60,10 +67,10 @@ async function save() {
       class="mb-6"
     />
 
-    <UForm :state="state" class="space-y-8" @submit="save">
+    <UForm v-if="!siteModePending && !siteModeEnabled" :state="state" class="space-y-8" @submit="save">
       <UAlert
         title="Safe theme tokens only"
-        description="Presets and semantic palettes keep public controls readable in light and dark modes. Arbitrary CSS and remote themes are not accepted."
+        description="Presets and semantic palettes keep public controls readable in light and dark modes. Arbitrary CSS and remote themes are not accepted. Enable Site features to move these values into the canonical active Theme."
         color="info"
         variant="subtle"
         icon="i-lucide-shield-check"

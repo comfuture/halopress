@@ -14,14 +14,16 @@ HaloPress keeps editor JSON as the canonical revision format and adds a safe HTM
     "contractVersion": 1,
     "html": "<article class=\"halo-content halo-page\">…</article>",
     "stylesheets": [
-      "https://site.example/_halo/content/v1/CSS_SHA256.css"
+      "https://site.example/_halo/content/v1/BASE_CSS_SHA256.css",
+      "https://site.example/_halo/theme/v1/THEME_CSS_SHA256.css"
     ],
-    "themeRevision": "default"
+    "themeRevision": "THEME_DOCUMENT_SHA256",
+    "themeColorMode": "system"
   }
 }
 ```
 
-A headless client should insert the listed stylesheets once, then place `rendering.html` in its content slot. The HTML is server-sanitized and contains semantic elements, fixed `halo-*` classes, allowlisted `data-halo-*` values, and renderer-owned inline SVG icons. It contains no author-supplied HTML, class, style, ID, event handler, script, component identity, or runtime dependency.
+A headless client must apply the stylesheet list in the supplied order: the immutable portable v1 base first, then the exact immutable active Theme artifact. When a later envelope names a different Theme stylesheet, remove or disable the previous Theme link instead of accumulating revisions; reusing the unchanged base link is safe. Then place `rendering.html` in its content slot. The HTML is server-sanitized and contains semantic elements, fixed `halo-*` classes, allowlisted `data-halo-*` values, and renderer-owned inline SVG icons. It contains no author-supplied HTML, class, style, ID, event handler, script, component identity, or runtime dependency.
 
 The example at [`examples/portable-content/index.html`](../examples/portable-content/index.html) is a separate plain-HTML consumer. Set its fixed `data-halopress-origin` to the trusted HaloPress site, serve it from any static origin, and enter a published Page ID. It does not accept an auto-loading endpoint URL. Its content presentation comes only from that trusted API envelope and the referenced Halo stylesheet.
 
@@ -38,9 +40,11 @@ Public `GET /api/content/:schemaKey/:id` responses retain structured `content` a
   "rendering": {
     "contractVersion": 1,
     "stylesheets": [
-      "https://site.example/_halo/content/v1/CSS_SHA256.css"
+      "https://site.example/_halo/content/v1/BASE_CSS_SHA256.css",
+      "https://site.example/_halo/theme/v1/THEME_CSS_SHA256.css"
     ],
-    "themeRevision": "default",
+    "themeRevision": "THEME_DOCUMENT_SHA256",
+    "themeColorMode": "system",
     "fields": {
       "body": {
         "fieldId": "body-field-id",
@@ -58,13 +62,23 @@ Authenticated preview endpoints expose the same projection only after authorizat
 
 ## URLs, assets, and cache identity
 
-Absolute URLs are derived at request time from a trusted canonical origin. Deployment domains are never stored in content rows. Production Node deployments must set the origin-only `NUXT_CANONICAL_ORIGIN`; Cloudflare can use its platform Request authority or set the same value to force a custom canonical domain. Host and forwarding headers must agree with that authority, so a merely syntactically valid Host is never trusted in production. This server-only seam is also the canonical source for future theme stylesheet URLs.
+Absolute URLs are derived at request time from a trusted canonical origin. Deployment domains are never stored in content or Theme rows. Production Node deployments must set the origin-only `NUXT_CANONICAL_ORIGIN`; Cloudflare can use its platform Request authority or set the same value to force a custom canonical domain. Host and forwarding headers must agree with that authority, so a merely syntactically valid Host is never trusted in production. The same trusted server-only seam creates the Theme manifest and stylesheet URLs.
 
 Link and media rules are separate: links allow safe HTTP(S), mail, telephone, and fragment destinations, while rich-text media must resolve to the delivery origin. Page block media and logos have the narrower `/assets/:id/raw` contract. Credentials, protocol-relative URLs, executable schemes, conflicting forwarded hosts, generic same-origin private paths, and untrusted origins are rejected.
 
 New Page block media and logo values must use a site-owned `/assets/:id/raw` path. The editor advertises this form and save/publish validation rejects external logo or block-media URLs. Historical external logo JSON remains untouched; delivery renders an explicit text fallback instead of requesting the external image. Supported icon names are a finite authoring enum rendered from Halo-owned SVG geometry.
 
 The base CSS URL contains the SHA-256 of its bytes. It is append-only and may therefore use one-year immutable caching plus a strong ETag. A compatible CSS correction creates a new digest URL and all new envelopes reference it; an incompatible markup or selector change introduces contract v2 while the v1 resource remains available.
+
+## Theme manifest and artifact
+
+`GET /api/delivery/site-theme` is the stable public manifest. It returns the contract version, `siteModeEnabled`, the active `revision`, the exact CSS `stylesheetRevision`, an absolute `stylesheetUrl`, and the default `colorMode`. `revision` hashes the entire normalized editable Theme document, including color mode; `stylesheetRevision` hashes the compiled CSS bytes. A color-mode-only save therefore changes the document revision and manifest validator without inventing a second URL for identical CSS bytes.
+
+The manifest uses `Cache-Control: public, max-age=0, must-revalidate`, a strong ETag, `304` responses, wildcard read-only CORS, `Cross-Origin-Resource-Policy: cross-origin`, and `X-Content-Type-Options: nosniff`. `GET /_halo/theme/v1/:stylesheetRevision.css` returns only exact retained bytes as `text/css`, with a strong ETag and one-year immutable caching. Every advertised legacy or customized digest is stored append-only before the URL is returned; the source-controlled v1 default remains reconstructable during pre-install missing-table requests. Missing, malformed, or conflicting stored artifacts fail closed.
+
+Theme v1 accepts only Halo-owned semantic colors, bounded metrics, ordered radii, and predefined local/system font-stack IDs. It has no arbitrary CSS, remote URL, credential, upload, or custom font-file surface. The Public Sans option uses the local face when installed and otherwise proceeds through its `ui-sans-serif` and system fallbacks; every other named face follows its documented generic `sans-serif`, `serif`, or `monospace` fallback without a network request. Accessibility contrast findings are warnings and do not replace structural validation.
+
+The external artifact defines canonical `--halo-*` variables and portable `.halo-content` rules only. It never contains Nuxt UI `--ui-*` variables, Tailwind utilities, Vue components, or HaloPress application CSS. The built-in Site shell has a separate app-only adapter from validated Halo roles to Nuxt UI roles; that adapter is not part of the portable contract. Site mode gates only that shell adapter and its Theme color-mode ownership. Portable Page and rich-text envelopes continue to carry the exact Theme artifact when Site mode is disabled.
 
 Asset IDs are replaceable, so `/assets/:id/raw` is deliberately mutable: `Cache-Control: public, max-age=0, must-revalidate`. Its strong ETag is derived from the fetched object identity and selected content type. Replacement or a new representation changes the validator, and matching public conditional requests receive `304`. Public API envelopes include origin-dependent absolute URLs in their ETag identity and vary on the forwarded protocol.
 

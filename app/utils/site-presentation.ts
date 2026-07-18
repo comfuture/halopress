@@ -4,14 +4,41 @@ import type { PublicSitePresentation } from '~~/shared/site-presentation'
 
 const colorShades = ['50', '100', '200', '300', '400', '500', '600', '700', '800', '900', '950'] as const
 
-export function siteThemeStyle(presentation: PublicSitePresentation) {
-  const style: Record<string, string> = {}
-  for (const shade of colorShades) {
-    style[`--ui-color-primary-${shade}`] = `var(--color-${presentation.appearance.primaryColor}-${shade})`
-    style[`--ui-color-neutral-${shade}`] = `var(--color-${presentation.appearance.neutralColor}-${shade})`
+export function siteThemeStyle(presentation: PublicSitePresentation, haloThemeEnabled = false) {
+  const style: Record<string, string> = haloThemeEnabled
+    ? {
+    '--ui-primary': 'var(--halo-site-color-primary, var(--color-purple-500))',
+    '--ui-secondary': 'var(--halo-site-color-secondary, var(--color-blue-500))',
+    '--ui-success': 'var(--halo-site-color-success, var(--color-green-600))',
+    '--ui-info': 'var(--halo-site-color-info, var(--color-sky-600))',
+    '--ui-warning': 'var(--halo-site-color-warning, var(--color-amber-600))',
+    '--ui-error': 'var(--halo-site-color-error, var(--color-red-600))',
+    '--ui-text': 'var(--halo-site-color-text, var(--color-zinc-700))',
+    '--ui-text-dimmed': 'var(--halo-site-color-text-dimmed, var(--color-zinc-400))',
+    '--ui-text-muted': 'var(--halo-site-color-text-muted, var(--color-zinc-500))',
+    '--ui-text-toned': 'var(--halo-site-color-text-toned, var(--color-zinc-600))',
+    '--ui-text-highlighted': 'var(--halo-site-color-text-highlighted, var(--color-zinc-900))',
+    '--ui-text-inverted': 'var(--halo-site-color-text-inverted, white)',
+    '--ui-bg': 'var(--halo-site-color-background, white)',
+    '--ui-bg-muted': 'var(--halo-site-color-background-muted, var(--color-zinc-50))',
+    '--ui-bg-elevated': 'var(--halo-site-color-background-elevated, var(--color-zinc-100))',
+    '--ui-bg-accented': 'var(--halo-site-color-background-accented, var(--color-zinc-200))',
+    '--ui-bg-inverted': 'var(--halo-site-color-background-inverted, var(--color-zinc-900))',
+    '--ui-border': 'var(--halo-site-color-border, var(--color-zinc-200))',
+    '--ui-border-muted': 'var(--halo-site-color-border-muted, var(--color-zinc-200))',
+    '--ui-border-accented': 'var(--halo-site-color-border-accented, var(--color-zinc-300))',
+    '--ui-border-inverted': 'var(--halo-site-color-border-inverted, var(--color-zinc-900))',
+    '--ui-radius': 'var(--halo-radius-control, 0.25rem)'
+      }
+    : {}
+  if (!haloThemeEnabled) {
+    for (const shade of colorShades) {
+      style[`--ui-color-primary-${shade}`] = `var(--color-${presentation.appearance.primaryColor}-${shade})`
+      style[`--ui-color-neutral-${shade}`] = `var(--color-${presentation.appearance.neutralColor}-${shade})`
+    }
+    style['--ui-radius'] = ({ none: '0rem', sm: '0.125rem', md: '0.25rem', lg: '0.5rem' })[presentation.appearance.radius]
+    style['--site-line-height'] = ({ compact: '1.45', default: '1.6', relaxed: '1.75' })[presentation.appearance.typographyScale]
   }
-  style['--ui-radius'] = ({ none: '0rem', sm: '0.125rem', md: '0.25rem', lg: '0.5rem' })[presentation.appearance.radius]
-  style['--site-line-height'] = ({ compact: '1.45', default: '1.6', relaxed: '1.75' })[presentation.appearance.typographyScale]
   if (presentation.shell.width === 'wide') style['--ui-container'] = '96rem'
   if (presentation.shell.width === 'centered') style['--ui-container'] = '64rem'
   return style

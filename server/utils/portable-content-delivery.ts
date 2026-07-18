@@ -6,18 +6,25 @@ import {
   type PortableSchemaField
 } from '~~/shared/portable-content'
 import { requireTrustedRequestOrigin } from './request-origin'
+import { getPublicSiteThemeManifest } from './site-theme-settings'
 
-export function createPortablePageRenderingForEvent(event: H3Event, document: unknown) {
-  return createPortablePageRendering(document, { origin: requireTrustedRequestOrigin(event) })
+export async function createPortablePageRenderingForEvent(event: H3Event, document: unknown) {
+  const theme = await getPublicSiteThemeManifest(event)
+  return createPortablePageRendering(document, {
+    origin: requireTrustedRequestOrigin(event),
+    theme
+  })
 }
 
-export function createPortableStructuredRenderingForEvent(
+export async function createPortableStructuredRenderingForEvent(
   event: H3Event,
   content: Record<string, unknown>,
   fields: PortableSchemaField[]
 ) {
+  const theme = await getPublicSiteThemeManifest(event)
   return createPortableStructuredContentRendering(content, fields, {
-    origin: requireTrustedRequestOrigin(event)
+    origin: requireTrustedRequestOrigin(event),
+    theme
   })
 }
 

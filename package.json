@@ -11,6 +11,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:site-menu:built-ssr": "HALOPRESS_SITE_MENU_SSR_FIXTURE=1 pnpm build && node scripts/check-site-menu-built-ssr.mjs",
+    "test:site-theme:built-ssr": "HALOPRESS_SITE_MENU_SSR_FIXTURE=1 pnpm build && node scripts/check-site-menu-built-ssr.mjs",
     "typecheck": "nuxt typecheck",
     "db:generate": "drizzle-kit generate --name",
     "db:migrate": "drizzle-kit migrate",

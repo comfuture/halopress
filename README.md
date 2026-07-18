@@ -109,7 +109,9 @@ The [page pattern guide](docs/page-patterns.md) documents the reviewed starter
 library, compatibility metadata, copy-on-insert upgrades, and visual fixtures.
 
 Published Page and rich-text detail APIs also expose a versioned portable HTML
-projection with an absolute, content-addressed Halo stylesheet. The projection
+projection with an ordered pair of absolute, content-addressed Halo base and
+active Theme stylesheets. The same retained Theme artifact drives the Page
+editor preview, plain headless consumers, and the built-in Site renderer. The projection
 keeps raw editor JSON intact while rendering without Vue, Nuxt UI, Tailwind, or
 the HaloPress application bundle. See the [portable authored-content guide](docs/portable-content.md)
 and its [plain HTML consumer](examples/portable-content/index.html).
@@ -172,8 +174,8 @@ for the environment matrix, Node build and persistent-storage requirements,
 public-origin behavior, and Cloudflare-specific checks.
 
 Production Node servers must set the origin-only
-`NUXT_CANONICAL_ORIGIN=https://cms.example.com`. Portable content and future
-theme envelopes use this server-only authority for deterministic absolute URLs;
+`NUXT_CANONICAL_ORIGIN=https://cms.example.com`. Portable content and the public
+Theme manifest use this server-only authority for deterministic absolute URLs;
 they do not trust a syntactically valid request Host by itself.
 
 ## Database migrations

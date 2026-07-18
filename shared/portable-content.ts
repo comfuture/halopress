@@ -11,10 +11,18 @@ export const PORTABLE_CONTENT_STYLESHEET_REVISION = 'dfea71d319d9c7d0a48d19346c1
 export const PORTABLE_CONTENT_STYLESHEET_PATH = `/_halo/content/v1/${PORTABLE_CONTENT_STYLESHEET_REVISION}.css`
 export const PORTABLE_CONTENT_THEME_REVISION = 'default'
 
+export type PortableThemeArtifact = {
+  revision: string
+  stylesheetRevision: string
+  stylesheetUrl: string
+  colorMode: 'system' | 'light' | 'dark'
+}
+
 export type PortableRenderingBase = {
   contractVersion: typeof PORTABLE_CONTENT_CONTRACT_VERSION
   stylesheets: string[]
-  themeRevision: typeof PORTABLE_CONTENT_THEME_REVISION
+  themeRevision: string
+  themeColorMode?: 'system' | 'light' | 'dark'
 }
 
 export type PortableDocumentRendering = PortableRenderingBase & {
@@ -44,6 +52,7 @@ export type PortableRenderLimits = {
 export type PortableRenderOptions = {
   origin: string
   limits?: Partial<PortableRenderLimits>
+  theme?: PortableThemeArtifact
 }
 
 export type PortableSchemaField = {
@@ -275,11 +284,41 @@ export function portableStylesheetUrl(origin: string) {
   return new URL(PORTABLE_CONTENT_STYLESHEET_PATH, normalizePortableOrigin(origin)).href
 }
 
-function renderingBase(origin: string): PortableRenderingBase {
+function normalizePortableThemeArtifact(theme: PortableThemeArtifact | undefined, origin: string) {
+  if (!theme
+    || !/^[0-9a-f]{64}$/.test(theme.revision)
+    || !/^[0-9a-f]{64}$/.test(theme.stylesheetRevision)) return null
+  try {
+    const trustedOrigin = normalizePortableOrigin(origin)
+    const url = new URL(theme.stylesheetUrl)
+    if (url.origin !== trustedOrigin
+      || url.username
+      || url.password
+      || url.search
+      || url.hash
+      || url.pathname !== `/_halo/theme/v1/${theme.stylesheetRevision}.css`) return null
+    if (!['system', 'light', 'dark'].includes(theme.colorMode)) return null
+    return {
+      revision: theme.revision,
+      stylesheetRevision: theme.stylesheetRevision,
+      stylesheetUrl: url.href,
+      colorMode: theme.colorMode
+    }
+  } catch {
+    return null
+  }
+}
+
+function renderingBase(options: PortableRenderOptions): PortableRenderingBase {
+  const theme = normalizePortableThemeArtifact(options.theme, options.origin)
   return {
     contractVersion: PORTABLE_CONTENT_CONTRACT_VERSION,
-    stylesheets: [portableStylesheetUrl(origin)],
-    themeRevision: PORTABLE_CONTENT_THEME_REVISION
+    stylesheets: [
+      portableStylesheetUrl(options.origin),
+      ...(theme ? [theme.stylesheetUrl] : [])
+    ],
+    themeRevision: theme?.revision ?? PORTABLE_CONTENT_THEME_REVISION,
+    themeColorMode: theme?.colorMode ?? 'system'
   }
 }
 
@@ -795,7 +834,11 @@ function renderWithFallback(
 ) {
   const origin = normalizePortableOrigin(options.origin)
   const limits = renderingLimits(options.limits)
-  const rootStart = `<article class="halo-content ${root.className}" data-halo-contract-version="1" data-halo-content="${root.contentKind}" data-halo-color-mode="default">`
+  const theme = normalizePortableThemeArtifact(options.theme, options.origin)
+  const colorMode = theme?.colorMode === 'light' || theme?.colorMode === 'dark'
+    ? theme.colorMode
+    : 'default'
+  const rootStart = `<article class="halo-content ${root.className}" data-halo-contract-version="1" data-halo-content="${root.contentKind}" data-halo-color-mode="${colorMode}">`
   const rootEnd = '</article>'
   const fallback = `${rootStart}<p class="halo-content-fallback" role="status">Content exceeds portable rendering limits</p>${rootEnd}`
   const budget = sharedBudget ?? new PortableBudget(limits)
@@ -836,7 +879,7 @@ export function createPortablePageRendering(
   options: PortableRenderOptions
 ): PortableDocumentRendering {
   return {
-    ...renderingBase(options.origin),
+    ...renderingBase(options),
     html: renderPortablePageDocument(document, options)
   }
 }
@@ -846,7 +889,7 @@ export function createPortableRichTextRendering(
   options: PortableRenderOptions
 ): PortableDocumentRendering {
   return {
-    ...renderingBase(options.origin),
+    ...renderingBase(options),
     html: renderPortableRichText(document, options)
   }
 }
@@ -903,7 +946,7 @@ export function createPortableStructuredContentRendering(
     }
   }
   return {
-    ...renderingBase(options.origin),
+    ...renderingBase(options),
     fields,
     ...(truncated ? { truncated: true as const } : {})
   }
@@ -914,10 +957,16 @@ export function createPortableStandaloneDocument(
   options: { title?: string, colorMode?: 'default' | 'light' | 'dark' } = {}
 ) {
   const title = escapePortableHtml(options.title || 'HaloPress portable content')
-  const colorMode = options.colorMode ?? 'default'
+  const storedColorMode = rendering.themeColorMode === 'light' || rendering.themeColorMode === 'dark'
+    ? rendering.themeColorMode
+    : 'default'
+  const colorMode = options.colorMode ?? storedColorMode
   const stylesheets = rendering.stylesheets
     .map(href => `<link rel="stylesheet" href="${escapePortableHtml(href)}">`)
     .join('')
-  const html = rendering.html.replace('data-halo-color-mode="default"', `data-halo-color-mode="${colorMode}"`)
+  const html = rendering.html.replace(
+    /data-halo-color-mode="(?:default|light|dark)"/,
+    `data-halo-color-mode="${colorMode}"`
+  )
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title}</title>${stylesheets}</head><body>${html}</body></html>`
 }

@@ -13,7 +13,7 @@ export default defineEventHandler(async (event) => {
   const result = await getPublishedPage(await getDb(event), id)
   const response = {
     ...result,
-    rendering: createPortablePageRenderingForEvent(event, result.content)
+    rendering: await createPortablePageRenderingForEvent(event, result.content)
   }
   applyPublicDeliveryHeaders(event)
   if (applyPortablePublicEnvelopeHeaders(event, response)) return

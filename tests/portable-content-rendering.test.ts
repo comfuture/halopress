@@ -18,6 +18,8 @@ import {
   validatePageDocumentBlocks
 } from '../shared/page-blocks'
 import { portableContentFixture } from './fixtures/portable-content'
+import { defaultSiteTheme } from '../shared/site-theme'
+import { buildSiteThemeArtifact } from '../server/utils/site-theme-settings'
 
 const origin = 'https://press.example.com'
 
@@ -451,5 +453,47 @@ describe('portable authored-content renderer', () => {
     expect(standalone).not.toContain('<script')
     expect(standalone).not.toContain('_nuxt')
     expect(standalone).not.toContain('tailwind')
+  })
+
+  it('preserves the exact ordered Theme artifact and stored color mode across raw and standalone rendering', () => {
+    const artifact = buildSiteThemeArtifact({ ...defaultSiteTheme(), colorMode: 'dark' })
+    const theme = {
+      revision: artifact.revision,
+      stylesheetRevision: artifact.stylesheetRevision,
+      stylesheetUrl: `${origin}${artifact.stylesheetPath}`,
+      colorMode: 'dark' as const
+    }
+    const rendering = createPortablePageRendering(portableContentFixture, { origin, theme })
+    expect(rendering.stylesheets).toEqual([
+      `${origin}${PORTABLE_CONTENT_STYLESHEET_PATH}`,
+      theme.stylesheetUrl
+    ])
+    expect(rendering.themeRevision).toBe(theme.revision)
+    expect(rendering.themeColorMode).toBe('dark')
+    expect(rendering.html).toContain('data-halo-color-mode="dark"')
+    const standalone = createPortableStandaloneDocument(rendering)
+    expect(standalone.indexOf(rendering.stylesheets[0]!)).toBeLessThan(standalone.indexOf(rendering.stylesheets[1]!))
+    expect(standalone).toContain('data-halo-color-mode="dark"')
+
+    const olderEnvelope = { ...rendering, themeColorMode: undefined }
+    expect(createPortableStandaloneDocument(olderEnvelope)).toContain('data-halo-color-mode="default"')
+  })
+
+  it('fails invalid Theme descriptors back to the documented v1 base rendering', () => {
+    const artifact = buildSiteThemeArtifact(defaultSiteTheme())
+    const rendering = createPortablePageRendering(portableContentFixture, {
+      origin,
+      theme: {
+        revision: artifact.revision,
+        stylesheetRevision: artifact.stylesheetRevision,
+        stylesheetUrl: `https://evil.example${artifact.stylesheetPath}`,
+        colorMode: 'system'
+      }
+    })
+    expect(rendering).toMatchObject({
+      themeRevision: 'default',
+      themeColorMode: 'system',
+      stylesheets: [`${origin}${PORTABLE_CONTENT_STYLESHEET_PATH}`]
+    })
   })
 })

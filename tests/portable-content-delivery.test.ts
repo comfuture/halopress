@@ -4,6 +4,8 @@ import { content, page, publicationRevision, schema, schemaActive } from '../ser
 import type { SchemaPermission } from '../server/utils/schema-permission'
 import { runMigrations } from '../server/utils/install'
 import { PORTABLE_CONTENT_STYLESHEET_PATH } from '../shared/portable-content'
+import { defaultSiteTheme } from '../shared/site-theme'
+import { buildSiteThemeArtifact } from '../server/utils/site-theme-settings'
 import { createTestSqliteDb } from './fixtures/sqlite'
 
 type Handler = (event: any) => Promise<any>
@@ -231,10 +233,15 @@ describe('portable Page delivery envelope', () => {
     const result = await pageDelivery(request.event)
 
     expect(result.content).toEqual(rawPublishedPage)
+    const defaultTheme = buildSiteThemeArtifact(defaultSiteTheme())
     expect(result.rendering).toMatchObject({
       contractVersion: 1,
-      themeRevision: 'default',
-      stylesheets: [`https://press.example.com${PORTABLE_CONTENT_STYLESHEET_PATH}`]
+      themeRevision: defaultTheme.revision,
+      themeColorMode: 'system',
+      stylesheets: [
+        `https://press.example.com${PORTABLE_CONTENT_STYLESHEET_PATH}`,
+        `https://press.example.com${defaultTheme.stylesheetPath}`
+      ]
     })
     expect(result.rendering.html).toContain('src="https://press.example.com/assets/page-image/raw"')
     expect(result.rendering.html.match(/class="halo-block halo-block-fallback"/g)).toHaveLength(2)

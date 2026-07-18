@@ -60,6 +60,24 @@ describe('public delivery error handler', () => {
     })
   })
 
+  it('returns an explicitly non-cacheable public resource miss with safe CORS', () => {
+    const event = eventFor('application/json', false)
+    event.context.portablePublicResourceNoStore = true
+    event.path = `/_halo/theme/v1/${'f'.repeat(64)}.css`
+    const body = handler({ statusCode: 404 } as any, event, {} as any)
+
+    expect(JSON.parse(String(body))).toMatchObject({
+      statusCode: 404,
+      statusMessage: 'Theme stylesheet not found'
+    })
+    expect(event.responseHeaders).toMatchObject({
+      'Cache-Control': 'no-store',
+      'Access-Control-Allow-Origin': '*',
+      'Cross-Origin-Resource-Policy': 'cross-origin',
+      'X-Content-Type-Options': 'nosniff'
+    })
+  })
+
   it('returns a private noindex HTML 404 for marked browser requests', () => {
     const event = eventFor('text/html,application/xhtml+xml')
     const body = String(handler({ statusCode: 404 } as any, event, {} as any))

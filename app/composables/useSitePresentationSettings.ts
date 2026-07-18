@@ -58,7 +58,10 @@ export async function useSitePresentationSettings() {
       result.data.value = response
       // The editor cache is updated above; refresh the separately keyed public
       // presentation projection used by the delivery layout.
-      await refreshNuxtData('site-presentation')
+      await Promise.all([
+        refreshNuxtData('site-presentation'),
+        refreshNuxtData('site-theme-manifest')
+      ])
       return response
     } finally {
       saving.value = false

@@ -40,7 +40,7 @@ export default defineEventHandler(async (event) => {
     status: row.status,
     content,
     schema: sourceSchema,
-    rendering: createPortableStructuredRenderingForEvent(
+    rendering: await createPortableStructuredRenderingForEvent(
       event,
       content,
       sourceSchema.registry?.fields ?? []
