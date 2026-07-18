@@ -13,6 +13,7 @@ import PageBlockNodeView from '~/editor/page/PageBlockNodeView.vue'
 import { clonePageBlockAttrs } from '~/editor/page/inspector-state'
 import type { PagePaletteItem } from '~/editor/page/palette'
 import { getPageBlockComponent, pageBlockRegistry } from '~/editor/page/registry'
+import { scrollPageBlockIntoView } from '~/editor/page/scroll'
 import { clearPageBlockSelection } from '~/editor/page/selection'
 import type { PageBlockAttrs, PageBlockComponentKey } from '~/editor/page/types'
 import { createPageProfile, getPageToolbarGroups } from '~/editor/profiles'
@@ -66,6 +67,7 @@ const mobilePanelOpen = ref(false)
 const dropPosition = ref<number | null>(null)
 const dropIndicatorTop = ref<number | null>(null)
 let desktopPanelMediaQuery: MediaQueryList | null = null
+const desktopPanelMediaQueryText = '(min-width: 1024px)'
 
 const isEditMode = computed(() => mode.value === 'edit')
 const isEditing = computed(() => props.editable && isEditMode.value)
@@ -91,13 +93,13 @@ const canvasSurfaceClass = computed(() => isFullWidthCanvas.value
   ? 'rounded-none border-0 shadow-none'
   : 'rounded-md border border-muted shadow-sm')
 const workspaceColumns = computed(() => {
-  if (!isEditMode.value || panelCollapsed.value) return 'xl:grid-cols-1'
-  return 'xl:grid-cols-[minmax(0,1fr)_22rem]'
+  if (!isEditMode.value || panelCollapsed.value) return 'lg:grid-cols-1'
+  return 'lg:grid-cols-[minmax(0,1fr)_22rem]'
 })
 
 function usesDesktopPanel() {
   return desktopPanelMediaQuery?.matches
-    ?? (import.meta.client && window.matchMedia('(min-width: 1280px)').matches)
+    ?? (import.meta.client && window.matchMedia(desktopPanelMediaQueryText).matches)
 }
 
 function handlePanelBreakpointChange(event: MediaQueryListEvent) {
@@ -105,7 +107,7 @@ function handlePanelBreakpointChange(event: MediaQueryListEvent) {
 }
 
 onMounted(() => {
-  desktopPanelMediaQuery = window.matchMedia('(min-width: 1280px)')
+  desktopPanelMediaQuery = window.matchMedia(desktopPanelMediaQueryText)
   desktopPanelMediaQuery.addEventListener('change', handlePanelBreakpointChange)
 })
 
@@ -162,7 +164,10 @@ function insertBlock(key: PageBlockComponentKey, position?: number) {
   if (!editor || !isEditing.value || !pageBlockRegistry.byKey[key]) return false
   const destination = position ?? selectionInsertionPosition(editor)
   const inserted = editor.commands.insertPageBlockAt(destination, blockAttrs(key))
-  if (inserted) mobilePanelOpen.value = false
+  if (inserted) {
+    mobilePanelOpen.value = false
+    scrollPageBlockIntoView(editor, destination)
+  }
   return inserted
 }
 
@@ -171,7 +176,10 @@ function insertPattern(key: PagePatternKey, position?: number) {
   if (!editor || !isEditing.value || !pagePatternRegistry.byKey[key]) return false
   const destination = position ?? selectionInsertionPosition(editor)
   const inserted = editor.commands.insertPagePatternAt(destination, clonePagePatternContent(key))
-  if (inserted) mobilePanelOpen.value = false
+  if (inserted) {
+    mobilePanelOpen.value = false
+    scrollPageBlockIntoView(editor, destination)
+  }
   return inserted
 }
 
@@ -463,7 +471,7 @@ watch(mode, (nextMode) => {
         </div>
       </main>
 
-      <aside v-if="isEditMode && !panelCollapsed" class="hidden min-h-0 border-l border-muted bg-default xl:flex xl:flex-col" aria-label="Page editor panel">
+      <aside v-if="isEditMode && !panelCollapsed" class="hidden min-h-0 border-l border-muted bg-default lg:flex lg:flex-col" aria-label="Page editor panel">
         <PageEditorPanel
           v-model:active-tab="activePanel"
           v-model:page-title="pageTitle"
