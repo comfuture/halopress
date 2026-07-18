@@ -3,10 +3,21 @@ const pageTitle = defineModel<string>('pageTitle', { default: '' })
 const publicPath = defineModel<string>('publicPath', { default: '' })
 const description = defineModel<string>('description', { default: '' })
 const socialImageAssetId = defineModel<string>('socialImageAssetId', { default: '' })
+const layoutId = defineModel<string | null>('layoutId', { default: null })
 
-defineProps<{
+const props = defineProps<{
   disabled?: boolean
+  publishedLayoutId?: string | null
+  hasPublishedRevision?: boolean
 }>()
+
+const layoutDescription = computed(() => {
+  if (!props.hasPublishedRevision) return 'The selected Layout is snapshotted on publish and follows its current revision.'
+  if (layoutId.value !== (props.publishedLayoutId ?? null)) {
+    return 'Working and published Layout assignments differ. Public delivery keeps the published assignment until you publish again.'
+  }
+  return 'Working and published assignments match and follow the current Layout revision.'
+})
 
 const socialImageAsset = computed<string | null>({
   get: () => socialImageAssetId.value || null,
@@ -42,6 +53,14 @@ const socialImageAsset = computed<string | null>({
       >
         <UInput v-model="publicPath" placeholder="/page-path" class="w-full" :disabled="disabled" />
       </UFormField>
+
+      <LayoutAssignmentSelect
+        v-model="layoutId"
+        label="Page Layout"
+        :description="layoutDescription"
+        placeholder="Inherit the Site default Layout"
+        :disabled="disabled"
+      />
 
       <div class="space-y-1">
         <CmsAssetPicker

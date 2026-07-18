@@ -59,6 +59,7 @@ type SchemaAst = {
     preset: 'generic' | 'article' | 'catalog'
     collectionTemplate: 'list' | 'cards' | 'catalog-grid'
     detailTemplate: 'document' | 'article' | 'catalog'
+    layoutId?: string
     slugFieldId?: string
     structuredDataType?: 'WebPage' | 'Article' | 'BlogPosting' | 'NewsArticle' | 'Product'
     slots: Partial<Record<'title' | 'description' | 'image' | 'body' | 'gallery' | 'price', string>>
@@ -151,6 +152,7 @@ const state = reactive({
     preset: 'generic' as 'generic' | 'article' | 'catalog',
     collectionTemplate: 'list' as 'list' | 'cards' | 'catalog-grid',
     detailTemplate: 'document' as 'document' | 'article' | 'catalog',
+    layoutId: undefined as string | undefined,
     slugFieldId: undefined as string | undefined,
     structuredDataType: 'WebPage' as 'WebPage' | 'Article' | 'BlogPosting' | 'NewsArticle' | 'Product',
     slots: {} as Partial<Record<'title' | 'description' | 'image' | 'body' | 'gallery' | 'price', string>>
@@ -376,6 +378,7 @@ watch(
       descriptionFieldKey: nextListing?.descriptionFieldKey,
       imageFieldKey: nextListing?.imageFieldKey
     })
+    delete state.presentation.layoutId
     Object.assign(state.presentation, next.ast?.presentation ?? {
       contractVersion: 1,
       preset: 'generic',
@@ -928,7 +931,7 @@ async function saveDraft() {
     const ast = buildAstFromState()
     await $fetch(`/api/schema/${state.schemaKey}/draft`, {
       method: 'POST',
-      body: { revision: currentRevision.value, title: ast.title, ast }
+      body: { revision: currentRevision.value, title: ast.title, ast, layoutId: state.presentation.layoutId ?? null }
     })
     lastSavedAstJson.value = stableStringify(ast)
     toast.add({ title: 'Draft saved' })
@@ -957,7 +960,7 @@ async function performPublish(migrate: boolean) {
     if (isDirty.value) {
       const saved = await $fetch<{ revision?: number }>(`/api/schema/${state.schemaKey}/draft`, {
         method: 'POST',
-        body: { revision, title: ast.title, ast }
+        body: { revision, title: ast.title, ast, layoutId: state.presentation.layoutId ?? null }
       })
       revision = Number(saved?.revision ?? revision + 1)
       lastSavedAstJson.value = stableStringify(ast)
@@ -1198,7 +1201,12 @@ async function confirmPublish() {
         </UPageList>
       </section>
 
-      <CmsSchemaPresentationEditor v-model="state.presentation" :fields="state.fields" />
+      <CmsSchemaPresentationEditor
+        v-model="state.presentation"
+        :fields="state.fields"
+        :published-layout-id="active?.ast?.presentation?.layoutId ?? null"
+        :published-version="active?.version ?? null"
+      />
 
       <fieldset class="min-w-0 space-y-4">
         <legend class="text-sm font-semibold text-highlighted">

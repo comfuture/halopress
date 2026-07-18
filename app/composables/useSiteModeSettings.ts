@@ -50,7 +50,9 @@ export function useSiteModeSettings() {
       result.data.value = response
       await Promise.all([
         refreshNuxtData(SITE_MODE_DATA_KEY),
-        refreshNuxtData('site-theme-manifest')
+        refreshNuxtData('site-theme-manifest'),
+        refreshNuxtData('layout-assignment-options'),
+        refreshNuxtData('site-layout-assignment-settings')
       ])
       return response
     } finally {

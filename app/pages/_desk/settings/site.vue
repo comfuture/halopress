@@ -6,6 +6,8 @@ definePageMeta({ layout: 'desk' })
 const toast = useToast()
 const defaults = defaultSitePresentation()
 const modeState = reactive({ enabled: false })
+const siteLayoutId = ref<string | null>(null)
+const savedSiteLayoutId = ref<string | null>(null)
 const state = reactive({
   general: { ...defaults.general },
   shell: { ...defaults.shell }
@@ -20,6 +22,14 @@ const {
   saveEnabled
 } = useSiteModeSettings()
 const { data, pending, error, refresh, saving, savePatch } = await useSitePresentationSettings()
+const {
+  data: layoutAssignmentData,
+  pending: layoutAssignmentPending,
+  error: layoutAssignmentError,
+  refresh: refreshLayoutAssignment,
+  saving: layoutAssignmentSaving,
+  saveLayoutAssignment
+} = useSiteLayoutAssignmentSettings()
 
 const modeBadge = computed(() => {
   if (modeError.value) return { label: 'Unavailable', color: 'error' as const }
@@ -45,6 +55,14 @@ watch(data, (response) => {
   Object.assign(state.general, response.value.general)
   Object.assign(state.shell, response.value.shell)
 }, { immediate: true })
+
+watch(layoutAssignmentData, (response) => {
+  if (!response) return
+  siteLayoutId.value = response.storedLayoutId ?? response.value.layoutId
+  savedSiteLayoutId.value = siteLayoutId.value
+}, { immediate: true })
+
+const siteLayoutDirty = computed(() => siteLayoutId.value !== savedSiteLayoutId.value)
 
 async function save() {
   try {
@@ -82,8 +100,31 @@ async function saveMode() {
   }
 }
 
+async function saveSiteLayout() {
+  if (!siteLayoutDirty.value || modeData.value?.value.enabled !== true) return
+  try {
+    const response = await saveLayoutAssignment(siteLayoutId.value)
+    siteLayoutId.value = response.storedLayoutId ?? response.value.layoutId
+    savedSiteLayoutId.value = siteLayoutId.value
+    toast.add({
+      title: 'Site Layout saved',
+      description: siteLayoutId.value
+        ? 'Public inheritors now follow the current revision of this Layout.'
+        : 'Public inheritors now use the built-in shell fallback.',
+      color: 'success',
+      icon: 'i-lucide-check'
+    })
+  } catch (saveError: any) {
+    toast.add({
+      title: 'Could not save Site Layout',
+      description: saveError?.data?.statusMessage || saveError?.statusMessage || 'Choose a ready Layout and try again.',
+      color: 'error'
+    })
+  }
+}
+
 async function refreshAll() {
-  await Promise.all([refreshMode(), refresh()])
+  await Promise.all([refreshMode(), refresh(), refreshLayoutAssignment()])
 }
 </script>
 
@@ -92,7 +133,7 @@ async function refreshAll() {
     section="site"
     title="Site"
     description="Configure the public identity, metadata, branding assets, and shell."
-    :pending="pending || modePending"
+    :pending="pending || modePending || layoutAssignmentPending"
     @refresh="refreshAll"
   >
     <div class="space-y-6">
@@ -138,6 +179,52 @@ async function refreshAll() {
           <div class="flex justify-end border-t border-muted pt-5">
             <UButton type="submit" icon="i-lucide-save" :loading="modeSaving" :disabled="modeControlsDisabled">
               Save Site mode
+            </UButton>
+          </div>
+        </UForm>
+      </section>
+
+      <section class="space-y-5 rounded-lg border border-default p-5">
+        <div class="space-y-1">
+          <h2 class="font-semibold text-highlighted">
+            Default public Layout
+          </h2>
+          <p class="text-sm text-muted">
+            Pages and Schema routes without their own assignment inherit this value immediately. Assignments store a stable Layout ID and follow its current revision.
+          </p>
+        </div>
+        <UAlert
+          v-if="layoutAssignmentData?.malformedStoredValue"
+          title="Stored Site Layout assignment needs repair"
+          description="The invalid value is preserved for diagnostics. Choose a ready Layout or clear it while Site features are enabled."
+          color="warning"
+          variant="subtle"
+          icon="i-lucide-shield-alert"
+        />
+        <UAlert
+          v-if="layoutAssignmentError"
+          title="Site Layout assignment is unavailable"
+          :description="layoutAssignmentError.statusMessage || 'Refresh the page and try again.'"
+          color="error"
+          variant="subtle"
+          icon="i-lucide-circle-alert"
+        />
+        <UForm :state="{ layoutId: siteLayoutId }" class="space-y-5" @submit="saveSiteLayout">
+          <LayoutAssignmentSelect
+            v-model="siteLayoutId"
+            label="Site default Layout"
+            description="Used by inheriting public routes. Later Layout edits propagate live."
+            placeholder="Use the built-in shell fallback"
+            :mode-enabled="modeData?.value.enabled === true"
+          />
+          <div class="flex justify-end border-t border-muted pt-5">
+            <UButton
+              type="submit"
+              icon="i-lucide-save"
+              :loading="layoutAssignmentSaving"
+              :disabled="!siteLayoutDirty || modeData?.value.enabled !== true || Boolean(layoutAssignmentError)"
+            >
+              Save default Layout
             </UButton>
           </div>
         </UForm>

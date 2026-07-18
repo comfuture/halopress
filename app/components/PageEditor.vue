@@ -27,6 +27,8 @@ const props = withDefaults(defineProps<{
   editable?: boolean
   profile?: EditorProfileCustomization
   pageValidationMessage?: string
+  publishedLayoutId?: string | null
+  hasPublishedRevision?: boolean
 }>(), {
   editable: true,
   profile: () => ({})
@@ -37,6 +39,7 @@ const pageTitle = defineModel<string>('pageTitle', { default: '' })
 const publicPath = defineModel<string>('publicPath', { default: '' })
 const description = defineModel<string>('description', { default: '' })
 const socialImageAssetId = defineModel<string>('socialImageAssetId', { default: '' })
+const layoutId = defineModel<string | null>('layoutId', { default: null })
 
 const PageBlockEditor = PageBlock.extend({
   addNodeView() {
@@ -479,11 +482,14 @@ watch(mode, (nextMode) => {
           v-model:public-path="publicPath"
           v-model:description="description"
           v-model:social-image-asset-id="socialImageAssetId"
+          v-model:layout-id="layoutId"
           :selected-block="selectedBlock"
           :active-fields="activeFields"
           :active-label="activeComponent?.label"
           :editable="isEditing"
           :page-validation-message="pageValidationMessage"
+          :published-layout-id="props.publishedLayoutId"
+          :has-published-revision="props.hasPublishedRevision"
           @insert="insertPaletteItem"
           @dragstart="startPaletteDrag"
           @update-block="updateSelectedBlock"
@@ -500,11 +506,14 @@ watch(mode, (nextMode) => {
           v-model:public-path="publicPath"
           v-model:description="description"
           v-model:social-image-asset-id="socialImageAssetId"
+          v-model:layout-id="layoutId"
           :selected-block="selectedBlock"
           :active-fields="activeFields"
           :active-label="activeComponent?.label"
           :editable="isEditing"
           :page-validation-message="pageValidationMessage"
+          :published-layout-id="props.publishedLayoutId"
+          :has-published-revision="props.hasPublishedRevision"
           @insert="insertPaletteItem"
           @dragstart="startPaletteDrag"
           @update-block="updateSelectedBlock"

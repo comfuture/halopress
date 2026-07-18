@@ -5,12 +5,18 @@ type Presentation = {
   preset: 'generic' | 'article' | 'catalog'
   collectionTemplate: 'list' | 'cards' | 'catalog-grid'
   detailTemplate: 'document' | 'article' | 'catalog'
+  layoutId?: string
   slugFieldId?: string
   structuredDataType?: 'WebPage' | 'Article' | 'BlogPosting' | 'NewsArticle' | 'Product'
   slots: Partial<Record<'title' | 'description' | 'image' | 'body' | 'gallery' | 'price', string>>
 }
 
-const props = defineProps<{ modelValue: Presentation; fields: Field[] }>()
+const props = defineProps<{
+  modelValue: Presentation
+  fields: Field[]
+  publishedLayoutId?: string | null
+  publishedVersion?: number | null
+}>()
 const emit = defineEmits<{ (e: 'update:modelValue', value: Presentation): void }>()
 
 const presetOptions = [
@@ -53,6 +59,22 @@ const slotOptions = computed(() => ({
   price: options(['number', 'integer', 'string'])
 }))
 const slugOptions = computed(() => options(['string', 'text']))
+const layoutId = computed<string | null>({
+  get: () => props.modelValue.layoutId ?? null,
+  set: (value) => {
+    const next = { ...props.modelValue }
+    if (value) next.layoutId = value
+    else delete next.layoutId
+    emit('update:modelValue', next)
+  }
+})
+const layoutDescription = computed(() => {
+  if (!props.publishedVersion) return 'Saved in the draft and committed to an exact Schema version on publish. Later Layout edits propagate live.'
+  if (layoutId.value !== (props.publishedLayoutId ?? null)) {
+    return `Draft and published v${props.publishedVersion} assignments differ. Public routes keep the published version until you publish.`
+  }
+  return `Draft and published v${props.publishedVersion} match and follow the current Layout revision.`
+})
 
 function first(kinds: string[], keys: string[]) {
   const fields = props.fields.filter(field => !field.system && kinds.includes(field.kind))
@@ -89,6 +111,7 @@ function applyPreset(value: unknown) {
     slugFieldId: props.modelValue.slugFieldId,
     structuredDataType: props.modelValue.structuredDataType
       ?? (value === 'article' ? 'Article' : value === 'catalog' ? 'Product' : 'WebPage'),
+    ...(props.modelValue.layoutId ? { layoutId: props.modelValue.layoutId } : {}),
     slots
   })
 }
@@ -98,6 +121,12 @@ function applyPreset(value: unknown) {
   <fieldset class="min-w-0 space-y-4">
     <legend class="text-sm font-semibold text-highlighted">Public presentation</legend>
     <p class="text-sm text-muted">Choose a safe, versioned template and bind its regions to schema fields.</p>
+    <LayoutAssignmentSelect
+      v-model="layoutId"
+      label="Presentation Layout"
+      :description="layoutDescription"
+      placeholder="Inherit the Site default Layout"
+    />
     <div class="grid gap-4 md:grid-cols-3">
       <UFormField label="Preset">
         <USelectMenu :model-value="modelValue.preset" :items="presetOptions" value-key="value" label-key="label" class="w-full" @update:model-value="applyPreset" />
