@@ -436,10 +436,14 @@ describe('Site Theme durable settings contract', () => {
         ...defaultSitePresentation().appearance,
         primaryColor: 'emerald' as const
       }
+      const beforeSave = Date.now()
       const response = await updateSitePresentation(requestEvent(), { appearance }, 'legacy-admin')
+      const afterSave = Date.now()
       expect(response.value.appearance.primaryColor).toBe('emerald')
-      expect(await fixture.db.select().from(settings).where(eq(settings.key, 'site.presentation')).get())
-        .toMatchObject({ updatedBy: 'legacy-admin', valueType: 'json', isEncrypted: false })
+      const stored = await fixture.db.select().from(settings).where(eq(settings.key, 'site.presentation')).get()
+      expect(stored).toMatchObject({ updatedBy: 'legacy-admin', valueType: 'json', isEncrypted: false })
+      expect(stored!.updatedAt.getTime()).toBeGreaterThanOrEqual(beforeSave - 1000)
+      expect(stored!.updatedAt.getTime()).toBeLessThanOrEqual(afterSave)
     } finally {
       fixture.close()
     }
