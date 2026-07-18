@@ -6,7 +6,6 @@ const socialImageAssetId = defineModel<string>('socialImageAssetId', { default: 
 
 defineProps<{
   disabled?: boolean
-  validationMessage?: string
 }>()
 
 const socialImageAsset = computed<string | null>({
@@ -18,15 +17,6 @@ const socialImageAsset = computed<string | null>({
 <template>
   <section aria-label="Page properties" class="flex h-full min-h-0 flex-col">
     <div class="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
-      <UAlert
-        v-if="validationMessage"
-        title="This page is not ready to publish"
-        :description="validationMessage"
-        icon="i-lucide-triangle-alert"
-        color="error"
-        variant="subtle"
-      />
-
       <UFormField label="Title">
         <UInput v-model="pageTitle" placeholder="Page title" class="w-full" :disabled="disabled" />
       </UFormField>

@@ -78,6 +78,15 @@ function forwardDragStart(event: DragEvent, item: PagePaletteItem) {
             @click="emit('showPageProperties')"
           />
         </div>
+        <div v-if="pageValidationMessage" class="shrink-0 p-4 pb-0">
+          <UAlert
+            title="This page is not ready to publish"
+            :description="pageValidationMessage"
+            icon="i-lucide-triangle-alert"
+            color="error"
+            variant="subtle"
+          />
+        </div>
         <PageBlockInspector
           v-if="selectedBlock"
           class="min-h-0 flex-1"
@@ -95,7 +104,6 @@ function forwardDragStart(event: DragEvent, item: PagePaletteItem) {
           v-model:social-image-asset-id="socialImageAssetId"
           class="min-h-0 flex-1"
           :disabled="!props.editable"
-          :validation-message="pageValidationMessage"
         />
       </div>
     </template>

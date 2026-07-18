@@ -1,12 +1,21 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  derivePublicSeoTitle,
+  PUBLIC_SEO_TITLE_MAX_LENGTH,
   SAFE_STRUCTURED_DATA_TYPES,
   normalizePublicSeoOverrides,
   parsePublicSeoJson
 } from '../shared/public-seo'
 
 describe('public SEO overrides', () => {
+  it('derives a safe SEO title from the visible page title', () => {
+    expect(derivePublicSeoTitle('  Visible page title  ')).toBe('Visible page title')
+    expect(derivePublicSeoTitle('   ')).toBeUndefined()
+    expect(derivePublicSeoTitle('t'.repeat(PUBLIC_SEO_TITLE_MAX_LENGTH + 20)))
+      .toBe('t'.repeat(PUBLIC_SEO_TITLE_MAX_LENGTH))
+  })
+
   it('exposes only the structured-data types supported by public rendering', () => {
     expect(SAFE_STRUCTURED_DATA_TYPES).toEqual([
       'WebPage',
