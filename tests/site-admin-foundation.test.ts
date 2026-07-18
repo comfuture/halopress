@@ -56,7 +56,8 @@ describe('Site administration foundation', () => {
     const pagePaths = [
       'app/pages/_desk/site/index.vue',
       'app/pages/_desk/site/themes.vue',
-      'app/pages/_desk/site/layouts.vue',
+      'app/pages/_desk/site/layouts/index.vue',
+      'app/pages/_desk/site/layouts/[layoutId].vue',
       'app/pages/_desk/site/menus/index.vue',
       'app/pages/_desk/site/menus/[menuId].vue'
     ]
@@ -101,12 +102,12 @@ describe('Site administration foundation', () => {
     expect(presentationComposable).toContain('export async function useSitePresentationSettings()')
   })
 
-  it('provides useful, resilient status and compatibility links without resource mutation controls', async () => {
+  it('provides useful, resilient status, authoring, and compatibility links', async () => {
     const root = resolve(import.meta.dirname, '..')
     const [overview, themes, layouts, menus, menuEditor] = await Promise.all([
       readFile(resolve(root, 'app/pages/_desk/site/index.vue'), 'utf8'),
       readFile(resolve(root, 'app/pages/_desk/site/themes.vue'), 'utf8'),
-      readFile(resolve(root, 'app/pages/_desk/site/layouts.vue'), 'utf8'),
+      readFile(resolve(root, 'app/pages/_desk/site/layouts/index.vue'), 'utf8'),
       readFile(resolve(root, 'app/pages/_desk/site/menus/index.vue'), 'utf8'),
       readFile(resolve(root, 'app/pages/_desk/site/menus/[menuId].vue'), 'utf8')
     ])
@@ -137,13 +138,10 @@ describe('Site administration foundation', () => {
     expect(menuEditor).toContain('Save menu')
     expect(menuEditor).toContain('SiteMenuItemList')
     expect(menuEditor).toContain('Back to menu sets')
-    expect(layouts).toContain('persisted Layouts remain isolated')
-
-    for (const placeholder of [layouts]) {
-      expect(placeholder).not.toContain('method: \'POST\'')
-      expect(placeholder).not.toContain('method: \'PUT\'')
-      expect(placeholder).not.toContain('method: \'DELETE\'')
-    }
+    expect(layouts).toContain('data-layout-list-toolbar')
+    expect(layouts).toContain('New layout')
+    expect(layouts).toContain('data-layout-create-modal')
+    expect(layouts).toContain('data-layout-create-slideover')
   })
 
   it('keeps Layout resources isolated from Nuxt layouts and public delivery', async () => {
