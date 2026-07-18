@@ -61,12 +61,13 @@ describe('Site administration foundation', () => {
       'app/pages/_desk/site/menus/index.vue',
       'app/pages/_desk/site/menus/[menuId].vue'
     ]
-    const [component, deskLayout, settingsPage, composable, presentationComposable, ...pages] = await Promise.all([
+    const [component, deskLayout, settingsPage, composable, presentationComposable, themeComposable, ...pages] = await Promise.all([
       readFile(resolve(root, 'app/components/SiteAdminSection.vue'), 'utf8'),
       readFile(resolve(root, 'app/layouts/desk.vue'), 'utf8'),
       readFile(resolve(root, 'app/pages/_desk/settings/site.vue'), 'utf8'),
       readFile(resolve(root, 'app/composables/useSiteModeSettings.ts'), 'utf8'),
       readFile(resolve(root, 'app/composables/useSitePresentationSettings.ts'), 'utf8'),
+      readFile(resolve(root, 'app/composables/useSiteThemeSettings.ts'), 'utf8'),
       ...pagePaths.map(path => readFile(resolve(root, path), 'utf8'))
     ])
 
@@ -100,6 +101,9 @@ describe('Site administration foundation', () => {
     expect(composable).toContain('result.data.value = response')
     expect(presentationComposable).toContain('export function useSitePresentationStatus()')
     expect(presentationComposable).toContain('export async function useSitePresentationSettings()')
+    expect(themeComposable).toContain('export function useSiteThemeStatus()')
+    expect(themeComposable).toContain('export async function useSiteThemeSettings()')
+    expect(themeComposable).toContain('const result = await useSiteThemeSettingsData()')
   })
 
   it('provides useful, resilient status, authoring, and compatibility links', async () => {
@@ -112,12 +116,23 @@ describe('Site administration foundation', () => {
       readFile(resolve(root, 'app/pages/_desk/site/menus/[menuId].vue'), 'utf8')
     ])
 
-    expect(overview).toContain('Active presentation')
-    expect(overview).toContain('aria-label="Loading Site overview"')
-    expect(overview).toContain('useSitePresentationStatus()')
+    expect(overview).toContain('useSiteThemeStatus()')
+    expect(overview).toContain('useLayoutResourceStatus()')
+    expect(overview).toContain('useSiteLayoutAssignmentSettings()')
+    expect(overview).not.toContain('useSitePresentationStatus()')
     expect(overview).not.toContain('await useSitePresentationSettings()')
-    expect(overview).toContain('Default Layout: none')
+    expect(overview).not.toContain('Not available yet')
+    expect(overview).not.toContain('Default Layout: none')
+    expect(overview).not.toContain('saveTheme')
+    expect(overview).not.toContain('saveLayoutAssignment')
+    expect(overview).toContain('Retry unavailable status')
+    expect(overview).toContain('retryUnavailableStatus')
+    expect(overview).toContain('Promise.allSettled(refreshes)')
+    expect(overview).toContain('data-site-overview-resource="theme"')
+    expect(overview).toContain('data-site-overview-resource="layouts"')
+    expect(overview).toContain('aria-live="polite"')
     expect(overview).toContain('menuSetCount')
+    expect(overview).toContain('menuLinkSummary')
     expect(overview).toContain('useSiteMenusStatus()')
     expect(overview).toContain('/_desk/site/themes')
     expect(overview).toContain('/_desk/site/layouts')
