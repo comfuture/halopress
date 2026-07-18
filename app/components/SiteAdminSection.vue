@@ -14,7 +14,18 @@ const props = defineProps<{
 }>()
 
 const route = useRoute()
-const { enabled, pending, error, refresh } = await useSiteMode()
+const {
+  data: modeData,
+  enabled,
+  pending,
+  status,
+  error,
+  refresh
+} = useSiteMode()
+const verifyingMode = computed(() => (
+  pending.value
+  || (!error.value && (status.value === 'idle' || !modeData.value))
+))
 const currentSection = computed(() => findSiteAdminSection(props.section))
 
 const breadcrumbItems = computed<BreadcrumbItem[]>(() => [
@@ -50,7 +61,7 @@ const navigationItems = computed<NavigationMenuItem[]>(() => SITE_ADMIN_SECTIONS
       <div class="mx-auto w-full max-w-6xl space-y-6 pb-10">
         <UBreadcrumb :items="breadcrumbItems" aria-label="Site location" />
 
-        <div v-if="pending" class="space-y-3" aria-busy="true" aria-label="Loading Site mode">
+        <div v-if="verifyingMode" class="space-y-3" aria-busy="true" aria-label="Loading Site mode">
           <USkeleton class="h-24 w-full" />
           <USkeleton class="h-40 w-full" />
         </div>
