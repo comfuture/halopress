@@ -1,9 +1,14 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  getTrustedRequestOrigin,
   normalizeConfiguredCanonicalOrigin,
   resolveTrustedRequestOrigin
 } from '../server/utils/request-origin'
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 describe('trusted public request origin', () => {
   it('binds absolute output to the configured canonical origin', () => {
@@ -50,6 +55,38 @@ describe('trusted public request origin', () => {
       platformUrl: 'https://press.example.com/api/delivery/page/a',
       isCloudflare: true
     })).toBe('https://press.example.com')
+  })
+
+  it('reads the original Worker Request from Nitro Cloudflare context', () => {
+    vi.stubGlobal('useRuntimeConfig', () => ({ canonicalOrigin: '' }))
+    const event = {
+      context: {
+        cloudflare: {
+          request: {
+            url: 'https://press.example.com/api/delivery/site-theme'
+          }
+        }
+      },
+      node: {
+        req: {
+          headers: {
+            host: 'press.example.com',
+            'x-forwarded-proto': 'https'
+          }
+        }
+      }
+    }
+
+    expect(getTrustedRequestOrigin(event as never)).toBe('https://press.example.com')
+
+    event.context.cloudflare = {
+      event: {
+        request: {
+          url: 'https://press.example.com/api/delivery/site-theme'
+        }
+      }
+    } as never
+    expect(getTrustedRequestOrigin(event as never)).toBe('https://press.example.com')
   })
 
   it('fails closed on production Node and permits an explicit development fallback', () => {

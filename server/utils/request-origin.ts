@@ -128,6 +128,18 @@ function configuredCanonicalOrigin(event: H3Event) {
   }
 }
 
+function platformRequestUrl(event: H3Event) {
+  // Nitro's Cloudflare module serves the Worker Request through localFetch,
+  // which retains the authoritative Request on the platform context rather
+  // than H3's optional web adapter. Keep the web Request as a fallback for
+  // other H3 runtimes without deriving authority from user-controlled headers.
+  const cloudflare = (event as any).context?.cloudflare
+  const cloudflareRequestUrl = cloudflare?.request?.url ?? cloudflare?.event?.request?.url
+  return typeof cloudflareRequestUrl === 'string'
+    ? cloudflareRequestUrl
+    : (event as any).web?.request?.url
+}
+
 export function getTrustedRequestOrigin(event: H3Event) {
   try {
     return resolveTrustedRequestOrigin({
@@ -136,7 +148,7 @@ export function getTrustedRequestOrigin(event: H3Event) {
       forwarded: optionalRequestHeader(event, 'forwarded'),
       forwardedProto: optionalRequestHeader(event, 'x-forwarded-proto'),
       directProtocol: optionalRequestProtocol(event),
-      platformUrl: (event as any).web?.request?.url,
+      platformUrl: platformRequestUrl(event),
       canonicalOrigin: configuredCanonicalOrigin(event),
       isCloudflare: Boolean((event as any).context?.cloudflare),
       allowHostFallback: import.meta.dev

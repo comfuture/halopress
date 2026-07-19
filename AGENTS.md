@@ -17,6 +17,7 @@
 
 - For Nuxt runtimeConfig defaults, do not read `process.env.*` in `nuxt.config.ts`; set only safe defaults and rely on runtime `NUXT_*` env overrides.
 - Reviewers may suggest restoring `process.env.AUTH_ORIGIN` fallbacks; we intentionally avoid that to align with Nuxt runtimeConfig guidance (build-time env reads can break at runtime).
+- Nitro's `cloudflare-module` passes the authoritative Worker `Request` through `event.context.cloudflare.request` when it bridges into `localFetch`; it is not guaranteed to populate `event.web.request`. Public-origin validation must compare headers with that platform Request URL and must not replace it with a Host-only production fallback.
 
 ## Nuxt 4 `useFetch` and AsyncData behavior
 
