@@ -107,6 +107,8 @@ describe('Site administration foundation', () => {
     expect(settingsPage).toContain('id="built-in-footer"')
     expect(settingsPage).toContain('Open Layouts')
     expect(settingsPage).toContain('Open Menus')
+    expect(settingsPage.match(/applySiteGeneralServerSections\(state, response\.value/g)).toHaveLength(3)
+    expect(settingsPage).not.toContain('watch(data')
     expect(composable).toContain('export function useSiteMode()')
     expect(composable).toContain('export function useSiteModeSettings()')
     expect(composable).not.toContain('export async function useSiteMode')
