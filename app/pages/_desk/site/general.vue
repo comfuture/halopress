@@ -8,6 +8,10 @@ import {
   type PublicNavigationLeaf,
   type SitePresentation
 } from '~~/shared/site-presentation'
+import {
+  applySiteGeneralServerSections,
+  type SiteGeneralDraftSection
+} from '~/utils/site-general-drafts'
 
 definePageMeta({ layout: 'desk' })
 
@@ -60,13 +64,12 @@ watch(modeData, (response) => {
   modeState.enabled = response?.value.enabled === true
 }, { immediate: true })
 
-watch(data, (response) => {
-  if (!response) return
-  Object.assign(state.general, response.value.general)
-  Object.assign(state.shell, response.value.shell)
-  Object.assign(state.appearance, response.value.appearance)
-  Object.assign(state.footer, structuredClone(response.value.footer))
-}, { immediate: true })
+function applyPresentationSections(sections: readonly SiteGeneralDraftSection[]) {
+  if (!data.value) return
+  applySiteGeneralServerSections(state, data.value.value, sections)
+}
+
+applyPresentationSections(['general', 'shell', 'appearance', 'footer'])
 
 watch(layoutAssignmentData, (response) => {
   if (!response) return
@@ -95,7 +98,8 @@ function removeFooterLink(index: number) {
 
 async function save() {
   try {
-    await savePatch({ general: state.general, shell: state.shell })
+    const response = await savePatch({ general: state.general, shell: state.shell })
+    applySiteGeneralServerSections(state, response.value, ['general', 'shell'])
     toast.add({ title: 'Site settings saved', color: 'success', icon: 'i-lucide-check' })
   } catch (saveError: any) {
     toast.add({
@@ -109,7 +113,8 @@ async function save() {
 async function saveBuiltInAppearance() {
   if (modeData.value?.value.enabled === true) return
   try {
-    await savePatch({ appearance: state.appearance as SitePresentation['appearance'] })
+    const response = await savePatch({ appearance: state.appearance as SitePresentation['appearance'] })
+    applySiteGeneralServerSections(state, response.value, ['appearance'])
     toast.add({ title: 'Built-in appearance saved', color: 'success', icon: 'i-lucide-check' })
   } catch (saveError: any) {
     toast.add({
@@ -122,7 +127,8 @@ async function saveBuiltInAppearance() {
 
 async function saveBuiltInFooter() {
   try {
-    await savePatch({ footer: state.footer })
+    const response = await savePatch({ footer: state.footer })
+    applySiteGeneralServerSections(state, response.value, ['footer'])
     toast.add({ title: 'Built-in footer saved', color: 'success', icon: 'i-lucide-check' })
   } catch (saveError: any) {
     toast.add({
@@ -181,6 +187,7 @@ async function saveSiteLayout() {
 
 async function refreshAll() {
   await Promise.all([refreshMode(), refresh(), refreshLayoutAssignment()])
+  applyPresentationSections(['general', 'shell', 'appearance', 'footer'])
 }
 </script>
 
