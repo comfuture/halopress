@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { pageBlockLibraryClassification } from '../app/editor/page/registry'
+import { validatePageDocumentForPublication } from '../app/editor/page/validation'
 import { normalizePageContent } from '../server/cms/page-content'
 import { buildPageDocumentFromPattern } from '../shared/page-patterns'
 
@@ -37,8 +38,24 @@ describe('editable Page unit validation', () => {
     const draft = buildPageDocumentFromPattern('media-content')
 
     expect(normalizePageContent(draft, { mode: 'draft' })).toEqual(draft)
+    expect(validatePageDocumentForPublication(draft)).toContainEqual({
+      path: 'content',
+      message: 'Page has an unfinished image upload.'
+    })
     expect(() => normalizePageContent(draft, { mode: 'publish' }))
       .toThrow('Page has an unfinished image upload.')
+  })
+
+  it('uses the same publication validation for the new-page starter and existing drafts', () => {
+    const starter = buildPageDocumentFromPattern('starter-page')
+    const existingDraft = structuredClone(starter)
+
+    for (const document of [starter, existingDraft]) {
+      expect(validatePageDocumentForPublication(document)[0]).toEqual({
+        path: 'content.1',
+        message: 'Editable Hero has an unfinished image upload.'
+      })
+    }
   })
 
   it('keeps every legacy atom classified while offering only finite configured blocks', () => {
