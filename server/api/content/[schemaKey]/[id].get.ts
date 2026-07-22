@@ -14,9 +14,9 @@ import { PUBLIC_PAGE_ROUTE_PREFIX } from '../../../../shared/public-routing'
 import { parsePublicSeoJson } from '../../../../shared/public-seo'
 import { getCanonicalPublicRoute } from '../../../cms/public-routes'
 import {
-  applyPortablePublicEnvelopeHeaders,
-  createPortableStructuredRenderingForEvent
+  applyPortablePublicEnvelopeHeaders
 } from '../../../utils/portable-content-delivery'
+import { createStandaloneStructuredRenderingForEvent } from '../../../utils/standalone-document-renderer'
 
 export default defineEventHandler(async (event) => {
   const schemaKey = event.context.params?.schemaKey as string
@@ -24,6 +24,7 @@ export default defineEventHandler(async (event) => {
   const q = getQuery(event)
   const includeSurroundings = ['1', 'true'].includes(String(q.surroundings ?? q.includeSurroundings ?? ''))
   const includeSchema = ['1', 'true'].includes(String(q.includeSchema ?? ''))
+  const includeRendering = q.rendering !== '0'
   const order = q.order === 'asc' ? 'asc' : 'desc'
 
   const policy = await resolveDeliveryPolicy(event, schemaKey, { requestedStatus: q.status })
@@ -204,11 +205,15 @@ export default defineEventHandler(async (event) => {
     ...(includeSchema ? { schema: sourceSchema } : {}),
     createdAt: row.createdAt,
     updatedAt: sourceUpdatedAt,
-    rendering: await createPortableStructuredRenderingForEvent(
-      event,
-      content,
-      sourceSchema.registry?.fields ?? []
-    ),
+    ...(includeRendering
+      ? {
+          rendering: createStandaloneStructuredRenderingForEvent(
+            event,
+            content,
+            sourceSchema.registry?.fields ?? []
+          )
+        }
+      : {}),
     ...(policy.isPublic
       ? {
           publicationState: 'published',

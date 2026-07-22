@@ -33,7 +33,10 @@ if (!isAlias && resolved.value.documentKind !== 'page') {
 
 const page = ref<any>(null)
 if (!isAlias) {
-  const { data, error: pageError } = await useFetch<any>(() => `/api/delivery/page/${resolved.value.documentId}`)
+  const { data, error: pageError } = await useFetch<any>(
+    () => `/api/delivery/page/${resolved.value.documentId}`,
+    { query: { rendering: '0' } }
+  )
   if (pageError.value || !data.value) {
     applyPrivateNoindex()
     throw createError({ statusCode: 404, statusMessage: 'Not Found' })
@@ -48,7 +51,7 @@ if (!isAlias) {
   <LayoutComposition v-if="resolved?.layout" :projection="resolved.layout">
     <article class="layout-route-page-content">
       <header><h1>{{ page?.title || 'Untitled page' }}</h1></header>
-      <PageDocumentRenderer :document="page?.content" :rendering="page?.rendering" />
+      <PageDocumentRenderer :document="page?.content" />
     </article>
 
     <template #fallback>
@@ -56,7 +59,7 @@ if (!isAlias) {
         <UContainer class="py-8">
           <UPage>
             <UPageHeader :title="page?.title || 'Untitled page'" />
-            <UPageBody><PageDocumentRenderer :document="page?.content" :rendering="page?.rendering" /></UPageBody>
+            <UPageBody><PageDocumentRenderer :document="page?.content" /></UPageBody>
           </UPage>
         </UContainer>
       </BuiltInLayoutRenderer>

@@ -1,5 +1,7 @@
 import { eq } from 'drizzle-orm'
+import { getQuery } from 'h3'
 
+import { extractAuthoredOutline } from '../../../../shared/authored-document'
 import { parseStoredPageContent } from '../../../cms/page-content'
 import { publicationMetadata } from '../../../cms/publication'
 import { getDb } from '../../../db/db'
@@ -11,7 +13,7 @@ import {
   resolvePreviewLayoutCanonicalPath,
   resolvePreviewPageLayoutRendering
 } from '../../../utils/layout-rendering'
-import { createPortablePageRenderingForEvent } from '../../../utils/portable-content-delivery'
+import { createStandalonePageRenderingForEvent } from '../../../utils/standalone-document-renderer'
 
 export default defineEventHandler(async (event) => {
   applyPreviewDeliveryHeaders(event)
@@ -26,13 +28,14 @@ export default defineEventHandler(async (event) => {
   const row = await db.select().from(pageTable).where(eq(pageTable.id, id)).get()
   if (!row || row.status === 'deleted') return sendH3Error(event, notFound('Page not found'))
   const content = parseStoredPageContent(row.contentJson)
-  const rendering = await createPortablePageRenderingForEvent(event, content)
+  const outline = extractAuthoredOutline(content, { allowPageBlocks: true, allowPageHero: true })
+  const includeRendering = getQuery(event).rendering !== '0'
   return {
     id: row.id,
     title: row.title,
     status: row.status,
     content,
-    rendering,
+    ...(includeRendering ? { rendering: createStandalonePageRenderingForEvent(event, content) } : {}),
     layout: await resolvePreviewPageLayoutRendering(event, {
       visibility: 'preview',
       documentKind: 'page',
@@ -40,7 +43,7 @@ export default defineEventHandler(async (event) => {
       schemaKey: null,
       schemaVersion: null,
       canonicalPath: resolvePreviewLayoutCanonicalPath(row.publicPath)
-    }, rendering.outline),
+    }, outline),
     updatedAt: row.updatedAt,
     ...publicationMetadata(row)
   }

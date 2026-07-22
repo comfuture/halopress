@@ -39,7 +39,7 @@
         if (!response.ok) throw new Error(`Delivery returned ${response.status}`)
         const payload = await response.json()
         const rendering = payload?.rendering
-        if (rendering?.contractVersion !== 1 || typeof rendering.html !== 'string' || !Array.isArray(rendering.stylesheets)) {
+        if (rendering?.contractVersion !== 2 || typeof rendering.html !== 'string' || !Array.isArray(rendering.stylesheets)) {
           throw new Error('The response has no supported portable Page rendering envelope')
         }
         const nextStylesheets = new Set(rendering.stylesheets)
@@ -57,8 +57,8 @@
             link.dataset.haloStylesheet = 'true'
             stylesheetLinks.set(href, link)
           }
-          // Appending an existing node moves it, preserving the envelope's
-          // deterministic [base CSS, active Theme CSS] cascade order.
+          // Appending an existing node preserves deterministic stylesheet
+          // order without retaining stale contract revisions.
           document.head.append(link)
         }
         target.innerHTML = rendering.html

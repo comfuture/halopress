@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type { DropdownMenuItem } from '@nuxt/ui'
-import { PORTABLE_CONTENT_STYLESHEET_PATH } from '~~/shared/portable-content'
 
 const route = useRoute()
 const { presentation } = await useSitePresentation()
@@ -53,10 +52,11 @@ useHead(() => ({
           { rel: 'apple-touch-icon', href: presentation.value.general.faviconUrl }
         ]),
     ...(siteModeEnabled.value && siteTheme.value
-      ? [
-          new URL(PORTABLE_CONTENT_STYLESHEET_PATH, siteTheme.value.stylesheetUrl).href,
-          siteTheme.value.stylesheetUrl
-        ].map(href => ({ key: `halo-stylesheet-${href}`, rel: 'stylesheet', href }))
+      ? [{
+          key: `halo-stylesheet-${siteTheme.value.stylesheetUrl}`,
+          rel: 'stylesheet',
+          href: siteTheme.value.stylesheetUrl
+        }]
       : [])
   ],
   titleTemplate: title => title || presentation.value.general.siteName,

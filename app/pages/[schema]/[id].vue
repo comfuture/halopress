@@ -35,7 +35,10 @@ const id = computed(() => String(resolvedRoute.documentId))
 const standalonePage = ref<any>(null)
 if (!isAlias && resolvedRoute.documentKind === 'page') {
   const pageId = String(resolvedRoute.documentId)
-  const { data, error } = await useFetch<any>(() => `/api/delivery/page/${pageId}`)
+  const { data, error } = await useFetch<any>(
+    () => `/api/delivery/page/${pageId}`,
+    { query: { rendering: '0' } }
+  )
   const statusCode = Number((error.value as any)?.statusCode ?? (error.value as any)?.status ?? 0)
   if (error.value || !data.value) {
     applyPrivateNoindex()
@@ -62,6 +65,7 @@ if (!isAlias && !standalonePage.value) {
   const result = await useHalopressContent(schemaKey, {
     id,
     status: 'published',
+    includeRendering: false,
     respectStandalonePageClaim: schemaKey.value === PUBLIC_PAGE_ROUTE_PREFIX
   })
   if (result.error.value || !result.content.value) {
@@ -83,13 +87,12 @@ if (!isAlias) {
   <LayoutComposition v-if="resolvedRoute?.layout" :projection="resolvedRoute.layout">
     <article v-if="standalonePage" class="layout-route-page-content">
       <header><h1>{{ standalonePage.title || 'Untitled page' }}</h1></header>
-      <PageDocumentRenderer :document="standalonePage.content" :rendering="standalonePage.rendering" />
+      <PageDocumentRenderer :document="standalonePage.content" />
     </article>
     <PublicContentDetailRenderer
       v-else
       :schema="schema"
       :content="content"
-      :rendering="doc?.rendering"
       :fallback-title="doc?.title || doc?.id || id"
     />
 
@@ -98,11 +101,11 @@ if (!isAlias) {
         <UContainer v-if="standalonePage" class="py-8">
           <UPage>
             <UPageHeader :title="standalonePage.title || 'Untitled page'" />
-            <UPageBody><PageDocumentRenderer :document="standalonePage.content" :rendering="standalonePage.rendering" /></UPageBody>
+            <UPageBody><PageDocumentRenderer :document="standalonePage.content" /></UPageBody>
           </UPage>
         </UContainer>
         <UContainer v-else class="py-10 sm:py-14">
-          <PublicContentDetailRenderer :schema="schema" :content="content" :rendering="doc?.rendering" :fallback-title="doc?.title || doc?.id || id" />
+          <PublicContentDetailRenderer :schema="schema" :content="content" :fallback-title="doc?.title || doc?.id || id" />
         </UContainer>
       </BuiltInLayoutRenderer>
     </template>

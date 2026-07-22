@@ -21,7 +21,10 @@ if (import.meta.server) {
 
 const route = useRoute()
 const id = computed(() => String(route.params.id))
-const { data: page, error: pageError } = await useFetch<any>(() => `/api/preview/page/${id.value}`)
+const { data: page, error: pageError } = await useFetch<any>(
+  () => `/api/preview/page/${id.value}`,
+  { query: { rendering: '0' } }
+)
 const pageState = getPreviewDataState(page.value, pageError.value)
 if (pageState === 'ready') {
   const { presentation: previewPresentation } = await useSitePresentation()
@@ -46,7 +49,7 @@ if (pageState === 'not-found' && import.meta.server) {
         <h1>{{ page?.title || 'Untitled page' }}</h1>
         <p>Draft preview</p>
       </header>
-      <PageDocumentRenderer :document="page?.content" :rendering="page?.rendering" />
+      <PageDocumentRenderer :document="page?.content" />
     </article>
 
     <template #fallback>
@@ -55,7 +58,7 @@ if (pageState === 'not-found' && import.meta.server) {
           <UPageHeader :title="page?.title || 'Untitled page'" description="Draft preview">
             <template #headline><UBadge color="warning" variant="subtle">Private preview</UBadge></template>
           </UPageHeader>
-          <UPageBody><PageDocumentRenderer :document="page?.content" :rendering="page?.rendering" /></UPageBody>
+          <UPageBody><PageDocumentRenderer :document="page?.content" /></UPageBody>
         </UPage>
       </UContainer>
     </template>

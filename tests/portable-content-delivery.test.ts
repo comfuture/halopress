@@ -3,9 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { content, page, publicationRevision, schema, schemaActive } from '../server/db/schema'
 import type { SchemaPermission } from '../server/utils/schema-permission'
 import { runMigrations } from '../server/utils/install'
-import { PORTABLE_CONTENT_STYLESHEET_PATH } from '../shared/portable-content'
-import { defaultSiteTheme } from '../shared/site-theme'
-import { buildSiteThemeArtifact } from '../server/utils/site-theme-settings'
+import { STANDALONE_DOCUMENT_STYLESHEET_PATH } from '../shared/standalone-document'
 import { createTestSqliteDb } from './fixtures/sqlite'
 
 type Handler = (event: any) => Promise<any>
@@ -13,6 +11,7 @@ type Handler = (event: any) => Promise<any>
 const dbState = vi.hoisted(() => ({ current: null as any }))
 const permissionState = vi.hoisted(() => ({ roleKey: 'anonymous', canRead: true }))
 const authState = vi.hoisted(() => ({ authenticated: true, admin: true }))
+const renderingCalls = vi.hoisted(() => ({ page: 0, content: 0 }))
 
 vi.mock('../server/db/db', () => ({ getDb: vi.fn(async () => dbState.current) }))
 vi.mock('../server/utils/schema-permission', () => ({
@@ -43,6 +42,20 @@ vi.mock('../server/utils/auth', () => ({
     return { user: { id: 'admin-1', accountType: 'staff' } }
   })
 }))
+vi.mock('../server/utils/standalone-document-renderer', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../server/utils/standalone-document-renderer')>()
+  return {
+    ...actual,
+    createStandalonePageRenderingForEvent(event: any, document: unknown) {
+      renderingCalls.page += 1
+      return actual.createStandalonePageRenderingForEvent(event, document)
+    },
+    createStandaloneStructuredRenderingForEvent(event: any, content: Record<string, unknown>, fields: any[]) {
+      renderingCalls.content += 1
+      return actual.createStandaloneStructuredRenderingForEvent(event, content, fields)
+    }
+  }
+})
 
 vi.stubGlobal('defineEventHandler', (handler: Handler) => handler)
 
@@ -218,6 +231,8 @@ beforeEach(() => {
   permissionState.canRead = true
   authState.authenticated = true
   authState.admin = true
+  renderingCalls.page = 0
+  renderingCalls.content = 0
   vi.stubGlobal('useRuntimeConfig', () => ({ canonicalOrigin: 'https://press.example.com' }))
 })
 
@@ -233,16 +248,16 @@ describe('portable Page delivery envelope', () => {
     const result = await pageDelivery(request.event)
 
     expect(result.content).toEqual(rawPublishedPage)
-    const defaultTheme = buildSiteThemeArtifact(defaultSiteTheme())
     expect(result.rendering).toMatchObject({
-      contractVersion: 1,
-      themeRevision: defaultTheme.revision,
-      themeColorMode: 'system',
+      contractVersion: 2,
       stylesheets: [
-        `https://press.example.com${PORTABLE_CONTENT_STYLESHEET_PATH}`,
-        `https://press.example.com${defaultTheme.stylesheetPath}`
+        `https://press.example.com${STANDALONE_DOCUMENT_STYLESHEET_PATH}`
       ]
     })
+    expect(result.rendering).not.toHaveProperty('themeRevision')
+    expect(result.rendering).not.toHaveProperty('themeColorMode')
+    expect(result.rendering.html).not.toContain('data-halo-color-mode')
+    expect(renderingCalls.page).toBe(1)
     expect(result.rendering.html).toContain('src="https://press.example.com/assets/page-image/raw"')
     expect(result.rendering.html.match(/class="halo-block halo-block-fallback"/g)).toHaveLength(2)
     expect(result.rendering.html).not.toContain('fixed')
@@ -261,6 +276,23 @@ describe('portable Page delivery envelope', () => {
 
     await expect(pageDelivery(conditional.event)).resolves.toBeUndefined()
     expect(conditional.status()).toBe(304)
+  })
+
+  it('skips standalone serialization for the Site JSON-only projection', async () => {
+    const pageRequest = responseEvent('/api/delivery/page/portable-page?rendering=0', { id: 'portable-page' })
+    const contentRequest = responseEvent('/api/content/article/article-1?status=published&includeSchema=1&rendering=0', {
+      schemaKey: 'article',
+      id: 'article-1'
+    })
+
+    const [pageResult, contentResult] = await Promise.all([
+      pageDelivery(pageRequest.event),
+      contentDelivery(contentRequest.event)
+    ])
+
+    expect(pageResult).not.toHaveProperty('rendering')
+    expect(contentResult).not.toHaveProperty('rendering')
+    expect(renderingCalls).toEqual({ page: 0, content: 0 })
   })
 
   it('rejects malformed/poisoned Host and forwarding inputs instead of reflecting them', async () => {
@@ -294,7 +326,7 @@ describe('portable structured-content delivery envelope', () => {
       schemaVersion: 1,
       schema: { version: 1 },
       content: { legacyTitle: 'Published v1' },
-      rendering: { contractVersion: 1 }
+      rendering: { contractVersion: 2 }
     })
     expect(Object.keys(result.rendering.fields)).toEqual(['legacyBody'])
     expect(result.rendering.fields.legacyBody).toMatchObject({
@@ -342,7 +374,7 @@ describe('portable private preview envelopes', () => {
     expect(contentResult).toMatchObject({
       schemaVersion: 2,
       schema: { version: 2 },
-      rendering: { contractVersion: 1 }
+      rendering: { contractVersion: 2 }
     })
     expect(Object.keys(contentResult.rendering.fields)).toEqual(['currentBody'])
     expect(pageResult.rendering.html).toContain('Working page')

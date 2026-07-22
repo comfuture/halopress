@@ -275,10 +275,25 @@ function seedSql() {
   })
   const pageDocument = JSON.stringify({
     type: 'doc',
-    content: [{
-      type: 'paragraph',
-      content: [{ type: 'text', text: 'Built portable Theme delivery' }]
-    }]
+    content: [
+      {
+        type: 'heading',
+        attrs: { level: 2 },
+        content: [{ type: 'text', text: 'Built native heading' }]
+      },
+      {
+        type: 'paragraph',
+        content: [{ type: 'text', text: 'Built standalone delivery' }]
+      },
+      {
+        type: 'pageHero',
+        attrs: { orientation: 'horizontal', reverse: false },
+        content: [
+          { type: 'heading', attrs: { level: 1 }, content: [{ type: 'text', text: 'Built structural hero' }] },
+          { type: 'paragraph', content: [{ type: 'text', text: 'Structural hero body' }] }
+        ]
+      }
+    ]
   })
   const layoutPageWorkingDocument = JSON.stringify({
     type: 'doc',
@@ -725,15 +740,17 @@ async function assertThemeDelivery(origin, stateDirectory, stateArgs) {
   }
 
   const pageResponse = await fetch(`${origin}/api/delivery/page/built-theme-page`)
-  assert.equal(pageResponse.status, 200, 'Expected the built portable Page envelope')
+  assert.equal(pageResponse.status, 200, 'Expected the built standalone Page envelope')
   const page = await pageResponse.json()
-  assert.equal(page.rendering.themeRevision, manifest.revision)
+  assert.equal(page.rendering.contractVersion, 2)
   assert.deepEqual(page.rendering.stylesheets, [
-    `${origin}/_halo/content/v1/dfea71d319d9c7d0a48d19346c115d3bd32a51e0b88f30e4c344cb454b9ea3f1.css`,
-    manifest.stylesheetUrl
+    `${origin}/_halo/content/v2/6d010ca6e3a8523dfa95f6173f8896c6347663a32f85d498273dfa831bfd3fa6.css`
   ])
-  assert.ok(page.rendering.html.includes('Built portable Theme delivery'))
-  assert.ok(page.rendering.html.includes('data-halo-color-mode="dark"'))
+  assert.ok(page.rendering.html.includes('Built standalone delivery'))
+  assert.ok(page.rendering.html.includes('data-halo-contract-version="2"'))
+  assert.ok(!page.rendering.html.includes('data-halo-color-mode'))
+  assert.equal(page.content.content[1].content[0].text, 'Built standalone delivery')
+  assert.equal(page.content.content[2].type, 'pageHero')
   return manifest
 }
 
@@ -750,11 +767,9 @@ async function assertBuiltPageMode(origin, expectedMode) {
   const response = await fetch(`${origin}/built-theme-page`)
   const html = await response.text()
   assert.equal(response.status, 200, `Expected built Page SSR for ${expectedMode}, received ${response.status}`)
-  assert.ok(
-    html.includes(`data-halo-color-mode="${expectedMode}"`)
-    || html.includes(`data-halo-color-mode=&quot;${expectedMode}&quot;`),
-    `Expected built Page SSR to serialize the ${expectedMode} portable root mode`
-  )
+  assert.ok(html.includes('data-site-document-renderer'), 'Expected built Page SSR to use the native Site document renderer')
+  assert.ok(html.includes('Built standalone delivery'), 'Expected the native Site renderer to render raw Page JSON')
+  assert.ok(!html.includes('data-halo-contract-version="2"'), 'Site SSR must not inject the standalone HTML artifact')
   const modeAttribute = `data-halo-color-mode="${expectedMode}"`
   assert.match(
     html,
@@ -943,12 +958,9 @@ async function assertPersistedLayoutSurfaces(origin) {
   assert.ok(editorHtml.includes('HaloPress Desk'), 'Expected the internal Page editor to retain the Desk shell')
   assert.ok(!editorHtml.includes('data-layout-renderer'), 'Internal Page editor must remain persisted-Layout-free')
   assert.ok(!editorHtml.includes('data-layout-canvas'), 'Page editor preview must not link the Layout editor canvas')
-  const isolatedPreview = editorHtml.match(/<iframe(?=[^>]*data-page-editor-preview-surface)[^>]*>/)?.[0]
-  assert.ok(isolatedPreview, 'Expected the Page editor isolated preview surface in SSR')
-  assert.ok(isolatedPreview.includes('data-portable-content-isolated'), 'Expected the Page editor preview to remain portable and isolated')
-  assert.ok(isolatedPreview.includes('Working Page marker'), 'Expected the isolated editor preview to render working Page content')
-  assert.ok(!isolatedPreview.includes('data-layout-renderer'), 'Persisted Layout must not enter the isolated editor preview subtree')
-  assert.ok(!isolatedPreview.includes('HaloPress Desk'), 'Desk structure must not enter the isolated editor preview subtree')
+  assert.ok(editorHtml.includes('data-site-document-isolated="true"'), 'Expected the Page editor preview to use the isolated native renderer')
+  assert.ok(editorHtml.includes('Working Page marker'), 'Expected the native editor preview to render working Page content')
+  assert.ok(!editorHtml.includes('<iframe'), 'Page editor preview must not inject a serialized standalone document')
 
   await setSiteMode(origin, cookie, false)
   try {
@@ -1210,12 +1222,10 @@ async function main() {
     assert.equal(response.headers.get('x-powered-by'), 'Nuxt')
     assertRenderedMenu(html)
     assert.ok(html.includes('data-halo-theme-enabled="true"'), 'Expected anonymous SSR to enable the Theme shell adapter')
-    const baseHref = '/_halo/content/v1/dfea71d319d9c7d0a48d19346c115d3bd32a51e0b88f30e4c344cb454b9ea3f1.css'
     const themeHref = new URL(themeManifest.stylesheetUrl).pathname
-    assert.ok(html.includes(baseHref), 'Expected anonymous SSR to load the portable base CSS')
     assert.ok(html.includes(themeHref), 'Expected anonymous SSR to load the exact Theme digest CSS')
-    assert.ok(html.lastIndexOf(baseHref) < html.lastIndexOf(themeHref), 'Expected base CSS before the final Theme CSS link')
-    assert.ok(!html.slice(html.lastIndexOf(themeHref)).includes(baseHref), 'No base CSS link may occur after the final Theme link')
+    assert.ok(!html.includes('/_halo/content/v1/'), 'Native Site SSR must not load the portable v1 stylesheet')
+    assert.ok(!html.includes('/_halo/content/v2/'), 'Native Site SSR must not load the standalone v2 stylesheet')
     const serializedColorModes = html.match(/data-halo-color-mode(?:=|%3D)[^\s>]*/g) ?? []
     assert.ok(
       html.includes('data-halo-color-mode="dark"'),

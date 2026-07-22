@@ -5,6 +5,7 @@ import {
   type pageBlockIconKeys,
   type StoredPageBlockAttrs
 } from './page-blocks'
+import { normalizeAuthoredDocument } from './authored-document'
 
 export const PORTABLE_CONTENT_CONTRACT_VERSION = 1 as const
 export const PORTABLE_CONTENT_STYLESHEET_REVISION = 'dfea71d319d9c7d0a48d19346c115d3bd32a51e0b88f30e4c344cb454b9ea3f1'
@@ -700,10 +701,12 @@ function writeBlockShellStart(
   element: 'article' | 'aside' | 'figure' | 'section',
   className: string,
   block: string,
-  props: Record<string, unknown>
+  props: Record<string, unknown>,
+  standaloneV2 = false
 ) {
   writer.push(`<${element} class="halo-block ${className}"`)
   writer.attribute('data-halo-block', block)
+  if (standaloneV2) writer.attribute('data-halo-legacy-block', 'true')
   const orientation = props.orientation === 'horizontal' ? 'horizontal' : 'vertical'
   writer.attribute('data-halo-orientation', orientation)
   if (booleanValue(props.reverse)) writer.attribute('data-halo-reverse', 'true')
@@ -763,7 +766,8 @@ function writePageBlock(
   writer: PortableWriter,
   attrs: StoredPageBlockAttrs,
   origin: string,
-  depth: number
+  depth: number,
+  standaloneV2 = false
 ) {
   writer.claimNode(depth)
   const resolved = resolvePageBlockForDelivery(attrs)
@@ -777,7 +781,7 @@ function writePageBlock(
   const props = resolved.props as Record<string, unknown>
   const media = resolved.media as Record<string, unknown>
   if (resolved.key === 'pageHero') {
-    writeBlockShellStart(writer, 'section', 'halo-hero', 'hero', props)
+    writeBlockShellStart(writer, 'section', 'halo-hero', 'hero', props, standaloneV2)
     writer.push('<div class="halo-block-content">')
     writeBlockHeader(writer, props, 1)
     writeActions(writer, props.links, origin)
@@ -787,7 +791,7 @@ function writePageBlock(
     return
   }
   if (resolved.key === 'pageCard') {
-    writeBlockShellStart(writer, 'article', 'halo-card', 'card', props)
+    writeBlockShellStart(writer, 'article', 'halo-card', 'card', props, standaloneV2)
     const href = resolvePortableLinkUrl(props.to, origin)
     if (href) {
       writer.push('<a class="halo-card-anchor"')
@@ -804,7 +808,7 @@ function writePageBlock(
     return
   }
   if (resolved.key === 'pageSection') {
-    writeBlockShellStart(writer, 'section', 'halo-section', 'section', props)
+    writeBlockShellStart(writer, 'section', 'halo-section', 'section', props, standaloneV2)
     writer.push('<div class="halo-block-content">')
     writePortableIcon(writer, props.icon)
     writeBlockHeader(writer, props)
@@ -816,7 +820,7 @@ function writePageBlock(
     return
   }
   if (resolved.key === 'pageTestimonial') {
-    writeBlockShellStart(writer, 'figure', 'halo-testimonial', 'testimonial', props)
+    writeBlockShellStart(writer, 'figure', 'halo-testimonial', 'testimonial', props, standaloneV2)
     writeMedia(writer, media, origin)
     writer.push('<div class="halo-block-content"><blockquote class="halo-testimonial-quote"><p>')
     writeText(writer, props.quote)
@@ -838,7 +842,7 @@ function writePageBlock(
     return
   }
   if (resolved.key === 'pageLogos') {
-    writeBlockShellStart(writer, 'section', 'halo-logos', 'logos', props)
+    writeBlockShellStart(writer, 'section', 'halo-logos', 'logos', props, standaloneV2)
     writeBlockHeader(writer, props)
     writer.push('<ul class="halo-logo-list">')
     for (const candidate of Array.isArray(props.items) ? props.items : []) {
@@ -866,7 +870,7 @@ function writePageBlock(
     return
   }
   if (resolved.key === 'pageFAQ') {
-    writeBlockShellStart(writer, 'section', 'halo-faq', 'faq', props)
+    writeBlockShellStart(writer, 'section', 'halo-faq', 'faq', props, standaloneV2)
     writeBlockHeader(writer, props)
     writer.push('<div class="halo-faq-list">')
     for (const candidate of Array.isArray(props.items) ? props.items : []) {
@@ -882,7 +886,7 @@ function writePageBlock(
     return
   }
 
-  writeBlockShellStart(writer, 'aside', 'halo-cta', 'cta', props)
+  writeBlockShellStart(writer, 'aside', 'halo-cta', 'cta', props, standaloneV2)
   writer.push('<div class="halo-block-content">')
   writeBlockHeader(writer, props)
   writeActions(writer, props.links, origin)
@@ -895,7 +899,7 @@ function writeRichTextDocumentContent(
   writer: PortableWriter,
   value: unknown,
   origin: string,
-  options: { allowPageBlocks: boolean }
+  options: { allowPageBlocks: boolean, allowPageHero?: boolean }
 ) {
   if (typeof value === 'string') {
     writer.push('<p>')
@@ -913,6 +917,25 @@ function writeRichTextDocumentContent(
     return
   }
   for (const candidate of document.content) {
+    if (options.allowPageHero && candidate && typeof candidate === 'object' && !Array.isArray(candidate)
+      && (candidate as Record<string, unknown>).type === 'pageHero') {
+      writer.claimNode(1)
+      const normalized = normalizeAuthoredDocument({ type: 'doc', content: [candidate] }, { allowPageHero: true })
+      const hero = normalized.content[0]
+      if (hero?.type !== 'pageHero') {
+        writeRichTextFallback(writer)
+        continue
+      }
+      writer.push('<section class="halo-block halo-hero" data-halo-block="hero"')
+      writer.attribute('data-halo-orientation', hero.orientation)
+      if (hero.reverse) writer.attribute('data-halo-reverse', 'true')
+      writer.push('><div class="halo-block-content">')
+      for (const child of (candidate as Record<string, any>).content) {
+        writeRichTextNode(writer, child, origin, 2)
+      }
+      writer.push('</div></section>')
+      continue
+    }
     if (options.allowPageBlocks && candidate && typeof candidate === 'object' && !Array.isArray(candidate)
       && (candidate as Record<string, unknown>).type === 'pageBlock') {
       const attrs = (candidate as Record<string, any>).attrs
@@ -920,7 +943,8 @@ function writeRichTextDocumentContent(
         writer,
         attrs && typeof attrs === 'object' && !Array.isArray(attrs) ? attrs : {},
         origin,
-        1
+        1,
+        options.allowPageHero === true
       )
     } else {
       writeRichTextNode(writer, candidate, origin, 1)
@@ -985,6 +1009,24 @@ export function createPortablePageRendering(
 ): PortableDocumentRendering {
   const rendered = renderWithFallback(options, { className: 'halo-page', contentKind: 'page' }, (writer, origin) => {
     writeRichTextDocumentContent(writer, document, origin, { allowPageBlocks: true })
+  })
+  return {
+    ...renderingBase(options),
+    html: rendered.html,
+    outline: rendered.outline
+  }
+}
+
+/**
+ * Internal bridge for the server-owned standalone v2 projection. The public v1
+ * entry points above intentionally retain their original behavior and bytes.
+ */
+export function createPortablePageRenderingForStandaloneV2(
+  document: unknown,
+  options: PortableRenderOptions
+): PortableDocumentRendering {
+  const rendered = renderWithFallback(options, { className: 'halo-page', contentKind: 'page' }, (writer, origin) => {
+    writeRichTextDocumentContent(writer, document, origin, { allowPageBlocks: true, allowPageHero: true })
   })
   return {
     ...renderingBase(options),

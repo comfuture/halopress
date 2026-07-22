@@ -1,5 +1,7 @@
 import { and, eq } from 'drizzle-orm'
+import { getQuery } from 'h3'
 
+import { extractStructuredAuthoredOutline } from '../../../../../shared/authored-document'
 import { parseContentJson } from '../../../../cms/content-json'
 import { publicationMetadata } from '../../../../cms/publication'
 import { getActiveSchema, getSchemaVersion } from '../../../../cms/repo'
@@ -13,7 +15,7 @@ import {
   resolvePreviewLayoutCanonicalPath
 } from '../../../../utils/layout-rendering'
 import { requireSchemaPermission } from '../../../../utils/schema-permission'
-import { createPortableStructuredRenderingForEvent } from '../../../../utils/portable-content-delivery'
+import { createStandaloneStructuredRenderingForEvent } from '../../../../utils/standalone-document-renderer'
 
 export default defineEventHandler(async (event) => {
   applyPreviewDeliveryHeaders(event)
@@ -37,11 +39,9 @@ export default defineEventHandler(async (event) => {
   const sourceSchema = await getSchemaVersion(db, schemaKey, row.schemaVersion)
   if (!sourceSchema) return sendH3Error(event, notFound('Content not found'))
   const content = parseContentJson(row.contentJson)
-  const rendering = await createPortableStructuredRenderingForEvent(
-    event,
-    content,
-    sourceSchema.registry?.fields ?? []
-  )
+  const fields = sourceSchema.registry?.fields ?? []
+  const outline = extractStructuredAuthoredOutline(content, fields)
+  const includeRendering = getQuery(event).rendering !== '0'
   return {
     id: row.id,
     schemaKey: row.schemaKey,
@@ -49,7 +49,9 @@ export default defineEventHandler(async (event) => {
     status: row.status,
     content,
     schema: sourceSchema,
-    rendering,
+    ...(includeRendering
+      ? { rendering: createStandaloneStructuredRenderingForEvent(event, content, fields) }
+      : {}),
     layout: await resolvePreviewContentLayoutRendering(event, {
       visibility: 'preview',
       documentKind: 'content',
@@ -57,7 +59,7 @@ export default defineEventHandler(async (event) => {
       schemaKey: row.schemaKey,
       schemaVersion: row.schemaVersion,
       canonicalPath: resolvePreviewLayoutCanonicalPath(row.publicPath)
-    }, rendering.outline),
+    }, outline),
     updatedAt: row.updatedAt,
     ...publicationMetadata(row)
   }

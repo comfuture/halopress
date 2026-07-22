@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type { CSSProperties } from 'vue'
-import { PORTABLE_CONTENT_STYLESHEET_PATH } from '~~/shared/portable-content'
 import type { LayoutRenderProjection, ResolvedLayoutElement } from '~~/shared/layout-rendering'
 import { defineLayoutRendererRegistry, resolveLayoutRenderer } from '~~/shared/site-layout-renderer'
 import type { LayoutElement } from '~~/shared/site-layout'
@@ -63,10 +62,7 @@ const themeAdapterStyle = computed(() => haloThemeAdapterStyle())
 const renderedColorMode = computed(() => colorMode.preference === 'dark'
   ? 'dark'
   : colorMode.preference === 'light' ? 'light' : 'default')
-const themeStylesheets = computed(() => [
-  new URL(PORTABLE_CONTENT_STYLESHEET_PATH, theme.value.stylesheetUrl).href,
-  theme.value.stylesheetUrl
-])
+const themeStylesheets = computed(() => [theme.value.stylesheetUrl])
 const colorModeBridgeScript = computed(() => {
   const preference = theme.value.colorMode
   return `(function(){var p="${preference}",m=p==="system"?(window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"):p,e=document.documentElement,h=window.__NUXT_COLOR_MODE__;e.classList.remove("light","dark");e.classList.add(m);e.style.colorScheme=m;if(h){h.preference=p;h.value=m}})()`

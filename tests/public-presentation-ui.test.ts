@@ -7,7 +7,7 @@ import {
   reservedPresentationFieldIds,
   safePresentationLink
 } from '../app/utils/schema-presentation'
-import { createPortableStructuredContentRendering } from '../shared/portable-content'
+import { normalizeAuthoredDocument } from '../shared/authored-document'
 
 const root = resolve(import.meta.dirname, '..')
 
@@ -90,7 +90,7 @@ describe('public presentation UI contracts', () => {
     expect(reservedPresentationFieldIds({ detailTemplate: 'catalog', slots })).toContain('price-id')
   })
 
-  it('routes rich-text description slots through the portable projection with marks and media intact', async () => {
+  it('routes rich-text description slots through the native renderer with marks and media intact', async () => {
     const field = {
       fieldId: 'summary-id',
       fieldKey: 'summary',
@@ -109,18 +109,25 @@ describe('public presentation UI contracts', () => {
         }]
       }
     }
-    const rendering = createPortableStructuredContentRendering(content, [
-      { fieldId: field.fieldId, key: field.fieldKey, kind: field.kind }
-    ], { origin: 'https://press.example.com' })
-    const component = await readFile(resolve(root, 'app/components/public/ContentDetailRenderer.vue'), 'utf8')
+    const normalized = normalizeAuthoredDocument(content.summary)
+    const [component, fieldRenderer] = await Promise.all([
+      readFile(resolve(root, 'app/components/public/ContentDetailRenderer.vue'), 'utf8'),
+      readFile(resolve(root, 'app/components/public/FieldRenderer.vue'), 'utf8')
+    ])
 
     expect(isRichTextPresentationField(field)).toBe(true)
-    expect(rendering.fields.summary!.html).toContain('<strong>Portable summary</strong>')
-    expect(rendering.fields.summary!.html).toContain('src="https://press.example.com/assets/summary-image/raw"')
+    expect(normalized.content[0]).toMatchObject({
+      type: 'paragraph',
+      content: [
+        { type: 'text', text: 'Portable summary', marks: [{ type: 'bold' }] },
+        { type: 'image', src: '/assets/summary-image/raw', alt: 'Summary media' }
+      ]
+    })
     expect(component).toContain('v-if="richTextDescription && descriptionField')
     expect(component).toContain('renderer: \'rich_text\'')
-    expect(component).toContain(':rendering="rendering?.fields?.[descriptionField.fieldKey]"')
     expect(component).toContain('<PublicFieldRenderer')
+    expect(fieldRenderer).toContain('<SiteRichTextRenderer')
+    expect(fieldRenderer).not.toContain('portable-content')
   })
 
   it('clears dynamic gallery refs when Vue unmounts a slide', async () => {

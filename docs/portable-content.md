@@ -1,89 +1,57 @@
-# Portable authored content
+# Standalone authored-document delivery
 
-HaloPress keeps editor JSON as the canonical revision format and adds a safe HTML projection for consumers that do not run Vue, Nuxt UI, Tailwind, or HaloPress application code. The same projection is used by published Page delivery, public structured-content rich text, and the isolated Page editor preview.
+Tiptap/ProseMirror JSON is the canonical HaloPress revision and editing format. HaloPress exposes that same validated JSON through two rendering boundaries:
 
-## Page delivery
+- HaloPress Site renders JSON with code-owned Vue components during Nuxt SSR, hydration, and client navigation. It inherits width, outer spacing, background, typography, foreground color, and color mode from the effective Site Layout and Theme.
+- Document APIs additionally serialize safe partial HTML on the server for consumers that do not run Vue, Nuxt UI, Tailwind, the editor, or HaloPress application code.
 
-`GET /api/delivery/page/:id` preserves the existing Page response, including its raw `content`, and adds `rendering`:
+The Site renderer never fetches or injects the standalone HTML projection. Site requests use the JSON-only form of the existing delivery endpoints, so displaying a Site route does not run the standalone serializer or transfer duplicate HTML.
+
+## Version 2 API envelope
+
+`GET /api/delivery/page/:id` preserves raw `content` and includes a server-generated `rendering` projection by default:
 
 ```json
 {
   "id": "welcome",
   "content": { "type": "doc", "content": [] },
   "rendering": {
-    "contractVersion": 1,
-    "html": "<article class=\"halo-content halo-page\">…</article>",
+    "contractVersion": 2,
+    "html": "<article class=\"halo-content halo-page\" data-halo-contract-version=\"2\">…</article>",
     "stylesheets": [
-      "https://site.example/_halo/content/v1/BASE_CSS_SHA256.css",
-      "https://site.example/_halo/theme/v1/THEME_CSS_SHA256.css"
+      "https://site.example/_halo/content/v2/STYLESHEET_SHA256.css"
     ],
-    "themeRevision": "THEME_DOCUMENT_SHA256",
-    "themeColorMode": "system"
+    "outline": []
   }
 }
 ```
 
-A headless client must apply the stylesheet list in the supplied order: the immutable portable v1 base first, then the exact immutable active Theme artifact. When a later envelope names a different Theme stylesheet, remove or disable the previous Theme link instead of accumulating revisions; reusing the unchanged base link is safe. Then place `rendering.html` in its content slot. The HTML is server-sanitized and contains semantic elements, fixed `halo-*` classes, allowlisted `data-halo-*` values, and renderer-owned inline SVG icons. It contains no author-supplied HTML, class, style, ID, event handler, script, component identity, or runtime dependency.
+Public `GET /api/content/:schemaKey/:id` responses retain structured `content` and include the same v2 contract with a `fields` map for every rich-text field owned by the exact returned Schema version. Authenticated preview endpoints expose the projection only after authorization and remain `private, no-store` and `noindex`.
 
-The example at [`examples/portable-content/index.html`](../examples/portable-content/index.html) is a separate plain-HTML consumer. Set its fixed `data-halopress-origin` to the trusted HaloPress site, serve it from any static origin, and enter a published Page ID. It does not accept an auto-loading endpoint URL. Its content presentation comes only from that trusted API envelope and the referenced Halo stylesheet.
+The v2 HTML is a fragment, not a complete document. It contains semantic elements, fixed `halo-*` classes, allowlisted `data-halo-*` values, and renderer-owned SVG geometry. Author-provided HTML, classes, styles, IDs, event handlers, scripts, component names, and runtime selectors are never copied into the output.
 
-## Structured content
+The fragment and stylesheet do not contain a color-mode selector, `color-scheme`, a document background, or a default foreground declaration. Ordinary text, headings, and lists inherit from the embedding consumer. Semantic blocks may retain explicit surfaces and contrast colors required by their finite block contract. Changing only a light/dark preference therefore cannot change serialized fragment bytes.
 
-Public `GET /api/content/:schemaKey/:id` responses retain structured `content` and add a field-keyed projection:
+The plain-HTML consumer at [`examples/portable-content/index.html`](../examples/portable-content/index.html) demonstrates the contract. Configure its fixed trusted HaloPress origin, serve the file from any static origin, and enter a published Page ID.
 
-```json
-{
-  "content": {
-    "title": "Example",
-    "body": { "type": "doc", "content": [] }
-  },
-  "rendering": {
-    "contractVersion": 1,
-    "stylesheets": [
-      "https://site.example/_halo/content/v1/BASE_CSS_SHA256.css",
-      "https://site.example/_halo/theme/v1/THEME_CSS_SHA256.css"
-    ],
-    "themeRevision": "THEME_DOCUMENT_SHA256",
-    "themeColorMode": "system",
-    "fields": {
-      "body": {
-        "fieldId": "body-field-id",
-        "fieldKey": "body",
-        "html": "<article class=\"halo-content halo-richtext\">…</article>"
-      }
-    }
-  }
-}
-```
+## Native Site renderer
 
-Field discovery uses the exact schema version that owns the returned working or published revision. Every schema-declared `richtext` field is projected, including a rich-text field assigned to the presentation description slot. Aggregate field, node, mark, recursion-depth, and output limits protect the projection; `rendering.truncated: true` reports aggregate exhaustion without changing the raw JSON.
+Page and rich-text Site components normalize JSON through `shared/authored-document.ts` and render its finite node/mark union recursively in Vue. Stored strings never select components, imports, classes, slots, Nuxt UI payloads, or executable behavior. Legacy `pageBlock` nodes still resolve through the existing exhaustive Page-block registry and receive a code-owned wrapper anchor for TOC navigation.
 
-Authenticated preview endpoints expose the same projection only after authorization. They remain `private, no-store`, include `X-Robots-Tag: noindex, nofollow, noarchive`, and do not enable public cross-origin caching.
+The structural `pageHero` node is a separate allowlisted top-level container. It accepts only `orientation` and `reverse`, validates its finite child sequence, renders children through the same native/standalone node mapping, and rejects temporary `imageUpload` content at the public boundary. Legacy `pageBlock` values whose component is `pageHero` remain unchanged.
 
-## URLs, assets, and cache identity
+Heading IDs are allocated from normalized text in deterministic document order. Stored IDs are ignored. Ordinary and structural-hero IDs are placed on their semantic headings; legacy Page blocks use the wrapper anchor. Structured fields include a stable field discriminator so headings from different fields cannot collide.
 
-Absolute URLs are derived at request time from a trusted canonical origin. Deployment domains are never stored in content or Theme rows. Production Node deployments must set the origin-only `NUXT_CANONICAL_ORIGIN`; Cloudflare can use its platform Request authority or set the same value to force a custom canonical domain. Host and forwarding headers must agree with that authority, so a merely syntactically valid Host is never trusted in production. The same trusted server-only seam creates the Theme manifest and stylesheet URLs.
+Malformed, retired, over-depth, cyclic, or oversized content produces a deterministic visible fallback. Raw JSON remains unchanged in the API response and stored revision.
 
-Link and media rules are separate: links allow safe HTTP(S), mail, telephone, and fragment destinations, while rich-text media must resolve to the delivery origin. Page block media and logos have the narrower `/assets/:id/raw` contract. Credentials, protocol-relative URLs, executable schemes, conflicting forwarded hosts, generic same-origin private paths, and untrusted origins are rejected.
+## URLs, assets, and response identity
 
-New Page block media and logo values must use a site-owned `/assets/:id/raw` path. The editor advertises this form and save/publish validation rejects external logo or block-media URLs. Historical external logo JSON remains untouched; delivery renders an explicit text fallback instead of requesting the external image. Supported icon names are a finite authoring enum rendered from Halo-owned SVG geometry.
+Absolute standalone URLs are derived at request time from the trusted canonical origin. Links allow safe HTTP(S), mail, telephone, and fragment destinations. Rich-text media must resolve to the delivery origin, while Page-block media and logos use the narrower `/assets/:id/raw` contract. Credentials, executable schemes, protocol-relative URLs, conflicting forwarding authority, and unchecked private paths are rejected.
 
-The base CSS URL contains the SHA-256 of its bytes. It is append-only and may therefore use one-year immutable caching plus a strong ETag. A compatible CSS correction creates a new digest URL and all new envelopes reference it; an incompatible markup or selector change introduces contract v2 while the v1 resource remains available.
+The v2 stylesheet URL contains the SHA-256 of its exact bytes and is served append-only with immutable caching, a strong ETag, wildcard read-only CORS, `Cross-Origin-Resource-Policy: cross-origin`, and `nosniff`. Public JSON envelopes retain their existing strong ETag and origin-aware `Vary` behavior. Mutable assets retain revalidation semantics.
 
-## Theme manifest and artifact
+## Version 1 compatibility
 
-`GET /api/delivery/site-theme` is the stable public manifest. It returns the contract version, `siteModeEnabled`, the active `revision`, the exact CSS `stylesheetRevision`, an absolute `stylesheetUrl`, and the default `colorMode`. `revision` hashes the entire normalized editable Theme document, including color mode; `stylesheetRevision` hashes the compiled CSS bytes. A color-mode-only save therefore changes the document revision and manifest validator without inventing a second URL for identical CSS bytes.
+The content-addressed v1 stylesheet, route, serializer bytes, outline allocation, malformed fallbacks, and legacy Page-block behavior remain immutable for existing consumers. New Page and Content API envelopes default to contract v2. Consumers should switch on `rendering.contractVersion`, load the advertised stylesheet list in order, and replace older links when an envelope advertises a new revision.
 
-The manifest uses `Cache-Control: public, max-age=0, must-revalidate`, a strong ETag, `304` responses, wildcard read-only CORS, `Cross-Origin-Resource-Policy: cross-origin`, and `X-Content-Type-Options: nosniff`. `GET /_halo/theme/v1/:stylesheetRevision.css` returns only exact retained bytes as `text/css`, with a strong ETag and one-year immutable caching. Every advertised legacy or customized digest is stored append-only before the URL is returned; the source-controlled v1 default remains reconstructable during pre-install missing-table requests. Missing, malformed, or conflicting stored artifacts fail closed.
-
-Theme v1 accepts only Halo-owned semantic colors, bounded metrics, ordered radii, and predefined local/system font-stack IDs. It has no arbitrary CSS, remote URL, credential, upload, or custom font-file surface. The Public Sans option uses the local face when installed and otherwise proceeds through its `ui-sans-serif` and system fallbacks; every other named face follows its documented generic `sans-serif`, `serif`, or `monospace` fallback without a network request. Accessibility contrast findings are warnings and do not replace structural validation.
-
-The external artifact defines canonical `--halo-*` variables and portable `.halo-content` rules only. It never contains Nuxt UI `--ui-*` variables, Tailwind utilities, Vue components, or HaloPress application CSS. The built-in Site shell has a separate app-only adapter from validated Halo roles to Nuxt UI roles; that adapter is not part of the portable contract. Site mode gates only that shell adapter and its Theme color-mode ownership. Portable Page and rich-text envelopes continue to carry the exact Theme artifact when Site mode is disabled.
-
-Asset IDs are replaceable, so `/assets/:id/raw` is deliberately mutable: `Cache-Control: public, max-age=0, must-revalidate`. Its strong ETag is derived from the fetched object identity and selected content type. Replacement or a new representation changes the validator, and matching public conditional requests receive `304`. Public API envelopes include origin-dependent absolute URLs in their ETag identity and vary on the forwarded protocol.
-
-## Malformed and retired content
-
-Raw document keys and values are preserved for revisions and API compatibility. Save and publish paths validate currently supported blocks, icons, URLs, colors, variants, and site-owned assets. Delivery is lenient so historical unknown icons are omitted without discarding their otherwise valid block, while malformed, unknown, or retired blocks do not fail the whole response and become deterministic visible `halo-block-fallback` markup. Unsupported rich-text nodes and unavailable media likewise produce visible safe fallbacks.
-
-Contract v1 markup and CSS are an external API. Additive response metadata and compatible CSS fixes may retain v1. Any change that removes or redefines stable v1 markup, attributes, or selector behavior requires a new contract version and coexistence with the old resources during client migration.
+Version 1 combined a standalone document surface with Theme/color-mode presentation. Version 2 deliberately removes that coupling. Theme manifests and Theme stylesheets remain separate public resources, but v2 document fragments do not advertise or require them. A consumer may apply its own outer Theme without changing the fragment contract.
