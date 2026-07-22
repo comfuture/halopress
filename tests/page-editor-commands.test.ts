@@ -1,20 +1,26 @@
 // @vitest-environment happy-dom
 
 import { Editor } from '@tiptap/core'
+import Image from '@tiptap/extension-image'
+import TextAlign from '@tiptap/extension-text-align'
 import { GapCursor } from '@tiptap/pm/gapcursor'
-import { NodeSelection } from '@tiptap/pm/state'
+import { NodeSelection, TextSelection } from '@tiptap/pm/state'
 import StarterKit from '@tiptap/starter-kit'
 import { mapEditorItems } from '@nuxt/ui/utils/editor'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import PageBlock from '../app/editor/page/PageBlock'
+import PageHero from '../app/editor/page/PageHero'
+import PagePattern from '../app/editor/page/PagePattern'
 import { clearPageBlockSelection } from '../app/editor/page/selection'
 import type { PageBlockAttrs, PageBlockComponentKey } from '../app/editor/page/types'
 import { createPageProfile } from '../app/editor/profiles'
-import { clonePagePatternContent } from '../shared/page-patterns'
+import ImageUpload from '../app/editor/RichEditorImageUpload'
+import { clonePagePatternContent, pagePatternKeys } from '../shared/page-patterns'
 
 const editors: Editor[] = []
 const testStarterKit = StarterKit.configure({ trailingNode: false })
+const testTextAlign = TextAlign.configure({ types: ['heading', 'paragraph'] })
 
 function block(component: PageBlockComponentKey, title: string) {
   return {
@@ -30,7 +36,7 @@ function block(component: PageBlockComponentKey, title: string) {
 
 function createEditor(components: PageBlockComponentKey[] = ['pageHero', 'pageCard', 'pageCTA']) {
   const editor = new Editor({
-    extensions: [testStarterKit, PageBlock],
+    extensions: [testStarterKit, testTextAlign, Image, ImageUpload, PagePattern, PageHero, PageBlock],
     content: {
       type: 'doc',
       content: components.map(component => block(component, component))
@@ -97,6 +103,15 @@ afterEach(() => {
 })
 
 describe('page block transaction commands', () => {
+  it('accepts every shipped definition through the exact Page schema', () => {
+    for (const key of pagePatternKeys) {
+      const editor = createEditor(['pageCTA'])
+      expect(editor.commands.insertPagePatternAt(0, clonePagePatternContent(key)), key).toBe(true)
+      expect(editor.commands.undo(), key).toBe(true)
+      expect(components(editor), key).toEqual(['pageCTA'])
+    }
+  })
+
   it('inserts registered blocks at exact top-level positions and selects the insertion', () => {
     const editor = createEditor(['pageHero', 'pageCTA'])
     const attrs: PageBlockAttrs & { component: PageBlockComponentKey } = {
@@ -116,50 +131,214 @@ describe('page block transaction commands', () => {
     expect(components(editor)).toEqual(['pageHero', 'pageCTA'])
   })
 
-  it('inserts a deep-cloned pattern in one transaction and removes it with one undo', () => {
+  it('inserts a mixed pattern in one transaction, places a text caret, and removes it with one undo', () => {
     const editor = createEditor(['pageHero', 'pageCTA'])
     const pattern = clonePagePatternContent('testimonial-social-proof')
     const destination = positionAt(editor, 1)
 
     expectSingleTransaction(editor, () => editor.commands.insertPagePatternAt(destination, pattern))
 
-    expect(components(editor)).toEqual(['pageHero', 'pageTestimonial', 'pageLogos', 'pageCTA'])
-    expect(editor.state.selection).toBeInstanceOf(NodeSelection)
-    expect(editor.state.selection.from).toBe(positionAt(editor, 1))
+    expect((editor.getJSON().content ?? []).map(node => node.type)).toEqual([
+      'pageBlock', 'blockquote', 'paragraph', 'pageBlock', 'pageBlock'
+    ])
+    expect(components(editor)).toEqual(['pageHero', undefined, undefined, 'pageLogos', 'pageCTA'])
+    expect(editor.state.selection).toBeInstanceOf(TextSelection)
+    expect(editor.state.selection.$from.parent.type.name).toBe('paragraph')
     expect(editor.commands.undo()).toBe(true)
     expect(components(editor)).toEqual(['pageHero', 'pageCTA'])
     expect(pattern).toEqual(clonePagePatternContent('testimonial-social-proof'))
   })
 
-  it('keeps every inserted pattern block independently selectable and editable', () => {
+  it('inserts a non-atomic Hero and edits its heading with normal text and mark commands', () => {
     const editor = createEditor(['pageHero'])
-    expect(editor.commands.insertPagePatternAt(editor.state.doc.content.size, clonePagePatternContent('testimonial-social-proof'))).toBe(true)
+    expect(editor.commands.insertPagePatternAt(editor.state.doc.content.size, clonePagePatternContent('centered-hero'))).toBe(true)
 
-    selectAt(editor, 2)
-    expect(editor.commands.updatePageBlockAttributes({ props: { title: 'Updated proof' } })).toBe(true)
-    expect(titleAt(editor, 2)).toBe('Updated proof')
-    expect(components(editor)).toEqual(['pageHero', 'pageTestimonial', 'pageLogos'])
+    const inserted = editor.getJSON().content?.[1]
+    expect(inserted).toMatchObject({
+      type: 'pageHero',
+      attrs: { orientation: 'vertical', reverse: false }
+    })
+    expect(editor.state.selection).toBeInstanceOf(TextSelection)
+    expect(editor.state.selection.$from.parent.type.name).toBe('heading')
+    expect(editor.state.selection.$from.node(1).type.name).toBe('pageHero')
+
+    expect(editor.chain().toggleBold().insertContent('Editable ').run()).toBe(true)
+    expect(editor.getJSON().content?.[1]?.content?.[0]?.content?.[0]).toMatchObject({
+      type: 'text',
+      text: 'Editable ',
+      marks: [{ type: 'bold' }]
+    })
   })
 
-  it('rejects malformed patterns and non-top-level pattern destinations without mutation', () => {
+  it('uses the live Page schema to reject malformed nesting and unknown nodes without mutation', () => {
     const editor = new Editor({
-      extensions: [testStarterKit, PageBlock],
+      extensions: [testStarterKit, testTextAlign, Image, ImageUpload, PagePattern, PageHero, PageBlock],
       content: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Text' }] }] }
     })
     editors.push(editor)
     const before = editor.getJSON()
     const malformed = clonePagePatternContent('centered-hero') as any
-    malformed[0].attrs.props.class = 'fixed inset-0'
+    malformed[0].attrs.class = 'fixed inset-0'
+    const unknownAttrs = clonePagePatternContent('feature-grid') as any
+    unknownAttrs[0].attrs.futureRuntimeKey = 'unknown'
+    const invalidNesting = clonePagePatternContent('centered-hero') as any
+    invalidNesting[0].content = [{ type: 'heading', attrs: { level: 1 }, content: [{ type: 'text', text: 'Missing required copy' }] }]
 
     expect(editor.commands.insertPagePatternAt(0, malformed)).toBe(false)
+    expect(editor.commands.insertPagePatternAt(0, unknownAttrs)).toBe(false)
+    expect(editor.commands.insertPagePatternAt(0, invalidNesting)).toBe(false)
+    expect(editor.commands.insertPagePatternAt(0, [{ type: 'remotePatternWidget' }] as any)).toBe(false)
     expect(editor.commands.insertPagePatternAt(1, clonePagePatternContent('centered-hero'))).toBe(false)
     expect(editor.commands.insertPagePatternAt(0, [])).toBe(false)
     expect(editor.getJSON()).toEqual(before)
   })
 
+  it('updates Hero structure without flattening child content or losing the nested caret', () => {
+    const editor = new Editor({
+      extensions: [testStarterKit, testTextAlign, Image, ImageUpload, PagePattern, PageHero, PageBlock],
+      content: { type: 'doc', content: clonePagePatternContent('centered-hero') }
+    })
+    editors.push(editor)
+    editor.commands.setTextSelection(2)
+    const before = structuredClone(editor.getJSON().content?.[0]?.content)
+
+    expectSingleTransaction(editor, () => editor.commands.updatePageHeroAttributes({
+      orientation: 'horizontal',
+      reverse: true
+    }))
+
+    expect(editor.getJSON().content?.[0]).toMatchObject({
+      type: 'pageHero',
+      attrs: { orientation: 'horizontal', reverse: true },
+      content: before
+    })
+    expect(editor.state.selection).toBeInstanceOf(TextSelection)
+    expect(editor.state.selection.$from.node(1).type.name).toBe('pageHero')
+    expect(editor.commands.undo()).toBe(true)
+    expect(editor.getJSON().content?.[0]?.attrs).toMatchObject({ orientation: 'vertical', reverse: false })
+  })
+
+  it('accepts the normal Image upload node at the end of editable Hero content', () => {
+    const editor = new Editor({
+      extensions: [testStarterKit, testTextAlign, Image, ImageUpload, PagePattern, PageHero, PageBlock],
+      content: { type: 'doc', content: clonePagePatternContent('centered-hero') }
+    })
+    editors.push(editor)
+    let lastParagraphEnd = -1
+    editor.state.doc.descendants((node, pos, parent) => {
+      if (node.type.name === 'paragraph' && parent?.type.name === 'pageHero') {
+        lastParagraphEnd = pos + node.nodeSize - 1
+      }
+    })
+    expect(lastParagraphEnd).toBeGreaterThan(0)
+    editor.commands.setTextSelection(lastParagraphEnd)
+
+    expectSingleTransaction(editor, () => editor.commands.insertImageUpload())
+
+    expect(editor.getJSON().content?.[0]?.content?.at(-1)?.type).toBe('imageUpload')
+    expect(editor.commands.undo()).toBe(true)
+    expect(editor.getJSON().content?.[0]?.content?.at(-1)?.type).toBe('paragraph')
+  })
+
+  it('converts a legacy Hero explicitly in one lossless transaction and supports undo', () => {
+    const editor = new Editor({
+      extensions: [testStarterKit, testTextAlign, Image, ImageUpload, PagePattern, PageHero, PageBlock],
+      content: {
+        type: 'doc',
+        content: [{
+          type: 'pageBlock',
+          attrs: {
+            component: 'pageHero',
+            props: {
+              headline: 'Eyebrow',
+              title: 'Legacy title',
+              description: 'Legacy description',
+              orientation: 'horizontal',
+              reverse: true,
+              links: [{ label: 'Read more', to: '#more' }]
+            },
+            advanced: {},
+            media: { url: '/assets/hero/raw', alt: 'Hero image' }
+          }
+        }]
+      }
+    })
+    editors.push(editor)
+    selectAt(editor, 0)
+
+    expectSingleTransaction(editor, () => editor.commands.convertLegacyPageHeroBlock())
+
+    expect(editor.getJSON().content?.[0]).toMatchObject({
+      type: 'pageHero',
+      attrs: { orientation: 'horizontal', reverse: true }
+    })
+    expect(editor.state.doc.nodeAt(0)?.textContent).toContain('EyebrowLegacy titleLegacy descriptionRead more')
+    expect(editor.getJSON().content?.[0]?.content?.at(-1)).toMatchObject({
+      type: 'image',
+      attrs: { src: '/assets/hero/raw', alt: 'Hero image' }
+    })
+    expect(editor.state.selection).toBeInstanceOf(TextSelection)
+    expect(editor.commands.undo()).toBe(true)
+    expect(editor.getJSON().content?.[0]).toMatchObject({
+      type: 'pageBlock',
+      attrs: { component: 'pageHero' }
+    })
+  })
+
+  it('blocks legacy Hero conversion when advanced data would be lost', () => {
+    const editor = new Editor({
+      extensions: [testStarterKit, testTextAlign, Image, ImageUpload, PagePattern, PageHero, PageBlock],
+      content: {
+        type: 'doc',
+        content: [{
+          type: 'pageBlock',
+          attrs: {
+            component: 'pageHero',
+            props: { title: 'Legacy title' },
+            advanced: { custom: true },
+            media: {}
+          }
+        }]
+      }
+    })
+    editors.push(editor)
+    selectAt(editor, 0)
+    const before = editor.getJSON()
+
+    expect(editor.commands.convertLegacyPageHeroBlock()).toBe(false)
+    expect(editor.getJSON()).toEqual(before)
+  })
+
+  it('preserves empty legacy Hero text without inventing replacement copy', () => {
+    const editor = new Editor({
+      extensions: [testStarterKit, testTextAlign, Image, ImageUpload, PagePattern, PageHero, PageBlock],
+      content: {
+        type: 'doc',
+        content: [{
+          type: 'pageBlock',
+          attrs: {
+            component: 'pageHero',
+            props: { title: '', description: '' },
+            advanced: {},
+            media: {}
+          }
+        }]
+      }
+    })
+    editors.push(editor)
+    selectAt(editor, 0)
+
+    expect(editor.commands.convertLegacyPageHeroBlock()).toBe(true)
+    expect(editor.getJSON().content?.[0]).toMatchObject({
+      type: 'pageHero',
+      content: [{ type: 'heading' }, { type: 'paragraph' }]
+    })
+    expect(editor.state.doc.nodeAt(0)?.textContent).toBe('')
+  })
+
   it('rejects unknown component keys and non-top-level insertion positions', () => {
     const editor = new Editor({
-      extensions: [testStarterKit, PageBlock],
+      extensions: [testStarterKit, testTextAlign, Image, ImageUpload, PagePattern, PageHero, PageBlock],
       content: {
         type: 'doc',
         content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Text' }] }]
@@ -300,6 +479,24 @@ describe('page block transaction commands', () => {
     expect(deleteEditor.state.selection.from).toBe(positionAt(deleteEditor, 0))
     expect(deleteEditor.commands.undo()).toBe(true)
     expect(components(deleteEditor)).toEqual(['pageHero', 'pageCard', 'pageCTA'])
+  })
+
+  it('keeps whole-unit duplicate, move, and delete actions for editable Heroes', () => {
+    const editor = new Editor({
+      extensions: [testStarterKit, testTextAlign, Image, ImageUpload, PagePattern, PageHero, PageBlock],
+      content: {
+        type: 'doc',
+        content: [...clonePagePatternContent('centered-hero'), block('pageCTA', 'Closing')]
+      }
+    })
+    editors.push(editor)
+
+    dragMenuAction(editor, 0, 'Duplicate').onSelect()
+    expect((editor.getJSON().content ?? []).map(node => node.type)).toEqual(['pageHero', 'pageHero', 'pageBlock'])
+    dragMenuAction(editor, 1, 'Move down').onSelect()
+    expect((editor.getJSON().content ?? []).map(node => node.type)).toEqual(['pageHero', 'pageBlock', 'pageHero'])
+    dragMenuAction(editor, 2, 'Delete').onSelect()
+    expect((editor.getJSON().content ?? []).map(node => node.type)).toEqual(['pageHero', 'pageBlock'])
   })
 
   it('rejects commands without a registered page-block NodeSelection', () => {

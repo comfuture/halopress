@@ -77,14 +77,17 @@ describe('richText and page profiles', () => {
     expect(imageUpload?.config.addCommands).toBeUndefined()
   })
 
-  it('composes page capabilities from rich text plus PageBlock', () => {
+  it('composes page pattern, editable Hero, and legacy block capabilities', () => {
     const richText = createRichTextProfile()
     const page = createPageProfile()
 
     expect(page.extensions.map(extension => extension.name)).toEqual([
       ...richText.extensions.map(extension => extension.name),
+      'pagePattern',
+      'pageHero',
       'pageBlock'
     ])
+    expect(page.readOnlyExtensions.map(extension => extension.name)).toContain('pageHero')
     expect(page.readOnlyExtensions.map(extension => extension.name)).toContain('pageBlock')
   })
 
@@ -94,12 +97,17 @@ describe('richText and page profiles', () => {
     const pageBlockItems = page.quickMenuGroups
       .flatMap(create => create({ ...context, node: { type: 'pageBlock' } }))
       .flat()
+    const pageHeroItems = page.quickMenuGroups
+      .flatMap(create => create({ ...context, node: { type: 'pageHero' } }))
+      .flat()
     const paragraphItems = page.quickMenuGroups
       .flatMap(create => create({ ...context, node: { type: 'paragraph' } }))
       .flat()
 
     expect(pageBlockItems.map(item => item.label)).not.toContain('Turn into')
     expect(pageBlockItems.map(item => item.label)).not.toContain('Reset formatting')
+    expect(pageHeroItems.map(item => item.label)).not.toContain('Turn into')
+    expect(pageHeroItems.map(item => item.label)).not.toContain('Reset formatting')
     expect(pageBlockItems.map(item => item.label)).toEqual(expect.arrayContaining([
       'Duplicate', 'Copy to clipboard', 'Move up', 'Move down', 'Delete'
     ]))
