@@ -63,7 +63,7 @@ defineSlots<{
   <UDashboardPanel :id="`desk-site-${section}`">
     <template #header>
       <DeskNavbar :title="title" :description="description">
-        <template v-if="enabled && !verifyingMode && !error && $slots.actions" #actions>
+        <template v-if="$slots.actions && (generalSection || (enabled && !verifyingMode && !error))" #actions>
           <slot name="actions" />
         </template>
       </DeskNavbar>
