@@ -9,6 +9,10 @@ import {
   PORTABLE_CONTENT_STYLESHEET_PATH
 } from '../shared/portable-content'
 import { portableContentFixture } from './fixtures/portable-content'
+import {
+  createStandalonePageRendering,
+  createStandaloneStructuredContentRendering
+} from '../server/utils/standalone-document-renderer'
 
 describe('portable standalone DOM contract', () => {
   it('parses separate-origin semantic output in happy-dom with the versioned stylesheet', () => {
@@ -95,5 +99,39 @@ describe('portable standalone DOM contract', () => {
       return [...element.classList].every(className => className.startsWith('halo-'))
     })).toBe(true)
     expect(template.innerHTML).not.toMatch(/(?:class|style)="(?:u-|grid|flex|container|prose|tailwind)/i)
+  })
+
+  it('keeps malformed v2 Page and structured fragments valid and outline-free', () => {
+    const malformed = {
+      type: 'doc',
+      content: [{
+        type: 'paragraph',
+        content: [
+          { type: 'text', text: 'Before' },
+          {
+            type: 'mystery',
+            content: [{ type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: 'Hidden' }] }]
+          },
+          { type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: 'Nested' }] }
+        ]
+      }]
+    }
+    const page = createStandalonePageRendering(malformed, { origin: 'https://press.example.com' })
+    const structured = createStandaloneStructuredContentRendering(
+      { body: malformed },
+      [{ fieldId: 'field-body', key: 'body', kind: 'richtext' }],
+      { origin: 'https://press.example.com' }
+    )
+    const template = document.createElement('template')
+    template.innerHTML = page.html
+    const paragraph = template.content.querySelector('article > p')
+
+    expect(page.outline).toEqual([])
+    expect(structured.outline).toEqual([])
+    expect(structured.fields.body?.outline).toEqual([])
+    expect(paragraph?.querySelectorAll(':scope > .halo-content-fallback')).toHaveLength(2)
+    expect(paragraph?.querySelectorAll(':scope > p, :scope > h2')).toHaveLength(0)
+    expect(template.content.querySelectorAll('h1, h2, h3, h4')).toHaveLength(0)
+    expect(structured.fields.body?.html).toContain('<span class="halo-content-fallback" role="status">Unsupported content</span>')
   })
 })

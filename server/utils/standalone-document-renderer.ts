@@ -1,6 +1,6 @@
 import {
   createPortablePageRenderingForStandaloneV2,
-  createPortableStructuredContentRendering,
+  createPortableStructuredContentRenderingForStandaloneV2,
   normalizePortableOrigin
 } from '~~/shared/portable-content'
 import {
@@ -41,7 +41,7 @@ export function createStandaloneStructuredContentRendering(
   fields: StandaloneSchemaField[],
   options: { origin: string }
 ): StandaloneStructuredContentRendering {
-  const rendering = createPortableStructuredContentRendering(content, fields, { origin: options.origin })
+  const rendering = createPortableStructuredContentRenderingForStandaloneV2(content, fields, { origin: options.origin })
   return {
     contractVersion: STANDALONE_DOCUMENT_CONTRACT_VERSION,
     stylesheets: [standaloneStylesheetUrl(options.origin)],

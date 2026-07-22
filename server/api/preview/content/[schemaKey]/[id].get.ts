@@ -40,7 +40,6 @@ export default defineEventHandler(async (event) => {
   if (!sourceSchema) return sendH3Error(event, notFound('Content not found'))
   const content = parseContentJson(row.contentJson)
   const fields = sourceSchema.registry?.fields ?? []
-  const outline = extractStructuredAuthoredOutline(content, fields)
   const includeRendering = getQuery(event).rendering !== '0'
   return {
     id: row.id,
@@ -59,7 +58,7 @@ export default defineEventHandler(async (event) => {
       schemaKey: row.schemaKey,
       schemaVersion: row.schemaVersion,
       canonicalPath: resolvePreviewLayoutCanonicalPath(row.publicPath)
-    }, outline),
+    }, () => extractStructuredAuthoredOutline(content, fields)),
     updatedAt: row.updatedAt,
     ...publicationMetadata(row)
   }

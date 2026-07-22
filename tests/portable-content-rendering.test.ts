@@ -56,6 +56,47 @@ describe('portable authored-content renderer', () => {
       .toContain('<p class="halo-content-fallback" role="status">Unsupported content</p>')
   })
 
+  it('keeps v2 legacy block and ordinary heading outlines aligned with the native contract', () => {
+    const document = {
+      type: 'doc',
+      content: [
+        {
+          type: 'pageBlock',
+          attrs: {
+            component: 'pageSection',
+            props: { title: 'Section', features: [{ title: 'Feature', description: 'Detail' }] }
+          }
+        },
+        {
+          type: 'heading',
+          attrs: { level: 2 },
+          content: [{ type: 'text', text: 'Feature' }]
+        }
+      ]
+    }
+    const rendering = createStandalonePageRendering(document, { origin })
+
+    expect(rendering.outline).toEqual([
+      { id: 'halo-heading-section', level: 2, text: 'Section' },
+      { id: 'halo-heading-feature-2', level: 2, text: 'Feature' }
+    ])
+    expect(rendering.html).toContain('<h3 class="halo-feature-title" id="halo-heading-feature">Feature</h3>')
+    expect(rendering.html).toContain('<h2 id="halo-heading-feature-2">Feature</h2>')
+  })
+
+  it('does not expose v2 outline anchors when output limits replace the fragment', () => {
+    const rendering = createStandalonePageRendering({
+      type: 'doc',
+      content: [
+        { type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: 'Missing anchor' }] },
+        { type: 'paragraph', content: [{ type: 'text', text: 'x'.repeat(600_000) }] }
+      ]
+    }, { origin })
+
+    expect(rendering.html).toContain('Content exceeds portable rendering limits')
+    expect(rendering.outline).toEqual([])
+  })
+
   it('renders rich text and every shipped Page block as stable semantic Halo markup', () => {
     const before = JSON.stringify(portableContentFixture)
     const rendering = createPortablePageRendering(portableContentFixture, { origin })
