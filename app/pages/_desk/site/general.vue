@@ -189,9 +189,19 @@ async function refreshAll() {
     section="general"
     title="General"
     description="Configure Site availability, public identity, defaults, and built-in compatibility fallbacks."
-    :pending="pending || modePending || layoutAssignmentPending"
-    @refresh="refreshAll"
   >
+    <template #actions>
+      <UButton
+        color="neutral"
+        variant="outline"
+        icon="i-lucide-rotate-cw"
+        :loading="pending || modePending || layoutAssignmentPending"
+        @click="refreshAll"
+      >
+        Refresh
+      </UButton>
+    </template>
+
     <div class="space-y-6">
       <section class="space-y-5 rounded-lg border border-default p-5">
         <div class="flex flex-wrap items-start justify-between gap-4">
