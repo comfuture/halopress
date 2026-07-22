@@ -156,7 +156,7 @@ describe('Layout assignment composables', () => {
 
 describe('Layout assignment editor integration', () => {
   it('tracks and saves the Site default independently with immediate-inheritance copy', async () => {
-    const site = await source('app/pages/_desk/settings/site.vue')
+    const site = await source('app/pages/_desk/site/general.vue')
 
     expect(site).toContain('useSiteLayoutAssignmentSettings()')
     expect(site).toContain('const siteLayoutDirty = computed(() => siteLayoutId.value !== savedSiteLayoutId.value)')

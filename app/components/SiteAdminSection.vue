@@ -42,13 +42,16 @@ const breadcrumbItems = computed<BreadcrumbItem[]>(() => [
       }])
 ])
 
-const navigationItems = computed<NavigationMenuItem[]>(() => SITE_ADMIN_SECTIONS.map(section => ({
+const navigationItems = computed<NavigationMenuItem[]>(() => SITE_ADMIN_SECTIONS
+  .filter(section => enabled.value || section.id === 'general')
+  .map(section => ({
   label: section.label,
   description: section.description,
   icon: section.icon,
   to: section.to,
   active: isSiteAdminRouteActive(route.path, section)
-})))
+  })))
+const generalSection = computed(() => props.section === 'general')
 
 defineSlots<{
   actions?: () => unknown
@@ -70,13 +73,13 @@ defineSlots<{
       <div class="mx-auto w-full max-w-6xl space-y-6 pb-10">
         <UBreadcrumb :items="breadcrumbItems" aria-label="Site location" />
 
-        <div v-if="verifyingMode" class="space-y-3" aria-busy="true" aria-label="Loading Site mode">
+        <div v-if="!generalSection && verifyingMode" class="space-y-3" aria-busy="true" aria-label="Loading Site mode">
           <USkeleton class="h-24 w-full" />
           <USkeleton class="h-40 w-full" />
         </div>
 
         <UAlert
-          v-else-if="error"
+          v-else-if="!generalSection && error"
           title="Site mode could not be verified"
           :description="error.statusMessage || 'Site tools remain unavailable until the current mode can be verified.'"
           color="error"
@@ -87,23 +90,23 @@ defineSlots<{
             <UButton color="neutral" variant="outline" icon="i-lucide-rotate-cw" @click="refresh()">
               Try again
             </UButton>
-            <UButton to="/_desk/settings/site" icon="i-lucide-settings">
-              Open Site settings
+            <UButton to="/_desk/site/general" icon="i-lucide-settings">
+              Open Site General
             </UButton>
           </template>
         </UAlert>
 
         <UAlert
-          v-else-if="!enabled"
+          v-else-if="!generalSection && !enabled"
           title="Site features are disabled"
-          description="Enable Site features in Settings to use Themes, HaloPress Layouts, and Menus. Existing presentation settings, content, and pages are preserved."
+          description="Enable Site features in General to use Themes, HaloPress Layouts, and Menus. Existing presentation settings, content, and pages are preserved."
           color="neutral"
           variant="subtle"
           icon="i-lucide-circle-off"
         >
           <template #actions>
-            <UButton to="/_desk/settings/site" icon="i-lucide-settings">
-              Open Site settings
+            <UButton to="/_desk/site/general" icon="i-lucide-settings">
+              Open Site General
             </UButton>
           </template>
         </UAlert>

@@ -79,14 +79,16 @@ describe('public membership UI contracts', () => {
   it('uses resilient provider icons and invitation controls', async () => {
     const [providers, membership, locale] = await Promise.all([
       readProjectFile('app/components/PublicAuthProviders.vue'),
-      readProjectFile('app/pages/_desk/settings/membership.vue'),
+      readProjectFile('app/components/settings/MembershipPanel.vue'),
       readProjectFile('app/composables/useDisplayLocale.ts')
     ])
 
     expect(providers).toContain(`providerId === 'google'`)
     expect(providers).toContain(`:icon="providerIcon(provider.id)"`)
     expect(providers).toContain(`'i-lucide-key-round'`)
-    expect(membership).toMatch(/await Promise\.all\(\[\s*useFetch<MembershipSettings>/)
+    expect(membership).toContain(`useFetch<MembershipSettings>('/api/settings/membership')`)
+    expect(membership).toContain(`useFetch<{ items: Invitation[] }>('/api/settings/membership/invitations')`)
+    expect(membership).not.toMatch(/const \[[\s\S]*?\] = await Promise\.all/)
     expect(membership).toContain(`const locale = useDisplayLocale()`)
     expect(locale).toContain(`useState<string>('display-locale'`)
     expect(membership).toContain(`timeZone: 'UTC'`)

@@ -121,22 +121,25 @@ describe('Site Theme app and mode boundaries', () => {
     expect(rendering.themeRevision).toBe(artifact.revision)
   })
 
-  it('keeps Appearance reversible and partitions color-mode ownership deliberately', async () => {
-    const [appearance, app, desk, layout, pagePreview, contentPreview] = await Promise.all([
+  it('moves Appearance to Site and partitions Desk color-mode ownership deliberately', async () => {
+    const [appearance, app, desk, deskPreference, layout, pagePreview, contentPreview] = await Promise.all([
       readFile(resolve(root, 'app/pages/_desk/settings/appearance.vue'), 'utf8'),
       readFile(resolve(root, 'app/app.vue'), 'utf8'),
       readFile(resolve(root, 'app/layouts/desk.vue'), 'utf8'),
+      readFile(resolve(root, 'app/composables/useDeskColorMode.ts'), 'utf8'),
       readFile(resolve(root, 'app/components/layout-renderer/BuiltInLayoutRenderer.vue'), 'utf8'),
       readFile(resolve(root, 'app/pages/_preview/pages/[id].vue'), 'utf8'),
       readFile(resolve(root, 'app/pages/_preview/content/[schemaKey]/[id].vue'), 'utf8')
     ])
-    expect(appearance).toContain('!siteModePending.value && siteModeEnabled.value')
-    expect(appearance).toContain('navigateTo(\'/_desk/site/themes\', { replace: true })')
-    expect(appearance).not.toContain('redirectCode: 301')
-    expect(appearance).toContain('v-if="!siteModePending && !siteModeEnabled"')
+    expect(appearance).toContain('navigateTo(\'/_desk/site/themes\'')
+    expect(appearance).toContain('redirectCode: 301')
+    expect(appearance).not.toContain('savePatch')
     expect(app).not.toContain('useSitePresentation()')
     expect(app).not.toContain('useSiteTheme()')
-    expect(desk).toContain('presentation.value.appearance.colorMode')
+    expect(desk).toContain('useDeskColorMode()')
+    expect(desk).not.toContain('presentation.value.appearance.colorMode')
+    expect(deskPreference).toContain('useColorMode()')
+    expect(deskPreference).not.toContain('site.presentation')
     for (const preview of [pagePreview, contentPreview]) {
       expect(preview).toContain('const { theme: previewTheme } = useSiteTheme()')
       expect(preview).toContain('previewTheme.value?.colorMode')

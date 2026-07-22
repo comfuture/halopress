@@ -2,7 +2,11 @@
 
 HaloPress settings are feature-owned contracts, not a public or administrator-facing key/value editor.
 
-The shared section registry in `shared/settings-sections.ts` owns stable Desk routes and distinguishes implemented sections from extension points. Each implemented server section must:
+Desk navigation follows the same ownership boundary. `/_desk/settings/**` contains only HaloPress administrator behavior: browser-local Desk preferences and the combined authentication-and-membership workflow. Everything that affects the public website belongs to `/_desk/site/**`, including Site enablement, identity, branding, the default HaloPress Layout, Themes, Menus, and preserved built-in-renderer compatibility values. The main Desk sidebar is the only Settings navigation surface; empty speculative destinations are not registered.
+
+Desk color mode is stored as a browser cookie and applied through Nuxt color mode when the Desk layout mounts. It never reads or writes `site.presentation`, Theme documents, Layouts, Menus, or portable rendering artifacts. Public Site color-mode ownership remains with the active Theme or preserved built-in presentation contract.
+
+The shared section registry in `shared/settings-sections.ts` owns only implemented Desk routes. Each implemented server section must:
 
 1. define a strict, versioned schema and safe defaults in `shared/`;
 2. expose an administrator endpoint that calls `requireAdmin` before reading a body or database state;
@@ -13,7 +17,7 @@ The shared section registry in `shared/settings-sections.ts` owns stable Desk ro
 
 Site presentation is the reference implementation. `site.presentation` stores one atomic JSON document for General, Appearance, Shell, the legacy Navigation snapshot, and Footer. The update endpoint accepts complete typed General, Appearance, Shell, and Footer patches, validates the merged document, and retains referenced branding assets. Navigation writes have moved to named Site menu resources; an old Navigation patch is rejected with the stable Global menu ID and its Desk location. The public delivery endpoint returns only resolved presentation values and fallbacks, with a revision-backed ETag computed from the final canonicalized projection so SSR and hydration use the same current contract.
 
-Site feature availability is a separate administrator-owned contract. `site.mode` stores the strict versioned `{ version: 1, enabled: boolean }` document and defaults to disabled when the row is missing or malformed. Enabling it exposes the Site administration area in Desk; disabling it hides that area without deleting `site.presentation`, content, pages, Theme artifacts, Layout resources, or menus. There is intentionally no public `site.mode` endpoint. The minimal enabled flag is projected through the public Theme manifest so anonymous Site SSR can gate only its shell adapter without reading an administrator endpoint.
+Site feature availability is a separate administrator-owned contract. `site.mode` stores the strict versioned `{ version: 1, enabled: boolean }` document and defaults to disabled when the row is missing or malformed. Site General remains reachable while disabled so administrators can enable it or manage preserved built-in fallbacks. Enabled-only Theme, Layout, and Menu tools remain gated, and disabling Site never deletes `site.presentation`, content, pages, Theme artifacts, Layout resources, or menus. There is intentionally no public `site.mode` endpoint. The minimal enabled flag is projected through the public Theme manifest so anonymous Site SSR can gate only its shell adapter without reading an administrator endpoint.
 
 ## Active Site Theme
 
@@ -128,4 +132,4 @@ See [Layout resource contract](./site-layouts.md) for the complete document, pre
 
 Membership uses the same typed-section pattern with one atomic `auth.membership.policy` JSON value. It controls disabled, open, invitation-only, and approval-required admission separately from provider credentials. Invitation codes are email-bound, expiring, single-use values whose hashes are stored in the database. See [Public membership and authentication](./AUTH_MEMBERSHIP.md) for canonical-email migration behavior, stable Google identity linking, rate limits, session enforcement, and recovery limitations.
 
-Future Publishing, Integrations, and Operations features should replace their intentional empty states with the same pattern. They must not add fields to the site-presentation document unless those fields are part of the public shell contract.
+Future Publishing, Integrations, and Operations features may add a Settings child only after a typed, actionable administrator UI exists. They must not reserve empty user-facing routes or add fields to the site-presentation document unless those fields are part of the public shell contract.

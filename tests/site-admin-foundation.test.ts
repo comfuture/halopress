@@ -11,25 +11,30 @@ import {
 } from '../shared/site-admin-sections'
 
 describe('Site administration foundation', () => {
-  it('owns one overview and exactly the Themes, Layouts, and Menus child routes', () => {
+  it('owns one overview plus General, Themes, Layouts, and Menus child routes', () => {
     expect(SITE_ADMIN_SECTIONS.map(section => section.id)).toEqual([
       'overview',
+      'general',
       'themes',
       'layouts',
       'menus'
     ])
     expect(SITE_ADMIN_SECTIONS.map(section => section.to)).toEqual([
       '/_desk/site',
+      '/_desk/site/general',
       '/_desk/site/themes',
       '/_desk/site/layouts',
       '/_desk/site/menus'
     ])
-    expect(SITE_ADMIN_CHILD_SECTIONS.map(section => section.label)).toEqual(['Themes', 'Layouts', 'Menus'])
+    expect(SITE_ADMIN_CHILD_SECTIONS.map(section => section.label)).toEqual(['General', 'Themes', 'Layouts', 'Menus'])
     expect(new Set(SITE_ADMIN_SECTIONS.map(section => section.to)).size).toBe(SITE_ADMIN_SECTIONS.length)
   })
 
-  it('hides the entire navigation when disabled and marks exact or deep routes when enabled', () => {
-    expect(buildSiteAdminNavigation('/_desk/site', false)).toBeNull()
+  it('keeps General reachable when disabled and marks exact or deep routes when enabled', () => {
+    expect(buildSiteAdminNavigation('/_desk/site/general', false)).toMatchObject({
+      active: true,
+      children: [{ label: 'General', to: '/_desk/site/general', active: true }]
+    })
 
     const overview = buildSiteAdminNavigation('/_desk/site', true)
     expect(overview).toMatchObject({
@@ -38,6 +43,7 @@ describe('Site administration foundation', () => {
       value: 'site',
       active: true,
       children: [
+        { label: 'General', to: '/_desk/site/general', active: false },
         { label: 'Themes', to: '/_desk/site/themes', active: false },
         { label: 'Layouts', to: '/_desk/site/layouts', active: false },
         { label: 'Menus', to: '/_desk/site/menus', active: false }
@@ -46,7 +52,7 @@ describe('Site administration foundation', () => {
 
     const deepLayout = buildSiteAdminNavigation('/_desk/site/layouts/layout-1/edit', true)
     expect(deepLayout?.active).toBe(true)
-    expect(deepLayout?.children.map(child => child.active)).toEqual([false, true, false])
+    expect(deepLayout?.children.map(child => child.active)).toEqual([false, false, true, false])
     expect(buildSiteAdminNavigation('/_desk/site-other', true)?.active).toBe(false)
     expect(isSiteAdminRouteActive('/_desk/site/themes-extra', findSiteAdminSection('themes'))).toBe(false)
   })
@@ -55,6 +61,7 @@ describe('Site administration foundation', () => {
     const root = resolve(import.meta.dirname, '..')
     const pagePaths = [
       'app/pages/_desk/site/index.vue',
+      'app/pages/_desk/site/general.vue',
       'app/pages/_desk/site/themes.vue',
       'app/pages/_desk/site/layouts/index.vue',
       'app/pages/_desk/site/layouts/[layoutId].vue',
@@ -64,7 +71,7 @@ describe('Site administration foundation', () => {
     const [component, deskLayout, settingsPage, composable, presentationComposable, themeComposable, ...pages] = await Promise.all([
       readFile(resolve(root, 'app/components/SiteAdminSection.vue'), 'utf8'),
       readFile(resolve(root, 'app/layouts/desk.vue'), 'utf8'),
-      readFile(resolve(root, 'app/pages/_desk/settings/site.vue'), 'utf8'),
+      readFile(resolve(root, 'app/pages/_desk/site/general.vue'), 'utf8'),
       readFile(resolve(root, 'app/composables/useSiteModeSettings.ts'), 'utf8'),
       readFile(resolve(root, 'app/composables/useSitePresentationSettings.ts'), 'utf8'),
       readFile(resolve(root, 'app/composables/useSiteThemeSettings.ts'), 'utf8'),
@@ -77,22 +84,25 @@ describe('Site administration foundation', () => {
     }
     expect(pages[0]).not.toContain('navigateTo(')
     expect(component).toContain('Site features are disabled')
-    expect(component).toContain('Open Site settings')
+    expect(component).toContain('Open Site General')
     expect(component).toContain('aria-label="Site location"')
     expect(component).toContain('aria-label="Site sections"')
-    expect(component).toContain('v-if="verifyingMode"')
+    expect(component).toContain('v-if="!generalSection && verifyingMode"')
     expect(component).not.toContain('await useSiteMode()')
     expect(deskLayout).toContain('buildSiteAdminNavigation(route.path, siteModeEnabled.value)')
     expect(deskLayout).toContain('const { enabled: siteModeEnabled } = useSiteMode()')
     expect(deskLayout).toContain('await useFetch<{ items: any[] }>(\'/api/schema/list\')')
     expect(deskLayout).not.toContain('await Promise.all')
     expect(deskLayout).toContain('v-model="openNavItems"')
-    expect(deskLayout).toContain('watch(siteModeEnabled, enabled => setNavigationOpen(\'site\', enabled), { immediate: true })')
+    expect(deskLayout).toContain('setNavigationOpen(\'site\', enabled || siteRoute)')
     expect(deskLayout).toContain(':collapsed="collapsed"')
     expect(deskLayout).toContain(':popover="collapsed"')
     expect(settingsPage).toContain('v-model="modeState.enabled"')
     expect(settingsPage).toContain('Save Site mode')
     expect(settingsPage).toContain(':disabled="modeControlsDisabled"')
+    expect(settingsPage).toContain('id="built-in-footer"')
+    expect(settingsPage).toContain('Open Layouts')
+    expect(settingsPage).toContain('Open Menus')
     expect(composable).toContain('export function useSiteMode()')
     expect(composable).toContain('export function useSiteModeSettings()')
     expect(composable).not.toContain('export async function useSiteMode')

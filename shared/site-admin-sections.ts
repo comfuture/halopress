@@ -1,4 +1,4 @@
-export type SiteAdminSectionId = 'overview' | 'themes' | 'layouts' | 'menus'
+export type SiteAdminSectionId = 'overview' | 'general' | 'themes' | 'layouts' | 'menus'
 
 export type SiteAdminSection = {
   id: SiteAdminSectionId
@@ -31,6 +31,13 @@ export const SITE_ADMIN_SECTIONS: readonly SiteAdminSection[] = [
     description: 'Site feature status and presentation summary.',
     icon: 'i-lucide-layout-dashboard',
     to: '/_desk/site'
+  },
+  {
+    id: 'general',
+    label: 'General',
+    description: 'Site availability, identity, defaults, and built-in fallback settings.',
+    icon: 'i-lucide-settings-2',
+    to: '/_desk/site/general'
   },
   {
     id: 'themes',
@@ -66,9 +73,7 @@ export function isSiteAdminRouteActive(path: string, section: SiteAdminSection) 
   return path === section.to || path.startsWith(`${section.to}/`)
 }
 
-export function buildSiteAdminNavigation(path: string, enabled: boolean): SiteAdminNavigation | null {
-  if (!enabled) return null
-
+export function buildSiteAdminNavigation(path: string, enabled: boolean): SiteAdminNavigation {
   return {
     label: 'Site',
     to: '/_desk/site',
@@ -76,7 +81,7 @@ export function buildSiteAdminNavigation(path: string, enabled: boolean): SiteAd
     icon: 'i-lucide-globe-2',
     active: path === '/_desk/site' || path.startsWith('/_desk/site/'),
     defaultOpen: true,
-    children: SITE_ADMIN_CHILD_SECTIONS.map(section => ({
+    children: SITE_ADMIN_CHILD_SECTIONS.filter(section => enabled || section.id === 'general').map(section => ({
       ...section,
       active: isSiteAdminRouteActive(path, section)
     }))
