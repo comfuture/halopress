@@ -134,4 +134,35 @@ describe('portable standalone DOM contract', () => {
     expect(template.content.querySelectorAll('h1, h2, h3, h4')).toHaveLength(0)
     expect(structured.fields.body?.html).toContain('<span class="halo-content-fallback" role="status">Unsupported content</span>')
   })
+
+  it('keeps v2 rich-text assets site-owned and list items inside lists', () => {
+    const item = {
+      type: 'listItem',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Item' }] }]
+    }
+    const rendering = createStandalonePageRendering({
+      type: 'doc',
+      content: [
+        { type: 'image', attrs: { src: 'https://tracker.example/pixel.png' } },
+        { type: 'image', attrs: { src: '/api/private/image' } },
+        { type: 'image', attrs: { src: '/assets/v2-image/raw?revision=2#preview', alt: 'V2 image' } },
+        item,
+        { type: 'blockquote', content: [structuredClone(item)] },
+        { type: 'bulletList', content: [structuredClone(item)] }
+      ]
+    }, { origin: 'https://press.example.com' })
+    const template = document.createElement('template')
+    template.innerHTML = rendering.html
+    const fragment = template.content
+
+    expect(rendering.html).not.toContain('tracker.example')
+    expect(rendering.html).not.toContain('/api/private/image')
+    expect(fragment.querySelectorAll('.halo-media-fallback')).toHaveLength(2)
+    expect(fragment.querySelector('img')?.getAttribute('src'))
+      .toBe('https://press.example.com/assets/v2-image/raw?revision=2#preview')
+    expect(fragment.querySelectorAll('article > li, blockquote > li')).toHaveLength(0)
+    expect(fragment.querySelectorAll('article > .halo-content-fallback, blockquote > .halo-content-fallback'))
+      .toHaveLength(2)
+    expect(fragment.querySelectorAll('ul > li')).toHaveLength(1)
+  })
 })

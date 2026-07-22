@@ -1,4 +1,5 @@
 import {
+  isPortablePageAssetPath,
   isSafePageUrl,
   resolvePageBlockForDelivery,
   type StoredPageBlockAttrs
@@ -227,6 +228,11 @@ function safeStoredUrl(value: unknown) {
   return value
 }
 
+function safeStoredAssetUrl(value: unknown) {
+  if (typeof value !== 'string' || !value || value.length > 2_048 || !isPortablePageAssetPath(value)) return null
+  return value
+}
+
 function normalizeMarks(value: unknown, budget: AuthoredNormalizationBudget): AuthoredDocumentMark[] {
   if (!Array.isArray(value)) return []
   const marks: AuthoredDocumentMark[] = []
@@ -252,7 +258,7 @@ function normalizeMarks(value: unknown, budget: AuthoredNormalizationBudget): Au
 }
 
 function normalizeImage(node: Record<string, any>): AuthoredImageNode | Extract<AuthoredDocumentNode, { type: 'fallback' }> {
-  const src = safeStoredUrl(node.attrs?.src)
+  const src = safeStoredAssetUrl(node.attrs?.src)
   if (!src) return fallbackNode('image')
   const width = Number.isSafeInteger(node.attrs?.width) && node.attrs.width > 0 && node.attrs.width <= 10_000
     ? node.attrs.width
@@ -308,6 +314,7 @@ function normalizeNode(
     const type = typeof node.type === 'string' ? node.type : ''
     if (nodeContext === 'inline' && !inlineNodeTypes.has(type)) return contextualFallbackNode(type, nodeContext)
     if (nodeContext === 'list' && type !== 'listItem') return contextualFallbackNode(type, nodeContext)
+    if (nodeContext === 'block' && type === 'listItem') return contextualFallbackNode(type, nodeContext)
     if (nodeContext === 'code' && type !== 'text' && type !== 'hardBreak') {
       return contextualFallbackNode(type, nodeContext)
     }
