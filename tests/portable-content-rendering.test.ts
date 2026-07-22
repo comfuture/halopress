@@ -20,6 +20,7 @@ import {
 import { portableContentFixture } from './fixtures/portable-content'
 import { defaultSiteTheme } from '../shared/site-theme'
 import { buildSiteThemeArtifact } from '../server/utils/site-theme-settings'
+import { createStandalonePageRendering } from '../server/utils/standalone-document-renderer'
 
 const origin = 'https://press.example.com'
 
@@ -28,6 +29,33 @@ function classTokens(html: string) {
 }
 
 describe('portable authored-content renderer', () => {
+  it('renders the allowlisted structural pageHero without changing legacy pageBlock heroes', () => {
+    const structuralHero = {
+      type: 'doc',
+      content: [{
+        type: 'pageHero',
+        attrs: { orientation: 'horizontal', reverse: true, class: 'unchecked' },
+        content: [
+          { type: 'paragraph', content: [{ type: 'text', text: 'Eyebrow' }] },
+          { type: 'heading', attrs: { level: 1, id: 'stored' }, content: [{ type: 'text', text: 'Native hero' }] },
+          { type: 'paragraph', content: [{ type: 'text', text: 'Hero body' }] },
+          { type: 'image', attrs: { src: '/assets/hero/raw', alt: 'Hero' } }
+        ]
+      }]
+    }
+    const rendering = createStandalonePageRendering(structuralHero, { origin })
+
+    expect(rendering.html).toContain('<section class="halo-block halo-hero" data-halo-block="hero" data-halo-orientation="horizontal" data-halo-reverse="true"><div class="halo-block-content">')
+    expect(rendering.html).toContain('<h1 id="halo-heading-native-hero">Native hero</h1>')
+    expect(rendering.html).not.toContain('class="unchecked"')
+    expect(rendering.outline).toContainEqual({ id: 'halo-heading-native-hero', level: 1, text: 'Native hero' })
+
+    const temporaryUpload = structuredClone(structuralHero)
+    temporaryUpload.content[0]!.content![3] = { type: 'imageUpload' } as any
+    expect(createStandalonePageRendering(temporaryUpload, { origin }).html)
+      .toContain('<p class="halo-content-fallback" role="status">Unsupported content</p>')
+  })
+
   it('renders rich text and every shipped Page block as stable semantic Halo markup', () => {
     const before = JSON.stringify(portableContentFixture)
     const rendering = createPortablePageRendering(portableContentFixture, { origin })

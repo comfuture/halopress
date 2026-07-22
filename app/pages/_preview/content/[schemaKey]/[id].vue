@@ -23,7 +23,8 @@ const route = useRoute()
 const schemaKey = computed(() => String(route.params.schemaKey))
 const id = computed(() => String(route.params.id))
 const { data: doc, error: documentError } = await useFetch<any>(
-  () => `/api/preview/content/${schemaKey.value}/${id.value}`
+  () => `/api/preview/content/${schemaKey.value}/${id.value}`,
+  { query: { rendering: '0' } }
 )
 const documentState = getPreviewDataState(doc.value, documentError.value)
 const schema = computed(() => doc.value?.schema ?? null)
@@ -47,7 +48,7 @@ if (previewState === 'not-found' && import.meta.server) {
   <LayoutComposition v-if="previewState === 'ready' && doc?.layout" :projection="doc.layout">
     <section class="layout-route-preview-content">
       <p class="layout-route-preview-label">Private preview · {{ schema?.title || schemaKey }}</p>
-      <PublicContentDetailRenderer v-if="doc?.content" :schema="schema" :content="doc.content" :rendering="doc?.rendering" :fallback-title="doc?.id || id" />
+      <PublicContentDetailRenderer v-if="doc?.content" :schema="schema" :content="doc.content" :fallback-title="doc?.id || id" />
     </section>
 
     <template #fallback>
@@ -57,7 +58,7 @@ if (previewState === 'not-found' && import.meta.server) {
             <template #headline><UBadge color="warning" variant="subtle">Private preview</UBadge></template>
           </UPageHeader>
           <UPageBody>
-            <PublicContentDetailRenderer v-if="doc?.content" :schema="schema" :content="doc.content" :rendering="doc?.rendering" :fallback-title="doc?.id || id" />
+            <PublicContentDetailRenderer v-if="doc?.content" :schema="schema" :content="doc.content" :fallback-title="doc?.id || id" />
             <UAlert v-else title="Unable to render preview" description="The schema or working content is unavailable." color="warning" variant="subtle" />
           </UPageBody>
         </UPage>

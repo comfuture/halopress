@@ -3,6 +3,10 @@ import type { H3Event } from 'h3'
 import { and, asc, desc, eq, isNotNull, ne, sql } from 'drizzle-orm'
 
 import {
+  extractAuthoredOutline,
+  extractStructuredAuthoredOutline
+} from '../../shared/authored-document'
+import {
   LAYOUT_RENDERING_CONTRACT_VERSION,
   LAYOUT_RENDERING_MAX_DIAGNOSTICS,
   LAYOUT_RENDERING_MAX_OUTLINE_ENTRIES,
@@ -46,10 +50,6 @@ import { resolvePublicLayoutMenus } from './site-menus'
 import { getSiteMode } from './site-mode-settings'
 import { getPublicSiteIdentity } from './site-presentation-settings'
 import { getPublicSiteThemeManifest } from './site-theme-settings'
-import {
-  createPortablePageRenderingForEvent,
-  createPortableStructuredRenderingForEvent
-} from './portable-content-delivery'
 
 type AssignmentResolver = (context: LayoutRenderContext) => Promise<ResolvedLayoutAssignment>
 
@@ -270,7 +270,10 @@ export async function resolveLayoutRendering(args: {
     })
   }
 
-  const sourceOutline = args.outline ?? await args.resolveOutline?.(context) ?? []
+  const needsOutline = assignment.document.elements.some(element => element.type === 'table-of-contents')
+  const sourceOutline = needsOutline
+    ? args.outline ?? await args.resolveOutline?.(context) ?? []
+    : []
   const outlineResult = zOutline(sourceOutline)
   const diagnostics: LayoutDiagnostic[] = []
   if (sourceOutline.length > LAYOUT_RENDERING_MAX_OUTLINE_ENTRIES) {
@@ -354,7 +357,7 @@ async function resolvePublicOutline(event: H3Event, context: LayoutRenderContext
   const db = await getDb(event)
   if (context.documentKind === 'page') {
     const page = await getPublishedPage(db, context.documentId)
-    return (await createPortablePageRenderingForEvent(event, page.content)).outline
+    return extractAuthoredOutline(page.content, { allowPageBlocks: true, allowPageHero: true })
   }
   if (context.documentKind !== 'content') return []
   const owner = await db.select({ publishedRevisionId: contentTable.publishedRevisionId })
@@ -363,11 +366,10 @@ async function resolvePublicOutline(event: H3Event, context: LayoutRenderContext
   if (!revision?.schemaKey || !revision.schemaVersion) return []
   const sourceSchema = await getSchemaVersion(db, revision.schemaKey, revision.schemaVersion)
   if (!sourceSchema) return []
-  return (await createPortableStructuredRenderingForEvent(
-    event,
+  return extractStructuredAuthoredOutline(
     parseContentJson(revision.contentJson),
     sourceSchema.registry?.fields ?? []
-  )).outline
+  )
 }
 
 export function resolvePreviewPageLayoutRendering(

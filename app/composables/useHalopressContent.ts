@@ -1,13 +1,13 @@
 import { computed, unref } from 'vue'
 import type { MaybeRef } from 'vue'
 import { convertJsonSchemaToZod } from 'zod-from-json-schema'
-import type { PortableStructuredContentRendering } from '~~/shared/portable-content'
 import type { HalopressItem } from './useHalopressQuery'
+import type { StandaloneStructuredContentRendering } from '~~/shared/standalone-document'
 
 export type HalopressContent<TContent = Record<string, unknown>> = HalopressItem & {
   content: TContent
   extra?: TContent
-  rendering?: PortableStructuredContentRendering
+  rendering?: StandaloneStructuredContentRendering
 }
 
 export type HalopressSurroundings = {
@@ -19,6 +19,7 @@ export type HalopressContentOptions = {
   id?: MaybeRef<string | number>
   order?: MaybeRef<'asc' | 'desc'>
   status?: MaybeRef<string>
+  includeRendering?: MaybeRef<boolean>
   respectStandalonePageClaim?: MaybeRef<boolean>
 }
 
@@ -46,6 +47,7 @@ export async function useHalopressContent(schemaOrPath: MaybeRef<string>, option
   const query = computed(() => ({
     order: unref(options.order) ?? undefined,
     status: unref(options.status) ?? undefined,
+    rendering: unref(options.includeRendering) === false ? '0' : undefined,
     routeScope: unref(options.respectStandalonePageClaim) ? 'public-page' : undefined,
     surroundings: '1',
     includeSchema: '1'

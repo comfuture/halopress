@@ -108,12 +108,12 @@ scripts, classes, attributes, and unsafe URLs are never taken from stored data.
 The [page pattern guide](docs/page-patterns.md) documents the reviewed starter
 library, compatibility metadata, copy-on-insert upgrades, and visual fixtures.
 
-Published Page and rich-text detail APIs also expose a versioned portable HTML
-projection with an ordered pair of absolute, content-addressed Halo base and
-active Theme stylesheets. The same retained Theme artifact drives the Page
-editor preview, plain headless consumers, and the built-in Site renderer. The projection
-keeps raw editor JSON intact while rendering without Vue, Nuxt UI, Tailwind, or
-the HaloPress application bundle. See the [portable authored-content guide](docs/portable-content.md)
+Published Page and rich-text detail APIs also expose a versioned standalone HTML
+projection alongside their canonical JSON. The transparent, color-mode-independent
+projection is rendered and sanitized on the server and can be consumed without Vue,
+Nuxt UI, Tailwind, the editor runtime, or the HaloPress application bundle. HaloPress
+Site pages render the JSON natively through Vue SSR and hydration instead of injecting
+that standalone projection. See the [standalone authored-document guide](docs/portable-content.md)
 and its [plain HTML consumer](examples/portable-content/index.html).
 
 ## Project status

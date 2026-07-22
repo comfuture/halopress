@@ -25,7 +25,8 @@ describe('Site Theme app and mode boundaries', () => {
     expect(layout).toContain('siteThemeStyle(presentation.value, siteModeEnabled.value)')
     expect(layout).toContain('? siteTheme.value.colorMode')
     expect(layout).toContain(': presentation.value.appearance.colorMode')
-    expect(layout).toContain('halo-stylesheet-${href}')
+    expect(layout).toContain('halo-stylesheet-${siteTheme.value.stylesheetUrl}')
+    expect(layout).not.toContain('PORTABLE_CONTENT_STYLESHEET_PATH')
     expect(layout).toContain('site-theme-adapter')
     expect(layout).toContain('configuredColorModePreference')
     expect(layout).toContain(`hook('app:mounted'`)
@@ -145,26 +146,23 @@ describe('Site Theme app and mode boundaries', () => {
     expect(layout).toContain('presentation.value.appearance.colorMode')
   })
 
-  it('uses the same trusted Theme descriptor and common head keys in every local renderer fallback', async () => {
+  it('keeps Site document renderers independent from standalone artifacts and Theme fetches', async () => {
     const [pageRenderer, fieldRenderer, schemaIndex] = await Promise.all([
       readFile(resolve(root, 'app/components/PageDocumentRenderer.vue'), 'utf8'),
       readFile(resolve(root, 'app/components/public/FieldRenderer.vue'), 'utf8'),
       readFile(resolve(root, 'app/pages/[schema]/index.vue'), 'utf8')
     ])
     for (const renderer of [pageRenderer, fieldRenderer]) {
-      expect(renderer).toContain('useSiteTheme()')
-      expect(renderer).toContain('new URL(theme.value.stylesheetUrl).origin')
-      expect(renderer).toContain('theme: theme.value satisfies PortableThemeArtifact')
-      expect(renderer).toContain('halo-stylesheet-${href}')
-      expect(renderer).toContain('useColorMode()')
-      expect(renderer).toContain('colorMode.preference === \'dark\'')
-      expect(renderer).toContain('colorMode.preference === \'light\'')
-      expect(renderer).toContain(': \'default\'')
-      expect(renderer).toContain('data-halo-color-mode')
-      expect(renderer).toContain('Retry Theme')
+      expect(renderer).not.toContain('useSiteTheme()')
+      expect(renderer).not.toContain('portable-content')
+      expect(renderer).not.toContain('useColorMode()')
+      expect(renderer).not.toContain('data-halo-color-mode')
+      expect(renderer).not.toContain('useHead(')
+      expect(renderer).not.toContain('v-html')
       expect(renderer).not.toContain('useRequestURL()')
     }
-    expect(schemaIndex).toContain(':rendering="standalonePage.rendering"')
+    expect(schemaIndex).toContain('{ query: { rendering: \'0\' } }')
+    expect(schemaIndex).not.toContain(':rendering="standalonePage.rendering"')
   })
 
   it('exposes an accessible single active editor with live draft status and numeric controls', async () => {

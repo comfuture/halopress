@@ -52,7 +52,7 @@
 - [x] Published-only page resolver and `/p/:id` public route
 - [x] Authenticated private/noindex draft preview
 - [x] Safe fallback for unknown, retired, or malformed page blocks
-- [x] One active validated Theme with retained standalone `--halo-*` CSS artifacts
+- [x] One active validated Site Theme plus a separate transparent standalone document v2 artifact
 - [ ] Public slugs and custom paths (post-MVP)
 - [ ] Multiple themes, marketplace, and expanded block catalog (post-MVP)
 

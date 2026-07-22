@@ -4,12 +4,11 @@ import { reactive } from 'vue'
 import { describe, expect, it } from 'vitest'
 
 import { clonePageBlockAttrs } from '../app/editor/page/inspector-state'
-import { buildPageDocumentSegments, sanitizePageDocument } from '../app/editor/page/render-document'
 import { commitPageBlockLink, createPageBlockLinkDrafts, movePageBlockLink } from '../app/editor/page/links'
 import { pageBlockRegistry } from '../app/editor/page/registry'
 import { normalizePageContent } from '../server/cms/page-content'
+import { normalizeAuthoredDocument } from '../shared/authored-document'
 import { resolvePageBlock } from '../shared/page-blocks'
-import { createPortablePageRendering, createPortableStandaloneDocument } from '../shared/portable-content'
 
 describe('page block registry', () => {
   it('exposes typed link controls for reviewed action-bearing blocks', () => {
@@ -196,38 +195,46 @@ describe('page document renderer', () => {
     ]
   }
 
-  it('renders ordinary Tiptap nodes around page blocks with stable segments', () => {
+  it('normalizes ordinary Tiptap nodes and Page blocks without mutating canonical JSON', () => {
     const before = JSON.stringify(fixture)
-    const first = buildPageDocumentSegments(fixture)
-    const second = buildPageDocumentSegments(fixture)
+    const first = normalizeAuthoredDocument(fixture, { allowPageBlocks: true, allowPageHero: true })
+    const second = normalizeAuthoredDocument(fixture, { allowPageBlocks: true, allowPageHero: true })
 
     expect(first).toEqual(second)
-    expect(first.map(segment => segment.kind)).toEqual(['html', 'block', 'block', 'html'])
-    expect(first[0]).toMatchObject({ kind: 'html' })
-    expect((first[0] as any).html).toContain('<h2><strong>Ordinary heading</strong></h2>')
-    expect((first[0] as any).html).not.toContain('javascript:')
-    expect((first[0] as any).html).not.toContain('unchecked')
-    expect(first[2]).toMatchObject({
-      kind: 'block',
+    expect(first.content.map(node => node.type)).toEqual(['heading', 'paragraph', 'pageBlock', 'pageBlock', 'paragraph'])
+    expect(first.content[0]).toMatchObject({
+      type: 'heading',
+      id: 'halo-heading-ordinary-heading',
+      content: [{ type: 'text', text: 'Ordinary heading', marks: [{ type: 'bold' }] }]
+    })
+    expect(first.content[1]).toMatchObject({
+      type: 'paragraph',
+      content: [{ type: 'text', marks: [] }]
+    })
+    expect(first.content[3]).toMatchObject({
+      type: 'pageBlock',
       attrs: { component: 'RetiredBlock', props: { preserved: true } }
     })
+    expect(JSON.stringify(first)).not.toContain('javascript:')
+    expect(JSON.stringify(first)).not.toContain('unchecked')
     expect(JSON.stringify(fixture)).toBe(before)
   })
 
   it('sanitizes arbitrary Tiptap attributes and unsafe media', () => {
-    const sanitized = sanitizePageDocument({
+    const sanitized = normalizeAuthoredDocument({
       type: 'doc',
       content: [
         { type: 'image', attrs: { src: 'data:text/html;base64,WA==', class: 'fixed' } },
         { type: 'paragraph', attrs: { class: 'fixed', textAlign: 'center' }, content: [{ type: 'text', text: '<safe>' }] }
       ]
     })
-    expect(sanitized).toEqual({
+    expect(sanitized).toMatchObject({
       type: 'doc',
       content: [
-        { type: 'paragraph', content: [{ type: 'text', text: '[Unsupported content: image]' }] },
-        { type: 'paragraph', attrs: { textAlign: 'center' }, content: [{ type: 'text', text: '<safe>', marks: undefined }] }
-      ]
+        { type: 'fallback', message: '[Unsupported content: image]' },
+        { type: 'paragraph', textAlign: 'center', content: [{ type: 'text', text: '<safe>', marks: [] }] }
+      ],
+      truncated: false
     })
   })
 
@@ -250,39 +257,25 @@ describe('page document renderer', () => {
     expect(view).not.toContain('ring-2')
     expect(nodeView).toContain('props.selected')
     expect(nodeView).toContain('<PageBlockView')
-    expect(renderer).toContain('createPortablePageRendering')
-    expect(renderer).toContain('data-portable-content-renderer')
-    expect(renderer).toContain('v-html="renderedHtml"')
-    expect(renderer).not.toContain('<PageBlockView')
+    expect(renderer).toContain('normalizeAuthoredDocument')
+    expect(renderer).toContain('data-site-document-renderer')
+    expect(renderer).toContain('<SiteDocumentNode')
+    expect(renderer).toContain('<PageBlockView')
+    expect(renderer).toContain(':id="node.anchorId"')
+    expect(renderer).not.toContain('v-html')
+    expect(renderer).not.toContain('portable-content')
     expect(renderer).not.toContain('PageBlockNodeView')
     expect(renderer).not.toContain('ring-2')
   })
 
-  it('keeps isolated previews scriptless while preserving same-origin draft asset delivery', async () => {
+  it('uses the native renderer for editor preview without an iframe or executable HTML path', async () => {
     const root = resolve(import.meta.dirname, '..')
     const renderer = await readFile(resolve(root, 'app/components/PageDocumentRenderer.vue'), 'utf8')
-    const sandbox = renderer.match(/sandbox="([^"]*)"/)?.[1]?.split(/\s+/).filter(Boolean)
 
-    expect(sandbox).toEqual(['allow-same-origin'])
-    expect(sandbox).not.toEqual(expect.arrayContaining([
-      'allow-scripts',
-      'allow-forms',
-      'allow-popups',
-      'allow-top-navigation',
-      'allow-top-navigation-by-user-activation'
-    ]))
-
-    const siteOrigin = 'https://press.example.com'
-    const rendering = createPortablePageRendering({
-      type: 'doc',
-      content: [{ type: 'image', attrs: { src: '/assets/draft-asset/raw', alt: 'Draft asset' } }]
-    }, { origin: siteOrigin })
-    const preview = createPortableStandaloneDocument(rendering)
-    const assetUrl = preview.match(/<img[^>]+src="([^"]+)"/)?.[1]
-
-    expect(assetUrl).toBe(`${siteOrigin}/assets/draft-asset/raw`)
-    expect(new URL(assetUrl!).origin).toBe(siteOrigin)
-    expect(preview).not.toMatch(/<script\b|<form\b/i)
+    expect(renderer).toContain('data-site-document-isolated')
+    expect(renderer).not.toContain('<iframe')
+    expect(renderer).not.toContain('srcdoc')
+    expect(renderer).not.toContain('v-html')
   })
 
   it('maps rich atomic blocks to code-owned renderers and visible media placeholders', async () => {

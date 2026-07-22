@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { buildPageDocumentSegments } from '../app/editor/page/render-document'
+import { normalizeAuthoredDocument } from '../shared/authored-document'
 import { pageBlockRegistry } from '../app/editor/page/registry'
 import { normalizePageContent } from '../server/cms/page-content'
 import { resolvePageBlock, validatePageDocumentBlocks } from '../shared/page-blocks'
@@ -91,10 +91,15 @@ describe('page block document validation', () => {
         height: 630
       }
     })
-    expect(buildPageDocumentSegments(document)).toEqual([{
-      kind: 'block',
-      key: 'block-0',
-      attrs: (document.content[0] as any).attrs
+    expect(normalizeAuthoredDocument(document, { allowPageBlocks: true }).content).toEqual([{
+      type: 'pageBlock',
+      anchorId: 'halo-heading-legacy-media',
+      attrs: {
+        component: 'pageHero',
+        props: { title: 'Legacy media', description: '' },
+        advanced: {},
+        media: (document.content[0] as any).attrs.media
+      }
     }])
   })
 })

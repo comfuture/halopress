@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import type { PortableStructuredContentRendering } from '~~/shared/portable-content'
 import {
   hasRenderableValue,
   isRichTextPresentationField,
@@ -10,7 +9,6 @@ import {
 const props = defineProps<{
   schema: any
   content: Record<string, unknown>
-  rendering?: PortableStructuredContentRendering | null
   fallbackTitle?: string
 }>()
 const presentation = computed(() => resolveSchemaPresentation(props.schema?.registry))
@@ -41,8 +39,6 @@ const remainingFields = computed(() => fields.value.filter((field: any) => !rese
         v-if="richTextDescription && descriptionField && hasRenderableValue(valueFor('description'))"
         :field="portableDescriptionField"
         :value="valueFor('description')"
-        :rendering="rendering?.fields?.[descriptionField.fieldKey]"
-        :stylesheets="rendering?.stylesheets"
       />
       <p v-else-if="description" class="text-lg text-muted">{{ description }}</p>
     </header>
@@ -59,8 +55,6 @@ const remainingFields = computed(() => fields.value.filter((field: any) => !rese
       <PublicFieldRenderer
         :field="fieldFor('body')"
         :value="valueFor('body')"
-        :rendering="rendering?.fields?.[fieldFor('body')?.fieldKey]"
-        :stylesheets="rendering?.stylesheets"
       />
     </div>
 
@@ -73,8 +67,6 @@ const remainingFields = computed(() => fields.value.filter((field: any) => !rese
           <PublicFieldRenderer
             :field="field"
             :value="content[field.fieldKey]"
-            :rendering="rendering?.fields?.[field.fieldKey]"
-            :stylesheets="rendering?.stylesheets"
           />
         </dd>
       </div>

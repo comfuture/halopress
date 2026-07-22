@@ -36,7 +36,10 @@ const schemaKey = computed(() => String(resolvedRoute.documentId))
 
 const standalonePage = ref<any>(null)
 if (!isAlias && resolvedRoute?.documentKind === 'page') {
-  const { data, error } = await useFetch<any>(() => `/api/delivery/page/${resolvedRoute.documentId}`)
+  const { data, error } = await useFetch<any>(
+    () => `/api/delivery/page/${resolvedRoute.documentId}`,
+    { query: { rendering: '0' } }
+  )
   if (error.value || !data.value) {
     applyPrivateNoindex()
     throw createError({ statusCode: 404, statusMessage: 'Not Found' })
@@ -135,7 +138,7 @@ function goPrev() {
   <LayoutComposition v-if="resolvedRoute?.layout" :projection="resolvedRoute.layout">
     <article v-if="standalonePage" class="layout-route-page-content">
       <header><h1>{{ standalonePage.title || 'Untitled page' }}</h1></header>
-      <PageDocumentRenderer :document="standalonePage.content" :rendering="standalonePage.rendering" />
+      <PageDocumentRenderer :document="standalonePage.content" />
     </article>
 
     <section v-else class="layout-route-collection">
@@ -160,7 +163,7 @@ function goPrev() {
         <UContainer v-if="standalonePage" class="py-8">
           <UPage>
             <UPageHeader :title="standalonePage.title || 'Untitled page'" />
-            <UPageBody><PageDocumentRenderer :document="standalonePage.content" :rendering="standalonePage.rendering" /></UPageBody>
+            <UPageBody><PageDocumentRenderer :document="standalonePage.content" /></UPageBody>
           </UPage>
         </UContainer>
 
