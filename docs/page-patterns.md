@@ -1,56 +1,92 @@
-# Page block and pattern library
+# Page Block Library authoring models
 
-HaloPress keeps atomic page blocks and reusable patterns as two different contracts.
-Atomic blocks are the only stored component keys that the renderer accepts. Patterns
-are reviewed, versioned JSON document fragments made only from those blocks.
+The Page editor uses three authoring models. Authors see these names in the
+Block Library before insertion.
 
-## Included patterns
+- **Configured block** — a finite interaction or collection whose consistency
+  is the product. Its semantic configuration remains in Inspector.
+- **Editable unit** — a code-owned parent keeps a small structural relationship,
+  while its authored children remain ordinary editable Tiptap content.
+- **Editable pattern** — a reviewed Tiptap JSON fragment is copied into the
+  document and immediately becomes ordinary independent content.
 
-The first library includes centered and split heroes, a feature grid, a
-media/content section, testimonial plus social proof, FAQ, closing CTA, and a
-complete marketing starter page. New pages explicitly start blank or from the
-starter. Every inserted block remains an ordinary top-level page block, so authors
-can select, edit, move, duplicate, or delete it independently.
+## Shipped classification
 
-Patterns contain authored placeholders such as `[Add your primary promise]` and
-`requiredAction` media notes. They never contain site-specific remote assets,
-arbitrary component names, utility classes, event handlers, or executable values.
+| Entry | Model | Rationale |
+| --- | --- | --- |
+| Centered hero | Editable unit | The parent controls orientation; headline, copy, links, and optional media remain canvas-editable children. |
+| Split hero | Editable unit | The parent preserves the text/media relationship without hiding authored content in attributes. |
+| Feature list | Editable pattern | Heading, explanation, and feature items are ordinary rich text. |
+| Media and content | Editable pattern | Copy and links are ordinary content; authors add or replace media with the normal Image tool. |
+| Testimonial and social proof | Editable pattern | Quote and attribution are editable; only the finite logo collection remains configured. |
+| Frequently asked questions | Configured block | A finite accordion item list preserves reviewed keyboard interaction. |
+| Closing call to action | Editable pattern | Heading, description, and link labels are directly editable text. |
+| Marketing starter page | Editable pattern | The complete starter is copied as editable content with one configured FAQ. |
+| Logo collection | Configured block | Asset selection, alternative text, and ordering form one finite collection contract. |
 
-## Validation and compatibility
+The historical `pageHero`, `pageCard`, `pageSection`, `pageTestimonial`, and
+`pageCTA` atoms are no longer offered as new library entries. They remain
+registered so stored drafts and publication revisions continue to load and
+render without rewriting. `pageFAQ` and `pageLogos` remain configured atoms.
 
-Each pattern declares:
+## Editable Hero contract
 
-- a stable key and positive integer version;
-- the page editor and pattern-contract version it supports;
-- the atomic block-registry version it targets;
-- every required allowlisted block key.
+`pageHero` is a non-atomic, selectable top-level node. It stores only
+`orientation` (`vertical` or `horizontal`) and `reverse` (boolean). Its strict
+child expression is `paragraph? heading paragraph+ (image | imageUpload)?`.
+The edit NodeView exposes those children through a real `NodeViewContent`; only
+its editor label is non-editable.
 
-The pattern validator rejects empty fragments, non-block nodes, unknown blocks,
-undeclared required blocks, extra properties, unsafe URLs, malformed typed values,
-and non-empty advanced payloads. Draft storage continues to preserve unknown legacy
-blocks, while publish validation continues to reject unknown or malformed blocks.
+Normal text, mark, link, and image commands therefore operate on Hero children.
+Changing orientation in Inspector updates only the parent attributes and does
+not replace or flatten child content.
 
-## Upgrade behavior
+An existing atomic `pageHero` can be converted intentionally in one undoable
+transaction. The conversion preserves headline, title, description, safe links,
+media, alternative text, orientation, and reverse order. Conversion is blocked
+when non-empty `advanced` data cannot be represented losslessly.
 
-Pattern insertion is **copy-on-insert**. The editor deep-clones the selected
-version and materializes its blocks in one undoable transaction. Pattern identity
-and version are not stored as a live template link.
+## Pattern validation and insertion
 
-Existing pages are never rewritten automatically when a pattern changes. A pattern
-change publishes a new version for future insertions. Any future migration of
-already inserted blocks must be explicit, separately reviewed, and compatible with
-the normal draft and publish validation rules.
+Pattern contract version 2 stores an allowlisted `JSONContent` fragment. The
+live Page editor schema is authoritative: insertion deep-clones each node,
+parses it with `schema.nodeFromJSON()`, runs ProseMirror `node.check()`, and
+checks the top-level document content expression before one transaction is
+dispatched. This avoids maintaining a second hand-written Page schema.
 
-## Visual regression fixtures
+Shared checks cover only constraints ProseMirror does not express: document
+size/depth budgets, forbidden runtime keys, safe stored links and assets, finite
+Hero attributes, and the configured-block allowlist.
+Patterns cannot store HTML, CSS, utility classes, component selectors, Nuxt UI
+`ui` payloads, scripts, event handlers, or remote executable definitions.
 
-`tests/fixtures/page-patterns.ts` provides stable, local-only documents and capture
-metadata for every shipped pattern. Each version has both of these targets:
+Split Hero and media patterns may insert the existing `imageUpload` authoring
+node so the normal Image flow is available at the intended location. Drafts may
+hold that temporary node, while publication rejects it until upload resolves to
+an ordinary `image` node.
 
-- desktop light mode at 1280 × 900;
-- mobile dark mode at 390 × 844.
+After insertion, the selection is a text caret in the first editable text block.
+The whole fragment is inserted in one transaction, so one immediate undo removes
+the insertion. Click, keyboard, touch, and drag/drop all call the same command and
+use generic inserted-content scrolling rather than assuming an atomic block.
 
-The matrix is derived from the registry, so adding a pattern without both targets
-fails the completeness test. Fixtures use no remote assets and expose stable
-pattern/version selectors for a screenshot runner. Responsive behavior comes from
-the reviewed Nuxt UI page primitives; the FAQ uses Nuxt UI's keyboard-accessible
-accordion.
+## Compatibility and upgrades
+
+Pattern insertion is **copy-on-insert**. Pattern identity and version are not
+stored as a live template relationship. Updating a definition changes future
+insertions only.
+
+Existing pages are never rewritten automatically. Historical atomic blocks keep
+their existing JSON and renderer behavior. There is no database migration for
+this document-schema evolution.
+
+Public/native/portable serialization of the new semantic `pageHero` wrapper is
+owned by issue #93. This issue fixes the editor-side NodeSpec contract and does
+not introduce a parallel public renderer.
+
+## Authoring fixtures
+
+Registry-derived fixtures continue to cover every pattern at desktop light mode
+(1280 × 900) and mobile dark mode (390 × 844). Authoring interaction tests cover
+schema-backed insertion, caret placement, inline marks, structural Inspector
+updates, one-step undo, legacy conversion, and malformed fragment rejection.

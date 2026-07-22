@@ -1,5 +1,6 @@
 import { badRequest } from '../utils/http'
 import { validatePageDocumentBlocks } from '~~/shared/page-blocks'
+import { validatePageDocumentHeroes } from '../../app/editor/page/validation'
 
 export const emptyPageDocument = { type: 'doc', content: [{ type: 'paragraph' }] }
 
@@ -39,6 +40,10 @@ export function normalizePageContent(
     allowUnknown: options.mode !== 'publish'
   })
   if (issues.length) throw badRequest(issues[0]!.message)
+  const heroIssues = validatePageDocumentHeroes(document, {
+    allowImageUpload: options.mode !== 'publish'
+  })
+  if (heroIssues.length) throw badRequest(heroIssues[0]!.message)
 
   return document
 }

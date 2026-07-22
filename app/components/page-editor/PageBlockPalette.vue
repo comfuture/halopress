@@ -2,7 +2,7 @@
 import type { CommandPaletteGroup, CommandPaletteItem } from '@nuxt/ui'
 import { pagePatternRegistry } from '~~/shared/page-patterns'
 
-import { pageBlockRegistry } from '~/editor/page/registry'
+import { pageBlockLibraryClassification, pageBlockRegistry } from '~/editor/page/registry'
 import type { PagePaletteItem } from '~/editor/page/palette'
 
 const props = withDefaults(defineProps<{
@@ -17,8 +17,10 @@ const emit = defineEmits<{
 }>()
 
 const entries = computed(() => [
-  ...pagePatternRegistry.patterns.map(item => ({ ...item, kind: 'pattern' as const })),
-  ...pageBlockRegistry.components.map(item => ({ ...item, kind: 'block' as const }))
+  ...pagePatternRegistry.patterns.map(item => ({ ...item, source: 'pattern' as const })),
+  ...pageBlockRegistry.components
+    .filter(item => pageBlockLibraryClassification[item.key].showDirectly)
+    .map(item => ({ ...item, model: 'configured-block' as const, source: 'block' as const }))
 ])
 
 const paletteGroups = computed<CommandPaletteGroup<CommandPaletteItem>[]>(() => {
@@ -29,8 +31,9 @@ const paletteGroups = computed<CommandPaletteGroup<CommandPaletteItem>[]>(() => 
     items: entries.value
       .filter(item => item.category === category)
       .map(item => ({
-        value: `${item.kind}:${item.key}`,
-        kind: item.kind,
+        value: `${item.model}:${item.key}`,
+        model: item.model,
+        source: item.source,
         entryKey: item.key,
         label: item.label,
         description: item.summary,
@@ -39,13 +42,23 @@ const paletteGroups = computed<CommandPaletteGroup<CommandPaletteItem>[]>(() => 
         keywords: item.keywords,
         icon: item.icon,
         disabled: !props.editable,
-        onSelect: () => emit('insert', { kind: item.kind, key: item.key } as PagePaletteItem)
+        onSelect: () => emit('insert', { model: item.model, source: item.source, key: item.key } as PagePaletteItem)
       } as CommandPaletteItem))
   }))
 })
 
 function paletteItem(item: CommandPaletteItem) {
-  return { kind: (item as any).kind, key: (item as any).entryKey } as PagePaletteItem
+  return {
+    model: (item as any).model,
+    source: (item as any).source,
+    key: (item as any).entryKey
+  } as PagePaletteItem
+}
+
+function modelLabel(item: CommandPaletteItem) {
+  if ((item as any).model === 'editable-unit') return 'Editable unit'
+  if ((item as any).model === 'document-pattern') return 'Editable pattern'
+  return 'Configured block'
 }
 
 const fuse = {
@@ -78,14 +91,15 @@ const fuse = {
         <div
           class="flex w-full items-start gap-3 rounded-md p-2"
           :draggable="editable"
-          :data-page-library-kind="item.kind"
+          :data-page-library-model="item.model"
+          :data-page-library-source="item.source"
           :data-page-library-key="item.entryKey"
           @dragstart="emit('dragstart', $event, paletteItem(item))"
         >
           <UIcon :name="item.icon" class="mt-0.5 size-5 shrink-0 text-primary" />
           <span class="min-w-0 text-left">
             <span class="block text-sm font-medium text-highlighted">{{ item.label }}</span>
-            <UBadge :label="item.kind === 'pattern' ? 'Pattern' : 'Block'" color="neutral" variant="subtle" size="xs" class="mt-1" />
+            <UBadge :label="modelLabel(item)" color="neutral" variant="subtle" size="xs" class="mt-1" />
             <span class="mt-0.5 block text-xs text-muted">{{ item.description }}</span>
           </span>
         </div>

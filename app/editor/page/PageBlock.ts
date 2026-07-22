@@ -1,8 +1,7 @@
 import { Node, mergeAttributes } from '@tiptap/core'
-import { Fragment, type Node as ProseMirrorNode } from '@tiptap/pm/model'
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { NodeSelection, Selection, type EditorState } from '@tiptap/pm/state'
-import { isPageBlockComponentKey, isValidCuratedPageBlockAttrs } from '~~/shared/page-blocks'
-import type { PagePatternNode } from '~~/shared/page-patterns'
+import { isPageBlockComponentKey } from '~~/shared/page-blocks'
 import type { PageBlockAttrs, PageBlockComponentKey } from './types'
 
 declare module '@tiptap/core' {
@@ -13,7 +12,6 @@ declare module '@tiptap/core' {
         position: number,
         attrs: Partial<PageBlockAttrs> & { component: PageBlockComponentKey }
       ) => ReturnType
-      insertPagePatternAt: (position: number, nodes: PagePatternNode[]) => ReturnType
       duplicatePageBlock: () => ReturnType
       deletePageBlock: () => ReturnType
       movePageBlockUp: () => ReturnType
@@ -72,19 +70,6 @@ export default Node.create({
 
         if (dispatch) {
           tr.insert(position, nodeType.create(attrs))
-          tr.setSelection(NodeSelection.create(tr.doc, position))
-        }
-        return true
-      },
-      insertPagePatternAt: (position, nodes) => ({ state, tr, dispatch }) => {
-        if (!isTopLevelPosition(state.doc, position) || !Array.isArray(nodes) || !nodes.length) return false
-        if (nodes.some(node => node.type !== this.name || !isValidCuratedPageBlockAttrs(node.attrs))) return false
-        const nodeType = state.schema.nodes[this.name]
-        if (!nodeType) return false
-
-        const fragment = Fragment.fromArray(nodes.map(node => nodeType.create(structuredClone(node.attrs))))
-        if (dispatch) {
-          tr.insert(position, fragment)
           tr.setSelection(NodeSelection.create(tr.doc, position))
         }
         return true
