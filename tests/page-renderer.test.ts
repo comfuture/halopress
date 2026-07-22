@@ -1,8 +1,10 @@
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
-import { reactive } from 'vue'
+import { h, reactive } from 'vue'
+import { renderToString } from '@vue/server-renderer'
 import { describe, expect, it } from 'vitest'
 
+import SiteTextNode from '../app/components/site-document/SiteTextNode'
 import { clonePageBlockAttrs } from '../app/editor/page/inspector-state'
 import { commitPageBlockLink, createPageBlockLinkDrafts, movePageBlockLink } from '../app/editor/page/links'
 import { pageBlockRegistry } from '../app/editor/page/registry'
@@ -236,6 +238,81 @@ describe('page document renderer', () => {
       ],
       truncated: false
     })
+  })
+
+  it('keeps malformed child fallbacks context-valid without traversing hidden subtrees', () => {
+    const hiddenChildren = Array.from({ length: 2_100 }, (_, index) => ({
+      type: 'heading',
+      attrs: { level: 2 },
+      content: [{ type: 'text', text: `Hidden ${index}` }]
+    }))
+    const normalized = normalizeAuthoredDocument({
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            { type: 'text', text: 'Before' },
+            { type: 'mystery', content: hiddenChildren },
+            { type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: 'Nested' }] }
+          ]
+        },
+        {
+          type: 'bulletList',
+          content: [{ type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: 'Not a list item' }] }]
+        },
+        {
+          type: 'codeBlock',
+          content: [{ type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: 'Not code text' }] }]
+        }
+      ]
+    })
+
+    expect(normalized.truncated).toBe(false)
+    expect(normalized.outline).toEqual([])
+    expect(normalized.content[0]).toEqual({
+      type: 'paragraph',
+      content: [
+        { type: 'text', text: 'Before', marks: [] },
+        { type: 'text', text: '[Unsupported content: mystery]', marks: [] },
+        { type: 'text', text: '[Unsupported content: heading]', marks: [] }
+      ]
+    })
+    expect(normalized.content[1]).toEqual({
+      type: 'bulletList',
+      content: [{
+        type: 'listItem',
+        content: [{
+          type: 'paragraph',
+          content: [{ type: 'text', text: '[Unsupported content: heading]', marks: [] }]
+        }]
+      }]
+    })
+    expect(normalized.content[2]).toEqual({
+      type: 'codeBlock',
+      content: [{ type: 'text', text: '[Unsupported content: heading]', marks: [] }]
+    })
+  })
+
+  it('deduplicates adversarial marks before native Vue SSR', async () => {
+    const normalized = normalizeAuthoredDocument({
+      type: 'doc',
+      content: [{
+        type: 'paragraph',
+        content: [{
+          type: 'text',
+          text: 'Bounded marks',
+          marks: Array.from({ length: 4_096 }, () => ({ type: 'bold' }))
+        }]
+      }]
+    })
+    const paragraph = normalized.content[0]
+    if (paragraph?.type !== 'paragraph') throw new Error('Expected a normalized paragraph')
+    const text = paragraph.content[0]
+    if (text?.type !== 'text') throw new Error('Expected normalized text')
+
+    expect(text.marks).toEqual([{ type: 'bold' }])
+    await expect(renderToString(h(SiteTextNode, { node: text }))).resolves.toBe('<strong>Bounded marks</strong>')
   })
 
   it('preserves unknown blocks at storage validation while rejecting non-documents', () => {

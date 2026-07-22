@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SiteRichTextRenderer from '~/components/site-document/SiteRichTextRenderer.vue'
 import { formatPresentationDate, safePresentationLink } from '~/utils/schema-presentation'
 
 const props = defineProps<{

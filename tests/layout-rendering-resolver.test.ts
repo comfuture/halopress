@@ -528,7 +528,7 @@ describe('Layout rendering resolver', () => {
 
   it('selects working Page and exact content Schema-version assignments for preview', async () => {
     await setSiteMode(true)
-    await seedLayout('layout-page-working', 'Working Page Layout')
+    await seedLayout('layout-page-working', 'Working Page Layout', 'grid')
     await seedLayout('layout-page-published', 'Published Page Layout')
     await seedLayout('layout-schema-v1', 'Schema v1 Layout')
     await seedLayout('layout-schema-v2', 'Schema v2 Layout')
@@ -609,6 +609,10 @@ describe('Layout rendering resolver', () => {
       resolvePreviewPageLayoutRendering,
       resolvePublicLayoutRendering
     } = await import('../server/utils/layout-rendering')
+    const previewPageOutline = vi.fn(() => [{ id: 'working-heading', level: 2 as const, text: 'Working heading' }])
+    const previewContentOutline = vi.fn(() => {
+      throw new Error('A Layout without a table of contents must not resolve its outline')
+    })
     const publicPage = await resolvePublicLayoutRendering(event, publicPageContext('page-preview', '/page-preview'), [])
     const previewPage = await resolvePreviewPageLayoutRendering(event, {
       visibility: 'preview',
@@ -617,7 +621,7 @@ describe('Layout rendering resolver', () => {
       schemaKey: null,
       schemaVersion: null,
       canonicalPath: '/page-preview'
-    })
+    }, previewPageOutline)
     const publicContent = await resolvePublicLayoutRendering(event, {
       visibility: 'public',
       documentKind: 'content',
@@ -633,7 +637,7 @@ describe('Layout rendering resolver', () => {
       schemaKey: 'article',
       schemaVersion: 1,
       canonicalPath: '/article/content-preview'
-    })
+    }, previewContentOutline)
 
     expect(publicPage).toMatchObject({ status: 'ready', source: 'page', layoutId: 'layout-page-published' })
     expect(previewPage).toMatchObject({ status: 'ready', source: 'page', layoutId: 'layout-page-working' })
@@ -641,5 +645,9 @@ describe('Layout rendering resolver', () => {
     expect(previewContent).toMatchObject({ status: 'ready', source: 'schema', layoutId: 'layout-schema-v1' })
     expect(publicContent.context.schemaVersion).toBe(2)
     expect(previewContent.context.schemaVersion).toBe(1)
+    expect(previewPageOutline).toHaveBeenCalledOnce()
+    expect(previewContentOutline).not.toHaveBeenCalled()
+    expect(previewPage.status === 'ready' && element(previewPage.elements, 'table-of-contents')?.props.items)
+      .toEqual([{ id: 'working-heading', level: 2, text: 'Working heading' }])
   })
 })

@@ -929,6 +929,13 @@ async function assertPersistedLayoutSurfaces(origin) {
     assertReadyLayoutMarkup(html, label)
     assert.ok(html.includes(expected), `Expected ${label} semantic content`)
     assert.ok(!html.includes('Working Content marker'), `${label} must not expose working content`)
+    if (path === '/article/built-content') {
+      assert.ok(html.includes('data-site-richtext-renderer'), 'Expected public content SSR to use the native rich-text renderer')
+      assert.ok(
+        html.includes('id="halo-heading-body-07028ec7724f3d23-published-content-marker"'),
+        'Expected the authored content body to own the Layout TOC heading anchor'
+      )
+    }
   }
 
   const cookie = await authenticatedCookie('127.0.0.1')

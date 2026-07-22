@@ -5,7 +5,11 @@ import {
   type pageBlockIconKeys,
   type StoredPageBlockAttrs
 } from './page-blocks'
-import { normalizeAuthoredDocument } from './authored-document'
+import {
+  authoredFieldHeadingPrefix,
+  extractAuthoredOutline,
+  normalizeAuthoredDocument
+} from './authored-document'
 
 export const PORTABLE_CONTENT_CONTRACT_VERSION = 1 as const
 export const PORTABLE_CONTENT_STYLESHEET_REVISION = 'dfea71d319d9c7d0a48d19346c115d3bd32a51e0b88f30e4c344cb454b9ea3f1'
@@ -489,17 +493,42 @@ function writeRichTextMarks(
   for (const closing of closings) writer.push(closing)
 }
 
+type PortableNodeContext = 'block' | 'inline' | 'list' | 'code'
+
+type RichTextWriteOptions = {
+  standaloneV2: boolean
+  context: PortableNodeContext
+}
+
+const portableInlineNodeTypes = new Set(['text', 'hardBreak', 'image', 'mention'])
+
 function writeRichTextChildren(
   writer: PortableWriter,
   node: Record<string, any>,
   origin: string,
-  depth: number
+  depth: number,
+  options: RichTextWriteOptions,
+  context: PortableNodeContext
 ) {
   if (!Array.isArray(node.content)) return
-  for (const child of node.content) writeRichTextNode(writer, child, origin, depth + 1)
+  for (const child of node.content) {
+    writeRichTextNode(writer, child, origin, depth + 1, { ...options, context })
+  }
 }
 
-function writeRichTextFallback(writer: PortableWriter) {
+function writeRichTextFallback(writer: PortableWriter, context: PortableNodeContext = 'block') {
+  if (context === 'inline') {
+    writer.push('<span class="halo-content-fallback" role="status">Unsupported content</span>')
+    return
+  }
+  if (context === 'list') {
+    writer.push('<li><p class="halo-content-fallback" role="status">Unsupported content</p></li>')
+    return
+  }
+  if (context === 'code') {
+    writer.push('Unsupported content')
+    return
+  }
   writer.push('<p class="halo-content-fallback" role="status">Unsupported content</p>')
 }
 
@@ -507,18 +536,34 @@ function writeRichTextNode(
   writer: PortableWriter,
   value: unknown,
   origin: string,
-  depth: number
+  depth: number,
+  options: RichTextWriteOptions = { standaloneV2: false, context: 'block' }
 ) {
   writer.claimNode(depth)
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    writeRichTextFallback(writer)
+    writeRichTextFallback(writer, options.standaloneV2 ? options.context : 'block')
     return
   }
   const node = value as Record<string, any>
   const type = typeof node.type === 'string' ? node.type : ''
+  if (options.standaloneV2) {
+    const allowed = options.context === 'inline'
+      ? portableInlineNodeTypes.has(type)
+      : options.context === 'list'
+        ? type === 'listItem'
+        : options.context === 'code'
+          ? type === 'text' || type === 'hardBreak'
+          : true
+    if (!allowed) {
+      writeRichTextFallback(writer, options.context)
+      return
+    }
+  }
 
   if (type === 'text') {
-    writeRichTextMarks(writer, typeof node.text === 'string' ? node.text : '', node.marks, origin)
+    const text = typeof node.text === 'string' ? node.text : ''
+    if (options.standaloneV2 && options.context === 'code') writer.escaped(text)
+    else writeRichTextMarks(writer, text, node.marks, origin)
     return
   }
   if (type === 'hardBreak') {
@@ -569,7 +614,7 @@ function writeRichTextNode(
     writer.push('<p')
     writer.attribute('data-halo-align', alignment)
     writer.push('>')
-    writeRichTextChildren(writer, node, origin, depth)
+    writeRichTextChildren(writer, node, origin, depth, options, 'inline')
     writer.push('</p>')
     return
   }
@@ -581,13 +626,13 @@ function writeRichTextNode(
     writer.attribute('id', writer.headingId(level, node.content))
     writer.attribute('data-halo-align', alignment)
     writer.push('>')
-    writeRichTextChildren(writer, node, origin, depth)
+    writeRichTextChildren(writer, node, origin, depth, options, 'inline')
     writer.push(`</h${level}>`)
     return
   }
   if (type === 'blockquote') {
     writer.push('<blockquote class="halo-blockquote">')
-    writeRichTextChildren(writer, node, origin, depth)
+    writeRichTextChildren(writer, node, origin, depth, options, 'block')
     writer.push('</blockquote>')
     return
   }
@@ -600,24 +645,24 @@ function writeRichTextNode(
       : undefined
     writer.attribute('start', start)
     writer.push('>')
-    writeRichTextChildren(writer, node, origin, depth)
+    writeRichTextChildren(writer, node, origin, depth, options, 'list')
     writer.push(`</${tag}>`)
     return
   }
   if (type === 'listItem') {
     writer.push('<li>')
-    writeRichTextChildren(writer, node, origin, depth)
+    writeRichTextChildren(writer, node, origin, depth, options, 'block')
     writer.push('</li>')
     return
   }
   if (type === 'codeBlock') {
     writer.push('<pre class="halo-code-block"><code>')
-    writeRichTextChildren(writer, node, origin, depth)
+    writeRichTextChildren(writer, node, origin, depth, options, 'code')
     writer.push('</code></pre>')
     return
   }
 
-  writeRichTextFallback(writer)
+  writeRichTextFallback(writer, options.standaloneV2 ? options.context : 'block')
 }
 
 function writeMedia(
@@ -899,7 +944,7 @@ function writeRichTextDocumentContent(
   writer: PortableWriter,
   value: unknown,
   origin: string,
-  options: { allowPageBlocks: boolean, allowPageHero?: boolean }
+  options: { allowPageBlocks: boolean, allowPageHero?: boolean, standaloneV2?: boolean }
 ) {
   if (typeof value === 'string') {
     writer.push('<p>')
@@ -931,7 +976,7 @@ function writeRichTextDocumentContent(
       if (hero.reverse) writer.attribute('data-halo-reverse', 'true')
       writer.push('><div class="halo-block-content">')
       for (const child of (candidate as Record<string, any>).content) {
-        writeRichTextNode(writer, child, origin, 2)
+        writeRichTextNode(writer, child, origin, 2, { standaloneV2: true, context: 'block' })
       }
       writer.push('</div></section>')
       continue
@@ -947,7 +992,10 @@ function writeRichTextDocumentContent(
         options.allowPageHero === true
       )
     } else {
-      writeRichTextNode(writer, candidate, origin, 1)
+      writeRichTextNode(writer, candidate, origin, 1, {
+        standaloneV2: options.standaloneV2 === true,
+        context: 'block'
+      })
     }
   }
 }
@@ -972,7 +1020,7 @@ function renderWithFallback(
   const headings = new PortableHeadingRegistry(normalizedHeadingPrefix(headingPrefix))
   if (fallback.length > limits.maxOutputLength) {
     budget.markExceeded()
-    return { html: '', outline: headings.outline }
+    return { html: '', outline: headings.outline, truncated: true }
   }
   const checkpoint = budget.checkpoint()
   try {
@@ -980,14 +1028,14 @@ function renderWithFallback(
     writer.push(rootStart)
     render(writer, origin)
     writer.push(rootEnd)
-    return { html: writer.toString(), outline: headings.outline }
+    return { html: writer.toString(), outline: headings.outline, truncated: false }
   } catch (error) {
     if (!(error instanceof PortableRenderBudgetError)) throw error
     budget.recover(checkpoint)
     headings.reset()
-    if (fallback.length > budget.remainingOutput()) return { html: '', outline: headings.outline }
+    if (fallback.length > budget.remainingOutput()) return { html: '', outline: headings.outline, truncated: true }
     budget.charge(fallback.length)
-    return { html: fallback, outline: headings.outline }
+    return { html: fallback, outline: headings.outline, truncated: true }
   }
 }
 
@@ -1026,12 +1074,18 @@ export function createPortablePageRenderingForStandaloneV2(
   options: PortableRenderOptions
 ): PortableDocumentRendering {
   const rendered = renderWithFallback(options, { className: 'halo-page', contentKind: 'page' }, (writer, origin) => {
-    writeRichTextDocumentContent(writer, document, origin, { allowPageBlocks: true, allowPageHero: true })
+    writeRichTextDocumentContent(writer, document, origin, {
+      allowPageBlocks: true,
+      allowPageHero: true,
+      standaloneV2: true
+    })
   })
   return {
     ...renderingBase(options),
     html: rendered.html,
-    outline: rendered.outline
+    outline: rendered.truncated
+      ? []
+      : extractAuthoredOutline(document, { allowPageBlocks: true, allowPageHero: true })
   }
 }
 
@@ -1049,10 +1103,11 @@ export function createPortableRichTextRendering(
   }
 }
 
-export function createPortableStructuredContentRendering(
+function createPortableStructuredContentRenderingInternal(
   content: Record<string, unknown>,
   schemaFields: PortableSchemaField[],
-  options: PortableRenderOptions
+  options: PortableRenderOptions,
+  standaloneV2: boolean
 ): PortableStructuredContentRendering {
   const fields: Record<string, PortableRichTextFieldRendering> = Object.create(null)
   const outline: PortableOutlineEntry[] = []
@@ -1085,25 +1140,33 @@ export function createPortableStructuredContentRendering(
       truncated = true
       break
     }
-    const fieldHeadingPrefix = [
-      normalizedHeadingPrefix(options.headingIdPrefix).slice(0, 16),
-      portableHeadingSlug(fieldKey).slice(0, 12),
-      portableHeadingFieldDiscriminator(fieldId, fieldKey)
-    ].join('-').slice(0, 48)
+    const fieldHeadingPrefix = standaloneV2
+      ? authoredFieldHeadingPrefix(fieldId, fieldKey, options.headingIdPrefix)
+      : [
+          normalizedHeadingPrefix(options.headingIdPrefix).slice(0, 16),
+          portableHeadingSlug(fieldKey).slice(0, 12),
+          portableHeadingFieldDiscriminator(fieldId, fieldKey)
+        ].join('-').slice(0, 48)
     const rendered = renderWithFallback(
       options,
       { className: 'halo-richtext', contentKind: 'richtext' },
-      (writer, origin) => writeRichTextDocumentContent(writer, content[fieldKey], origin, { allowPageBlocks: false }),
+      (writer, origin) => writeRichTextDocumentContent(writer, content[fieldKey], origin, {
+        allowPageBlocks: false,
+        standaloneV2
+      }),
       budget,
       fieldHeadingPrefix
     )
+    const fieldOutline = standaloneV2 && !rendered.truncated
+      ? normalizeAuthoredDocument(content[fieldKey], { headingIdPrefix: fieldHeadingPrefix }).outline
+      : rendered.outline
     fields[fieldKey] = {
       fieldId,
       fieldKey,
       html: rendered.html,
-      outline: rendered.outline
+      outline: fieldOutline
     }
-    outline.push(...rendered.outline.slice(0, Math.max(0, PORTABLE_OUTLINE_LIMIT - outline.length)))
+    outline.push(...fieldOutline.slice(0, Math.max(0, PORTABLE_OUTLINE_LIMIT - outline.length)))
     if (budget.exceeded) {
       truncated = true
       break
@@ -1115,6 +1178,23 @@ export function createPortableStructuredContentRendering(
     outline,
     ...(truncated ? { truncated: true as const } : {})
   }
+}
+
+export function createPortableStructuredContentRendering(
+  content: Record<string, unknown>,
+  schemaFields: PortableSchemaField[],
+  options: PortableRenderOptions
+): PortableStructuredContentRendering {
+  return createPortableStructuredContentRenderingInternal(content, schemaFields, options, false)
+}
+
+/** Server-only v2 bridge; the public v1 structured writer remains byte-stable. */
+export function createPortableStructuredContentRenderingForStandaloneV2(
+  content: Record<string, unknown>,
+  schemaFields: PortableSchemaField[],
+  options: PortableRenderOptions
+): PortableStructuredContentRendering {
+  return createPortableStructuredContentRenderingInternal(content, schemaFields, options, true)
 }
 
 export function createPortableStandaloneDocument(

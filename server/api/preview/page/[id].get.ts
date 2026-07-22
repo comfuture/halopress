@@ -28,7 +28,6 @@ export default defineEventHandler(async (event) => {
   const row = await db.select().from(pageTable).where(eq(pageTable.id, id)).get()
   if (!row || row.status === 'deleted') return sendH3Error(event, notFound('Page not found'))
   const content = parseStoredPageContent(row.contentJson)
-  const outline = extractAuthoredOutline(content, { allowPageBlocks: true, allowPageHero: true })
   const includeRendering = getQuery(event).rendering !== '0'
   return {
     id: row.id,
@@ -43,7 +42,7 @@ export default defineEventHandler(async (event) => {
       schemaKey: null,
       schemaVersion: null,
       canonicalPath: resolvePreviewLayoutCanonicalPath(row.publicPath)
-    }, outline),
+    }, () => extractAuthoredOutline(content, { allowPageBlocks: true, allowPageHero: true })),
     updatedAt: row.updatedAt,
     ...publicationMetadata(row)
   }

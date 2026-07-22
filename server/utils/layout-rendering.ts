@@ -375,13 +375,13 @@ async function resolvePublicOutline(event: H3Event, context: LayoutRenderContext
 export function resolvePreviewPageLayoutRendering(
   event: H3Event,
   context: LayoutRenderContext,
-  outline: LayoutOutlineEntry[] = []
+  resolveOutline?: () => LayoutOutlineEntry[]
 ) {
   return resolveLayoutRendering({
     event,
     context,
     resolveAssignment: () => resolveWorkingPageLayout(event, context.documentId),
-    outline
+    resolveOutline: resolveOutline ? async () => resolveOutline() : undefined
   })
 }
 
@@ -397,13 +397,13 @@ export function resolvePreviewLayoutCanonicalPath(value: unknown) {
 export function resolvePreviewContentLayoutRendering(
   event: H3Event,
   context: LayoutRenderContext,
-  outline: LayoutOutlineEntry[] = []
+  resolveOutline?: () => LayoutOutlineEntry[]
 ) {
   if (!context.schemaKey || !context.schemaVersion) throw new TypeError('Preview content requires an exact Schema version')
   return resolveLayoutRendering({
     event,
     context,
     resolveAssignment: () => resolveSchemaVersionLayout(event, context.schemaKey!, context.schemaVersion!),
-    outline
+    resolveOutline: resolveOutline ? async () => resolveOutline() : undefined
   })
 }

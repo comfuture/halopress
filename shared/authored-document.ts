@@ -106,6 +106,9 @@ type NormalizeOptions = {
 const plainMarkTypes = new Set(['bold', 'italic', 'strike', 'code', 'underline'])
 const containerTypes = new Set(['paragraph', 'blockquote', 'bulletList', 'listItem', 'codeBlock'])
 const alignments = new Set(['left', 'center', 'right', 'justify'])
+const inlineNodeTypes = new Set(['text', 'hardBreak', 'image', 'mention'])
+
+type AuthoredNodeContext = 'block' | 'inline' | 'list' | 'code'
 
 class AuthoredNormalizationBudgetError extends Error {}
 
@@ -207,6 +210,18 @@ function fallbackNode(type: string): Extract<AuthoredDocumentNode, { type: 'fall
   return { type: 'fallback', message: `[Unsupported content: ${type || 'unknown'}]` }
 }
 
+function contextualFallbackNode(type: string, nodeContext: AuthoredNodeContext): AuthoredDocumentNode {
+  const text = `[Unsupported content: ${type || 'unknown'}]`
+  if (nodeContext === 'inline' || nodeContext === 'code') return { type: 'text', text, marks: [] }
+  if (nodeContext === 'list') {
+    return {
+      type: 'listItem',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text, marks: [] }] }]
+    }
+  }
+  return fallbackNode(type)
+}
+
 function safeStoredUrl(value: unknown) {
   if (typeof value !== 'string' || value.length > 2_048 || !isSafePageUrl(value)) return null
   return value
@@ -215,12 +230,15 @@ function safeStoredUrl(value: unknown) {
 function normalizeMarks(value: unknown, budget: AuthoredNormalizationBudget): AuthoredDocumentMark[] {
   if (!Array.isArray(value)) return []
   const marks: AuthoredDocumentMark[] = []
+  const plainMarks = new Set<string>()
   let hasLink = false
   for (const candidate of value) {
     budget.claimMark()
     if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) continue
     const mark = candidate as Record<string, any>
     if (plainMarkTypes.has(mark.type)) {
+      if (plainMarks.has(mark.type)) continue
+      plainMarks.add(mark.type)
       marks.push({ type: mark.type as 'bold' | 'italic' | 'strike' | 'code' | 'underline' })
       continue
     }
@@ -278,20 +296,26 @@ function normalizeNode(
     options: NormalizeOptions
   },
   depth: number,
-  topLevel: boolean
+  topLevel: boolean,
+  nodeContext: AuthoredNodeContext
 ): AuthoredDocumentNode {
   context.budget.claimNode(depth)
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return fallbackNode('unknown')
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return contextualFallbackNode('unknown', nodeContext)
   if (context.visiting.has(value)) throw new AuthoredNormalizationBudgetError('Cyclic authored document')
   context.visiting.add(value)
   try {
     const node = value as Record<string, any>
     const type = typeof node.type === 'string' ? node.type : ''
+    if (nodeContext === 'inline' && !inlineNodeTypes.has(type)) return contextualFallbackNode(type, nodeContext)
+    if (nodeContext === 'list' && type !== 'listItem') return contextualFallbackNode(type, nodeContext)
+    if (nodeContext === 'code' && type !== 'text' && type !== 'hardBreak') {
+      return contextualFallbackNode(type, nodeContext)
+    }
     if (type === 'text') {
       return {
         type: 'text',
         text: typeof node.text === 'string' ? node.text : '',
-        marks: normalizeMarks(node.marks, context.budget)
+        marks: nodeContext === 'code' ? [] : normalizeMarks(node.marks, context.budget)
       }
     }
     if (type === 'hardBreak' || type === 'horizontalRule') return { type }
@@ -333,7 +357,7 @@ function normalizeNode(
       if (!topLevel || !context.options.allowPageHero || !Array.isArray(node.content)) return fallbackNode(type)
       if (node.content.some((child: unknown) => child && typeof child === 'object' && !Array.isArray(child)
         && (child as Record<string, unknown>).type === 'imageUpload')) return fallbackNode(type)
-      const content = node.content.map((child: unknown) => normalizeNode(child, context, depth + 1, false))
+      const content = node.content.map((child: unknown) => normalizeNode(child, context, depth + 1, false, 'block'))
       if (!isPageHeroSequence(content)) return fallbackNode(type)
       return {
         type: 'pageHero',
@@ -342,9 +366,19 @@ function normalizeNode(
         content
       }
     }
+    if (type !== 'heading' && type !== 'orderedList' && !containerTypes.has(type)) {
+      return contextualFallbackNode(type, nodeContext)
+    }
 
+    const childContext: AuthoredNodeContext = type === 'paragraph' || type === 'heading'
+      ? 'inline'
+      : type === 'bulletList' || type === 'orderedList'
+        ? 'list'
+        : type === 'codeBlock'
+          ? 'code'
+          : 'block'
     const children = Array.isArray(node.content)
-      ? node.content.map((child: unknown) => normalizeNode(child, context, depth + 1, false))
+      ? node.content.map((child: unknown) => normalizeNode(child, context, depth + 1, false, childContext))
       : []
     const textAlign = ['paragraph', 'heading'].includes(type) && alignments.has(node.attrs?.textAlign)
       ? node.attrs.textAlign as AuthoredContainerNode['textAlign']
@@ -402,7 +436,7 @@ export function normalizeAuthoredDocument(value: unknown, options: NormalizeOpti
     if (document.type !== 'doc' || !Array.isArray(document.content)) {
       return { type: 'doc', content: [fallbackNode('document')], outline: [], truncated: false }
     }
-    const content = document.content.map(node => normalizeNode(node, context, 1, true))
+    const content = document.content.map(node => normalizeNode(node, context, 1, true, 'block'))
     return { type: 'doc', content, outline: headings.outline, truncated: false }
   } catch (error) {
     if (!(error instanceof AuthoredNormalizationBudgetError)) throw error

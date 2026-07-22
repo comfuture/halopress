@@ -126,6 +126,7 @@ describe('public presentation UI contracts', () => {
     expect(component).toContain('v-if="richTextDescription && descriptionField')
     expect(component).toContain('renderer: \'rich_text\'')
     expect(component).toContain('<PublicFieldRenderer')
+    expect(fieldRenderer).toContain('import SiteRichTextRenderer from \'~/components/site-document/SiteRichTextRenderer.vue\'')
     expect(fieldRenderer).toContain('<SiteRichTextRenderer')
     expect(fieldRenderer).not.toContain('portable-content')
   })
