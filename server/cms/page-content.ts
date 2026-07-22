@@ -2,7 +2,7 @@ import { badRequest } from '../utils/http'
 import { validatePageDocumentBlocks } from '~~/shared/page-blocks'
 import {
   validatePageDocumentForPublication,
-  validatePageDocumentHeroes,
+  validatePageDocumentHeroes
 } from '../../app/editor/page/validation'
 
 export const emptyPageDocument = { type: 'doc', content: [{ type: 'paragraph' }] }
