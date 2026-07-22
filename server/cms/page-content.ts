@@ -1,6 +1,9 @@
 import { badRequest } from '../utils/http'
 import { validatePageDocumentBlocks } from '~~/shared/page-blocks'
-import { validatePageDocumentHeroes } from '../../app/editor/page/validation'
+import {
+  validatePageDocumentHeroes,
+  validatePageDocumentImageUploads
+} from '../../app/editor/page/validation'
 
 export const emptyPageDocument = { type: 'doc', content: [{ type: 'paragraph' }] }
 
@@ -44,6 +47,10 @@ export function normalizePageContent(
     allowImageUpload: options.mode !== 'publish'
   })
   if (heroIssues.length) throw badRequest(heroIssues[0]!.message)
+  if (options.mode === 'publish') {
+    const uploadIssues = validatePageDocumentImageUploads(document)
+    if (uploadIssues.length) throw badRequest(uploadIssues[0]!.message)
+  }
 
   return document
 }

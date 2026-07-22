@@ -33,6 +33,14 @@ describe('editable Page unit validation', () => {
       .toThrow('Editable Hero has an unfinished image upload.')
   })
 
+  it('rejects unfinished image uploads outside Heroes at publication', () => {
+    const draft = buildPageDocumentFromPattern('media-content')
+
+    expect(normalizePageContent(draft, { mode: 'draft' })).toEqual(draft)
+    expect(() => normalizePageContent(draft, { mode: 'publish' }))
+      .toThrow('Page has an unfinished image upload.')
+  })
+
   it('keeps every legacy atom classified while offering only finite configured blocks', () => {
     expect(pageBlockLibraryClassification).toEqual({
       pageHero: expect.objectContaining({ model: 'legacy-only', showDirectly: false }),

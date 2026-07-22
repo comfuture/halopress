@@ -136,6 +136,7 @@ describe('page editor workspace contracts', () => {
   it('provides explicit palette search keys and shared pointer, keyboard, and touch insertion', async () => {
     const palette = await source('app/components/page-editor/PageBlockPalette.vue')
     const editor = await source('app/components/PageEditor.vue')
+    const insertion = await source('app/editor/page/insertion.ts')
 
     expect(palette).toContain('keys: [\'label\', \'summary\', \'category\', \'keywords\']')
     expect(palette).toContain('onSelect: () => emit(\'insert\', { model: item.model, source: item.source, key: item.key }')
@@ -145,6 +146,12 @@ describe('page editor workspace contracts', () => {
     expect(editor).toContain('editor.view.posAtCoords')
     expect(editor).toContain('editor.commands.insertPageBlockAt')
     expect(editor).toContain('editor.commands.insertPagePatternAt')
+    expect(editor.match(/finishPageLibraryInsertion\(editor\)/g)).toHaveLength(2)
+    expect(editor).toContain('if (!closingMobilePanel) focusPageLibraryInsertion(editor)')
+    expect(editor).toContain('event.preventDefault()')
+    expect(editor).toContain('focusPageLibraryInsertion(getEditor())')
+    expect(insertion).toContain('editor?.view.focus()')
+    expect(editor).toContain(':content="{ onCloseAutoFocus: handleMobilePanelCloseAutoFocus }"')
     expect(editor.match(/scrollPageContentIntoView\(editor, destination\)/g)).toHaveLength(2)
     const dropHandler = editor.indexOf('function handleCanvasDrop(event: DragEvent)')
     expect(editor.indexOf('event.preventDefault()', dropHandler))
@@ -165,7 +172,6 @@ describe('page editor workspace contracts', () => {
     expect(panel).toContain('label="Page properties"')
     expect(panel).toContain('label="Convert to editable Hero"')
     expect(editor).not.toContain('selectedBlock.value.pos')
-    expect(editor).not.toContain('.focus()')
     expect(inspector).toContain('<CmsAssetPicker v-model="selectedAssetId"')
     expect(inspector).toContain('Move link up')
     expect(inspector).toContain('field.type === \'object-list\'')

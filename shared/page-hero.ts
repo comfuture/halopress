@@ -35,15 +35,25 @@ function stringValue(value: unknown) {
   return typeof value === 'string' ? value : ''
 }
 
-function actionContent(value: unknown): JSONContent[] {
+function storedRecord(value: unknown) {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null
+}
+
+function hasOnlyKeys(value: Record<string, unknown>, keys: readonly string[]) {
+  return Object.keys(value).every(key => keys.includes(key))
+}
+
+function actionContent(value: unknown): JSONContent[] | null {
   if (!Array.isArray(value)) return []
   const content: JSONContent[] = []
   for (const candidate of value) {
-    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) continue
-    const link = candidate as Record<string, unknown>
+    const link = storedRecord(candidate)
+    if (!link || !hasOnlyKeys(link, ['label', 'to', 'target'])) return null
     const label = stringValue(link.label)
     const href = stringValue(link.to)
-    if (!label || !href || !isSafePageUrl(href)) continue
+    if (!label || !href || !isSafePageUrl(href)) return null
     if (content.length) content.push(text('  '))
     content.push(text(label, [{
       type: 'link',
@@ -74,6 +84,23 @@ export function convertLegacyPageHero(attrs: StoredPageBlockAttrs): LegacyPageHe
     }
   }
 
+  const storedProps = attrs.props == null ? {} : storedRecord(attrs.props)
+  if (!storedProps || !hasOnlyKeys(storedProps, [
+    'headline', 'title', 'description', 'orientation', 'reverse', 'links'
+  ])) {
+    return {
+      status: 'blocked',
+      reason: 'This Hero has property data that cannot be represented by the editable Hero without losing information.'
+    }
+  }
+  const storedMedia = attrs.media == null ? {} : storedRecord(attrs.media)
+  if (!storedMedia || !hasOnlyKeys(storedMedia, ['url', 'alt', 'width', 'height'])) {
+    return {
+      status: 'blocked',
+      reason: 'This Hero has media data that cannot be represented by the editable Hero without losing information.'
+    }
+  }
+
   const resolved = resolvePageBlock(attrs)
   if (resolved.status !== 'known' || resolved.key !== 'pageHero') {
     return { status: 'blocked', reason: 'This block is not a supported legacy Hero.' }
@@ -85,6 +112,12 @@ export function convertLegacyPageHero(attrs: StoredPageBlockAttrs): LegacyPageHe
   const title = stringValue(props.title)
   const description = stringValue(props.description)
   const actions = actionContent(props.links)
+  if (!actions) {
+    return {
+      status: 'blocked',
+      reason: 'This Hero has action data that cannot be represented by editable text links without losing information.'
+    }
+  }
 
   if (headline) content.push(paragraph([text(headline)]))
   content.push({

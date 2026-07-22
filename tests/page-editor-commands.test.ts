@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import PageBlock from '../app/editor/page/PageBlock'
 import PageHero from '../app/editor/page/PageHero'
+import { pageLibraryInsertionPosition } from '../app/editor/page/insertion'
 import PagePattern from '../app/editor/page/PagePattern'
 import { clearPageBlockSelection } from '../app/editor/page/selection'
 import type { PageBlockAttrs, PageBlockComponentKey } from '../app/editor/page/types'
@@ -170,6 +171,25 @@ describe('page block transaction commands', () => {
     })
   })
 
+  it('inserts after a whole selected editable unit instead of at the document end', () => {
+    const editor = new Editor({
+      extensions: [testStarterKit, testTextAlign, Image, ImageUpload, PagePattern, PageHero, PageBlock],
+      content: {
+        type: 'doc',
+        content: [...clonePagePatternContent('centered-hero'), block('pageCTA', 'Closing')]
+      }
+    })
+    editors.push(editor)
+    editor.commands.setNodeSelection(positionAt(editor, 0))
+
+    const destination = pageLibraryInsertionPosition(editor.state)
+    expect(destination).toBe(positionAt(editor, 1))
+    expect(editor.commands.insertPagePatternAt(destination, clonePagePatternContent('closing-cta'))).toBe(true)
+    expect((editor.getJSON().content ?? []).map(node => node.type)).toEqual([
+      'pageHero', 'heading', 'paragraph', 'paragraph', 'pageBlock'
+    ])
+  })
+
   it('uses the live Page schema to reject malformed nesting and unknown nodes without mutation', () => {
     const editor = new Editor({
       extensions: [testStarterKit, testTextAlign, Image, ImageUpload, PagePattern, PageHero, PageBlock],
@@ -240,6 +260,31 @@ describe('page block transaction commands', () => {
     expect(editor.getJSON().content?.[0]?.content?.at(-1)?.type).toBe('paragraph')
   })
 
+  it('resolves a Hero upload through the normal Image replacement transaction', () => {
+    const editor = new Editor({
+      extensions: [testStarterKit, testTextAlign, Image, ImageUpload, PagePattern, PageHero, PageBlock],
+      content: { type: 'doc', content: clonePagePatternContent('split-hero') }
+    })
+    editors.push(editor)
+    let uploadPosition = -1
+    editor.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'imageUpload') uploadPosition = pos
+    })
+    expect(uploadPosition).toBeGreaterThan(0)
+
+    expectSingleTransaction(editor, () => editor.chain()
+      .deleteRange({ from: uploadPosition, to: uploadPosition + 1 })
+      .setImage({ src: '/assets/review-image/raw', alt: 'Resolved Hero image' })
+      .run())
+
+    expect(editor.getJSON().content?.[0]?.content?.at(-1)).toMatchObject({
+      type: 'image',
+      attrs: { src: '/assets/review-image/raw', alt: 'Resolved Hero image' }
+    })
+    expect(editor.commands.undo()).toBe(true)
+    expect(editor.getJSON().content?.[0]?.content?.at(-1)?.type).toBe('imageUpload')
+  })
+
   it('converts a legacy Hero explicitly in one lossless transaction and supports undo', () => {
     const editor = new Editor({
       extensions: [testStarterKit, testTextAlign, Image, ImageUpload, PagePattern, PageHero, PageBlock],
@@ -298,6 +343,41 @@ describe('page block transaction commands', () => {
             advanced: { custom: true },
             media: {}
           }
+        }]
+      }
+    })
+    editors.push(editor)
+    selectAt(editor, 0)
+    const before = editor.getJSON()
+
+    expect(editor.commands.convertLegacyPageHeroBlock()).toBe(false)
+    expect(editor.getJSON()).toEqual(before)
+  })
+
+  it.each([
+    {
+      label: 'action presentation',
+      props: { title: 'Legacy title', links: [{ label: 'Go', to: '#go', variant: 'solid' }] },
+      media: {}
+    },
+    {
+      label: 'unknown properties',
+      props: { title: 'Legacy title', futureValue: 'retain me' },
+      media: {}
+    },
+    {
+      label: 'media workflow data',
+      props: { title: 'Legacy title' },
+      media: { requiredAction: 'Upload an image later' }
+    }
+  ])('blocks legacy Hero conversion when $label would be lost', ({ props, media }) => {
+    const editor = new Editor({
+      extensions: [testStarterKit, testTextAlign, Image, ImageUpload, PagePattern, PageHero, PageBlock],
+      content: {
+        type: 'doc',
+        content: [{
+          type: 'pageBlock',
+          attrs: { component: 'pageHero', props, advanced: {}, media }
         }]
       }
     })
