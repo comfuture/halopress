@@ -127,6 +127,7 @@ describe('page pattern visual fixtures', () => {
     expect(hero.match(/contenteditable=/g)).toHaveLength(1)
     expect(hero).toContain('page-hero-unit--horizontal')
     expect(hero).toContain('page-hero-unit--reverse')
+    expect(hero).toContain('page-hero-unit__content min-w-0 pt-6')
     expect(faq).toContain('<UAccordion')
     expect(faq).toContain(':unmount-on-hide="false"')
     expect(logos).toContain('grid-cols-2')

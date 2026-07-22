@@ -24,7 +24,7 @@ defineProps<NodeViewProps>()
     >
       Editable Hero
     </div>
-    <NodeViewContent class="page-hero-unit__content min-w-0" />
+    <NodeViewContent class="page-hero-unit__content min-w-0 pt-6" />
   </NodeViewWrapper>
 </template>
 

@@ -13,6 +13,7 @@ import PageBlock from '~/editor/page/PageBlock'
 import PageBlockNodeView from '~/editor/page/PageBlockNodeView.vue'
 import PageHero, { selectedPageHero } from '~/editor/page/PageHero'
 import PageHeroNodeView from '~/editor/page/PageHeroNodeView.vue'
+import { focusPageLibraryInsertion, pageLibraryInsertionPosition } from '~/editor/page/insertion'
 import { clonePageBlockAttrs } from '~/editor/page/inspector-state'
 import type { PagePaletteItem } from '~/editor/page/palette'
 import { getPageBlockComponent, pageBlockRegistry } from '~/editor/page/registry'
@@ -80,6 +81,7 @@ const mobilePanelOpen = ref(false)
 const dropPosition = ref<number | null>(null)
 const dropIndicatorTop = ref<number | null>(null)
 let desktopPanelMediaQuery: MediaQueryList | null = null
+let refocusEditorAfterMobilePanelClose = false
 const desktopPanelMediaQueryText = '(min-width: 1024px)'
 
 const isEditMode = computed(() => mode.value === 'edit')
@@ -167,22 +169,27 @@ function blockAttrs(key: PageBlockComponentKey): PageBlockAttrs & { component: P
   }
 }
 
-function selectionInsertionPosition(editor: Editor) {
-  const selection: any = editor.state.selection
-  if (selection.node?.type.name === 'pageBlock') {
-    return selection.from + selection.node.nodeSize
-  }
-  if (selection.$from.depth > 0) return selection.$from.after(1)
-  return editor.state.doc.content.size
+function finishPageLibraryInsertion(editor: Editor) {
+  const closingMobilePanel = mobilePanelOpen.value && !usesDesktopPanel()
+  if (closingMobilePanel) refocusEditorAfterMobilePanelClose = true
+  mobilePanelOpen.value = false
+  if (!closingMobilePanel) focusPageLibraryInsertion(editor)
+}
+
+function handleMobilePanelCloseAutoFocus(event: Event) {
+  if (!refocusEditorAfterMobilePanelClose) return
+  event.preventDefault()
+  refocusEditorAfterMobilePanelClose = false
+  focusPageLibraryInsertion(getEditor())
 }
 
 function insertBlock(key: PageBlockComponentKey, position?: number) {
   const editor = getEditor()
   if (!editor || !isEditing.value || !pageBlockRegistry.byKey[key]) return false
-  const destination = position ?? selectionInsertionPosition(editor)
+  const destination = position ?? pageLibraryInsertionPosition(editor.state)
   const inserted = editor.commands.insertPageBlockAt(destination, blockAttrs(key))
   if (inserted) {
-    mobilePanelOpen.value = false
+    finishPageLibraryInsertion(editor)
     scrollPageContentIntoView(editor, destination)
   }
   return inserted
@@ -191,10 +198,10 @@ function insertBlock(key: PageBlockComponentKey, position?: number) {
 function insertPattern(key: PagePatternKey, position?: number) {
   const editor = getEditor()
   if (!editor || !isEditing.value || !pagePatternRegistry.byKey[key]) return false
-  const destination = position ?? selectionInsertionPosition(editor)
+  const destination = position ?? pageLibraryInsertionPosition(editor.state)
   const inserted = editor.commands.insertPagePatternAt(destination, clonePagePatternContent(key))
   if (inserted) {
-    mobilePanelOpen.value = false
+    finishPageLibraryInsertion(editor)
     scrollPageContentIntoView(editor, destination)
   }
   return inserted
@@ -533,7 +540,14 @@ watch(mode, (nextMode) => {
       </aside>
     </div>
 
-    <USlideover v-if="isEditMode" v-model:open="mobilePanelOpen" title="Page editor" side="right" :ui="{ body: 'p-0 sm:p-0 min-h-0' }">
+    <USlideover
+      v-if="isEditMode"
+      v-model:open="mobilePanelOpen"
+      title="Page editor"
+      side="right"
+      :content="{ onCloseAutoFocus: handleMobilePanelCloseAutoFocus }"
+      :ui="{ body: 'p-0 sm:p-0 min-h-0' }"
+    >
       <template #body>
         <PageEditorPanel
           v-model:active-tab="activePanel"

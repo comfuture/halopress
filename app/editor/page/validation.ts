@@ -65,3 +65,9 @@ export function validatePageDocumentHeroes(
   visit(document.content, 'content', true)
   return issues
 }
+
+export function validatePageDocumentImageUploads(value: unknown) {
+  return containsNodeType(value, 'imageUpload')
+    ? [{ path: 'content', message: 'Page has an unfinished image upload.' } satisfies PageHeroValidationIssue]
+    : []
+}
