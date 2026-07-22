@@ -15,22 +15,31 @@ import { pagePatternViewports, pagePatternVisualFixtures } from './fixtures/page
 const projectRoot = resolve(import.meta.dirname, '..')
 
 describe('page pattern registry', () => {
-  it('keeps versioned patterns separate from atomic block definitions', () => {
+  it('classifies versioned library entries independently from legacy atomic definitions', () => {
     expect(pagePatternDefinitions.map(pattern => pattern.key)).toEqual(pagePatternKeys)
     expect(new Set(pagePatternKeys).size).toBe(pagePatternKeys.length)
     expect(pagePatternKeys.some(key => pageBlockKeys.includes(key as any))).toBe(false)
 
     for (const pattern of pagePatternDefinitions) {
-      expect(pattern.version).toBe(1)
-      expect(pattern.insertion).toBe('pattern')
+      expect(pattern.version).toBe(2)
+      expect(['configured-block', 'editable-unit', 'document-pattern']).toContain(pattern.model)
       expect(pattern.compatibility).toMatchObject({
         editor: 'page',
-        patternContract: 1,
+        patternContract: 2,
         blockRegistry: 1
       })
-      expect(pattern.compatibility.requiredBlocks.length).toBeGreaterThan(0)
       expect(validatePagePatternDefinition(pattern)).toEqual([])
     }
+    expect(Object.fromEntries(pagePatternDefinitions.map(pattern => [pattern.key, pattern.model]))).toEqual({
+      'centered-hero': 'editable-unit',
+      'split-hero': 'editable-unit',
+      'feature-grid': 'document-pattern',
+      'media-content': 'document-pattern',
+      'testimonial-social-proof': 'document-pattern',
+      faq: 'configured-block',
+      'closing-cta': 'document-pattern',
+      'starter-page': 'document-pattern'
+    })
   })
 
   it('ships the reviewed starter set and deep-clones every insertion', () => {
@@ -50,8 +59,8 @@ describe('page pattern registry', () => {
     expect(first).toEqual(second)
     expect(first).not.toBe(second)
     expect(first[0]).not.toBe(second[0])
-    first[0]!.attrs.props = { title: 'Changed after insertion' }
-    expect(second[0]!.attrs.props).not.toEqual(first[0]!.attrs.props)
+    first[0]!.attrs!.reverse = true
+    expect(second[0]!.attrs!.reverse).not.toBe(first[0]!.attrs!.reverse)
     expect(buildPageDocumentFromPattern('starter-page').content).not.toEqual(first)
   })
 
@@ -59,29 +68,31 @@ describe('page pattern registry', () => {
     const serialized = JSON.stringify(pagePatternDefinitions)
     expect(serialized).not.toMatch(/https?:\/\//)
     expect(serialized).not.toMatch(/"(?:class|ui|onClick|is)":/)
-    expect(serialized).toContain('requiredAction')
+    expect(serialized).toContain('imageUpload')
     expect(serialized).toContain('[Add')
 
     const splitHero = pagePatternDefinitions.find(pattern => pattern.key === 'split-hero')!
-    expect(splitHero.content.content[0]!.attrs.media).toMatchObject({
-      url: '',
-      alt: '',
-      requiredAction: expect.stringContaining('hero image')
+    expect(splitHero.content.content[0]).toMatchObject({
+      type: 'pageHero',
+      attrs: { orientation: 'horizontal', reverse: false }
     })
+    expect(splitHero.content.content[0]!.content?.map(node => node.type)).toEqual([
+      'heading', 'paragraph', 'paragraph', 'imageUpload'
+    ])
 
     const unsafe = structuredClone(splitHero)
     ;(unsafe.content.content[0]!.attrs as any).renderer = 'ArbitraryComponent'
-    expect(validatePagePatternDefinition(unsafe)).toContain('Pattern node 1 has invalid curated properties.')
+    expect(validatePagePatternDefinition(unsafe)).toContain('Pattern.1 contains forbidden stored attributes.')
   })
 
   it('reports malformed runtime nodes without throwing', () => {
     const missingNode = structuredClone(pagePatternDefinitions[0]!) as any
     missingNode.content.content = [null]
-    expect(validatePagePatternDefinition(missingNode)).toContain('Pattern node 1 is invalid.')
+    expect(validatePagePatternDefinition(missingNode)).toContain('Pattern.1 is not a Tiptap JSON node or mark.')
 
     const missingAttrs = structuredClone(pagePatternDefinitions[0]!) as any
     missingAttrs.content.content = [{ type: 'pageBlock' }]
-    expect(validatePagePatternDefinition(missingAttrs)).toContain('Pattern node 1 is missing attributes.')
+    expect(validatePagePatternDefinition(missingAttrs)).toContain('Pattern.1 is not an approved configured block.')
   })
 })
 
@@ -103,28 +114,26 @@ describe('page pattern visual fixtures', () => {
     }
   })
 
-  it('uses responsive Nuxt UI primitives, semantic colors, and keyboard-accessible FAQ controls', async () => {
-    const [section, faq, logos, media, fixtureHarness] = await Promise.all([
-      readFile(resolve(projectRoot, 'app/editor/page/PageBlockView.vue'), 'utf8'),
+  it('uses a real editable Hero content DOM and retains finite configured atoms', async () => {
+    const [hero, faq, logos, palette] = await Promise.all([
+      readFile(resolve(projectRoot, 'app/editor/page/PageHeroNodeView.vue'), 'utf8'),
       readFile(resolve(projectRoot, 'app/components/page-blocks/PageBlockFAQ.vue'), 'utf8'),
       readFile(resolve(projectRoot, 'app/components/page-blocks/PageBlockLogos.vue'), 'utf8'),
-      readFile(resolve(projectRoot, 'app/components/page-blocks/PageBlockMedia.vue'), 'utf8'),
-      readFile(resolve(projectRoot, 'tests/fixtures/PagePatternVisualFixture.vue'), 'utf8')
+      readFile(resolve(projectRoot, 'app/components/page-editor/PageBlockPalette.vue'), 'utf8')
     ])
-    expect(section).toContain('<PageBlockFAQ')
-    expect(section).toContain('<PageBlockMedia')
-    expect(section).toContain('<UPageHero')
-    expect(section).toContain('<UPageSection')
-    expect(section).toContain('<UPageCTA')
-    expect(section).not.toContain(':is="resolved.componentName"')
+    expect(hero).toContain('<NodeViewContent')
+    expect(hero).toContain('data-type="page-hero"')
+    expect(hero).toContain('contenteditable="false"')
+    expect(hero.match(/contenteditable=/g)).toHaveLength(1)
+    expect(hero).toContain('page-hero-unit--horizontal')
+    expect(hero).toContain('page-hero-unit--reverse')
     expect(faq).toContain('<UAccordion')
     expect(faq).toContain(':unmount-on-hide="false"')
     expect(logos).toContain('grid-cols-2')
     expect(logos).toContain('sm:grid-cols-4')
-    expect(media).toContain('border-muted')
-    expect(media).toContain('bg-muted/40')
-    expect(fixtureHarness).toContain('data-page-pattern-fixture')
-    expect(fixtureHarness).toContain('<PageDocumentRenderer')
+    expect(palette).toContain('return \'Editable unit\'')
+    expect(palette).toContain('return \'Editable pattern\'')
+    expect(palette).toContain('return \'Configured block\'')
   })
 
   it('documents copy-on-insert upgrades without rewriting existing pages', async () => {
