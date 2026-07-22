@@ -248,6 +248,48 @@ const components: PageBlockComponent[] = [
   }
 ]
 
+export const pageBlockLibraryClassification = {
+  pageHero: {
+    model: 'legacy-only',
+    showDirectly: false,
+    rationale: 'New Heroes use the editable pageHero unit; the atom remains registered for stored documents and explicit conversion.'
+  },
+  pageCard: {
+    model: 'legacy-only',
+    showDirectly: false,
+    rationale: 'General card copy does not justify Inspector-only editing.'
+  },
+  pageSection: {
+    model: 'legacy-only',
+    showDirectly: false,
+    rationale: 'Feature and media compositions now insert ordinary editable document content.'
+  },
+  pageTestimonial: {
+    model: 'legacy-only',
+    showDirectly: false,
+    rationale: 'Testimonials now use editable blockquote and attribution content.'
+  },
+  pageLogos: {
+    model: 'configured-block',
+    showDirectly: true,
+    rationale: 'A finite logo collection keeps asset, alternative-text, and ordering configuration coherent.'
+  },
+  pageFAQ: {
+    model: 'configured-block',
+    showDirectly: false,
+    rationale: 'The finite accordion item contract preserves keyboard-accessible behavior; the curated FAQ entry inserts it.'
+  },
+  pageCTA: {
+    model: 'legacy-only',
+    showDirectly: false,
+    rationale: 'Closing copy and link labels now insert as ordinary editable document content.'
+  }
+} as const satisfies Record<PageBlockComponent['key'], {
+  model: 'configured-block' | 'legacy-only'
+  showDirectly: boolean
+  rationale: string
+}>
+
 export const pageBlockRegistry: PageBlockRegistry = {
   components,
   byKey: components.reduce((acc, item) => {

@@ -1,20 +1,24 @@
 <script setup lang="ts">
 import type { TabsItem } from '@nuxt/ui'
+import type { LegacyPageHeroConversion, PageHeroAttrs } from '~~/shared/page-hero'
 
 import PageBlockInspector from '~/components/page-editor/PageBlockInspector.vue'
 import PageBlockPalette from '~/components/page-editor/PageBlockPalette.vue'
+import PageHeroInspector from '~/components/page-editor/PageHeroInspector.vue'
 import PagePropertiesInspector from '~/components/page-editor/PagePropertiesInspector.vue'
 import type { PagePaletteItem } from '~/editor/page/palette'
 import type { PageBlockAttrs, PageBlockField } from '~/editor/page/types'
 
 const props = withDefaults(defineProps<{
   selectedBlock: PageBlockAttrs | null
+  selectedHero: PageHeroAttrs | null
   activeFields: PageBlockField[]
   activeLabel?: string
   editable?: boolean
   pageValidationMessage?: string
   publishedLayoutId?: string | null
   hasPublishedRevision?: boolean
+  legacyHeroConversion?: LegacyPageHeroConversion | null
 }>(), {
   activeLabel: undefined,
   editable: true,
@@ -25,6 +29,8 @@ const emit = defineEmits<{
   insert: [item: PagePaletteItem]
   dragstart: [event: DragEvent, item: PagePaletteItem]
   updateBlock: [attrs: PageBlockAttrs]
+  updateHero: [attrs: Partial<PageHeroAttrs>]
+  convertLegacyHero: []
   showPageProperties: []
 }>()
 
@@ -35,7 +41,7 @@ const description = defineModel<string>('description', { default: '' })
 const socialImageAssetId = defineModel<string>('socialImageAssetId', { default: '' })
 const layoutId = defineModel<string | null>('layoutId', { default: null })
 const inspectorTabLabel = computed(() => (
-  activeTab.value === 'inspector' && !props.selectedBlock ? 'Page properties' : 'Inspector'
+  activeTab.value === 'inspector' && !props.selectedBlock && !props.selectedHero ? 'Page properties' : 'Inspector'
 ))
 
 const panelTabs = computed<TabsItem[]>(() => [
@@ -71,7 +77,7 @@ function forwardDragStart(event: DragEvent, item: PagePaletteItem) {
 
     <template #inspector>
       <div class="flex h-full min-h-0 flex-col">
-        <div v-if="selectedBlock" class="shrink-0 border-b border-muted px-2 py-1">
+        <div v-if="selectedBlock || selectedHero" class="shrink-0 border-b border-muted px-2 py-1">
           <UButton
             label="Page properties"
             icon="i-lucide-file-cog"
@@ -90,6 +96,25 @@ function forwardDragStart(event: DragEvent, item: PagePaletteItem) {
             variant="subtle"
           />
         </div>
+        <div v-if="selectedBlock?.component === 'pageHero' && legacyHeroConversion" class="shrink-0 space-y-3 border-b border-muted p-4">
+          <UAlert
+            title="Legacy configured Hero"
+            :description="legacyHeroConversion.status === 'ready'
+              ? 'Convert this stored block explicitly to edit its headline, copy, links, and media on the canvas.'
+              : legacyHeroConversion.reason"
+            :color="legacyHeroConversion.status === 'ready' ? 'info' : 'warning'"
+            variant="subtle"
+          />
+          <UButton
+            label="Convert to editable Hero"
+            icon="i-lucide-replace"
+            color="neutral"
+            variant="outline"
+            block
+            :disabled="!editable || legacyHeroConversion.status !== 'ready'"
+            @click="emit('convertLegacyHero')"
+          />
+        </div>
         <PageBlockInspector
           v-if="selectedBlock"
           class="min-h-0 flex-1"
@@ -98,6 +123,13 @@ function forwardDragStart(event: DragEvent, item: PagePaletteItem) {
           :label="activeLabel"
           :editable="editable"
           @update="emit('updateBlock', $event)"
+        />
+        <PageHeroInspector
+          v-else-if="selectedHero"
+          class="min-h-0 flex-1"
+          :attrs="selectedHero"
+          :editable="editable"
+          @update="emit('updateHero', $event)"
         />
         <PagePropertiesInspector
           v-else

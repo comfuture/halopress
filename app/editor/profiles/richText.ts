@@ -138,8 +138,11 @@ const sharedDefinition: Omit<EditorProfileDefinition, 'name'> = {
       { kind: 'duplicate', pos, label: 'Duplicate', icon: 'i-lucide-copy' },
       { label: 'Copy to clipboard', icon: 'i-lucide-clipboard', onSelect: async () => {
         const selected = editor.state.doc.nodeAt(pos)
-        if (selected && typeof navigator !== 'undefined' && typeof navigator.clipboard?.writeText === 'function') {
-          await navigator.clipboard.writeText(selected.textContent)
+        const clipboard = typeof globalThis.navigator === 'object'
+          ? (globalThis.navigator as { clipboard?: { writeText?: (value: string) => Promise<void> } }).clipboard
+          : undefined
+        if (selected && typeof clipboard?.writeText === 'function') {
+          await clipboard.writeText(selected.textContent)
         }
       } }
     ]] },

@@ -4,16 +4,19 @@ import { mapEditorItems } from '@nuxt/ui/utils/editor'
 import type { Editor, JSONContent } from '@tiptap/vue-3'
 import { VueNodeViewRenderer } from '@tiptap/vue-3'
 import { markRaw } from 'vue'
+import { convertLegacyPageHero, type PageHeroAttrs } from '~~/shared/page-hero'
 import { clonePagePatternContent, pagePatternRegistry, type PagePatternKey } from '~~/shared/page-patterns'
 
 import PageEditorPanel from '~/components/page-editor/PageEditorPanel.vue'
 import RichEditorLinkPopover from '~/components/cms/RichEditorLinkPopover.vue'
 import PageBlock from '~/editor/page/PageBlock'
 import PageBlockNodeView from '~/editor/page/PageBlockNodeView.vue'
+import PageHero, { selectedPageHero } from '~/editor/page/PageHero'
+import PageHeroNodeView from '~/editor/page/PageHeroNodeView.vue'
 import { clonePageBlockAttrs } from '~/editor/page/inspector-state'
 import type { PagePaletteItem } from '~/editor/page/palette'
 import { getPageBlockComponent, pageBlockRegistry } from '~/editor/page/registry'
-import { scrollPageBlockIntoView } from '~/editor/page/scroll'
+import { scrollPageContentIntoView } from '~/editor/page/scroll'
 import { clearPageBlockSelection } from '~/editor/page/selection'
 import type { PageBlockAttrs, PageBlockComponentKey } from '~/editor/page/types'
 import { createPageProfile, getPageToolbarGroups } from '~/editor/profiles'
@@ -46,6 +49,11 @@ const PageBlockEditor = PageBlock.extend({
     return VueNodeViewRenderer(PageBlockNodeView)
   }
 })
+const PageHeroEditor = PageHero.extend({
+  addNodeView() {
+    return VueNodeViewRenderer(PageHeroNodeView)
+  }
+})
 const ImageUploadEditor = ImageUpload.extend({
   addNodeView() {
     return VueNodeViewRenderer(RichEditorImageUploadNode)
@@ -53,6 +61,7 @@ const ImageUploadEditor = ImageUpload.extend({
 })
 const editorProfile = createPageProfile(props.profile, {
   pageBlockFactory: () => PageBlockEditor.configure({}),
+  pageHeroFactory: () => PageHeroEditor.configure({}),
   imageUploadFactory: () => ImageUploadEditor.configure({})
 })
 const extensions = markRaw(editorProfile.extensions.map(extension => markRaw(extension)))
@@ -61,6 +70,7 @@ const editorRef = ref<any>(null)
 const canvasRef = ref<HTMLElement | null>(null)
 const toolbarHostRef = ref<HTMLElement | null>(null)
 const selectedBlock = ref<PageBlockAttrs | null>(null)
+const selectedHero = ref<PageHeroAttrs | null>(null)
 const selectedDragNode = ref<{ node: JSONContent | null, pos: number } | null>(null)
 const mode = ref<'edit' | 'preview'>('edit')
 const viewport = ref<'desktop' | 'tablet' | 'mobile'>('desktop')
@@ -76,6 +86,9 @@ const isEditMode = computed(() => mode.value === 'edit')
 const isEditing = computed(() => props.editable && isEditMode.value)
 const activeComponent = computed(() => getPageBlockComponent(selectedBlock.value?.component))
 const activeFields = computed(() => activeComponent.value?.fields ?? [])
+const legacyHeroConversion = computed(() => selectedBlock.value?.component === 'pageHero'
+  ? convertLegacyPageHero(selectedBlock.value)
+  : null)
 const toolbarGroups = computed(() => getPageToolbarGroups(
   editorProfile.toolbarGroups,
   selectedBlock.value ? 'pageBlock' : null
@@ -128,7 +141,8 @@ function syncSelection(editor: Editor) {
   selectedBlock.value = node?.type?.name === 'pageBlock'
     ? clonePageBlockAttrs(node.attrs as PageBlockAttrs)
     : null
-  if (selectedBlock.value) activePanel.value = 'inspector'
+  selectedHero.value = selectedPageHero(editor.state)?.attrs ?? null
+  if (selectedBlock.value || selectedHero.value) activePanel.value = 'inspector'
 }
 
 watch(getEditor, (editor, _previous, onCleanup) => {
@@ -169,7 +183,7 @@ function insertBlock(key: PageBlockComponentKey, position?: number) {
   const inserted = editor.commands.insertPageBlockAt(destination, blockAttrs(key))
   if (inserted) {
     mobilePanelOpen.value = false
-    scrollPageBlockIntoView(editor, destination)
+    scrollPageContentIntoView(editor, destination)
   }
   return inserted
 }
@@ -181,13 +195,13 @@ function insertPattern(key: PagePatternKey, position?: number) {
   const inserted = editor.commands.insertPagePatternAt(destination, clonePagePatternContent(key))
   if (inserted) {
     mobilePanelOpen.value = false
-    scrollPageBlockIntoView(editor, destination)
+    scrollPageContentIntoView(editor, destination)
   }
   return inserted
 }
 
 function insertPaletteItem(item: PagePaletteItem, position?: number) {
-  return item.kind === 'block'
+  return item.source === 'block'
     ? insertBlock(item.key, position)
     : insertPattern(item.key, position)
 }
@@ -198,12 +212,28 @@ function updateSelectedBlock(attrs: PageBlockAttrs) {
   editor.commands.updatePageBlockAttributes(attrs)
 }
 
+function updateSelectedHero(attrs: Partial<PageHeroAttrs>) {
+  const editor = getEditor()
+  if (!editor || !isEditing.value) return
+  editor.commands.updatePageHeroAttributes(attrs)
+}
+
+function convertSelectedHero() {
+  const editor = getEditor()
+  if (!editor || !isEditing.value) return
+  const position = editor.state.selection.from
+  if (editor.commands.convertLegacyPageHeroBlock()) {
+    scrollPageContentIntoView(editor, position)
+  }
+}
+
 function showPageProperties() {
   const editor = getEditor()
   if (editor) {
     clearPageBlockSelection(editor)
   }
   selectedBlock.value = null
+  selectedHero.value = null
   activePanel.value = 'inspector'
 }
 
@@ -256,7 +286,7 @@ function startPaletteDrag(event: DragEvent, item: PagePaletteItem) {
   event.dataTransfer.effectAllowed = 'copy'
   const payload = JSON.stringify(item)
   event.dataTransfer.setData('application/x-halopress-page-library', payload)
-  event.dataTransfer.setData('text/plain', `${item.kind}:${item.key}`)
+  event.dataTransfer.setData('text/plain', `${item.model}:${item.key}`)
 }
 
 function dropTargetAt(editor: Editor, clientX: number, clientY: number) {
@@ -303,10 +333,11 @@ function handleCanvasDrop(event: DragEvent) {
   let item: PagePaletteItem | null = null
   try {
     const parsed = JSON.parse(event.dataTransfer?.getData('application/x-halopress-page-library') || '')
-    if (parsed?.kind === 'block' && pageBlockRegistry.byKey[parsed.key as PageBlockComponentKey]) {
-      item = { kind: 'block', key: parsed.key as PageBlockComponentKey }
-    } else if (parsed?.kind === 'pattern' && pagePatternRegistry.byKey[parsed.key as PagePatternKey]) {
-      item = { kind: 'pattern', key: parsed.key as PagePatternKey }
+    if (parsed?.source === 'block' && parsed?.model === 'configured-block' && parsed.key === 'pageLogos') {
+      item = { model: 'configured-block', source: 'block', key: 'pageLogos' }
+    } else if (parsed?.source === 'pattern' && pagePatternRegistry.byKey[parsed.key as PagePatternKey]
+      && pagePatternRegistry.byKey[parsed.key as PagePatternKey].model === parsed.model) {
+      item = { model: parsed.model, source: 'pattern', key: parsed.key as PagePatternKey }
     }
   } catch {
     item = null
@@ -483,15 +514,19 @@ watch(mode, (nextMode) => {
           v-model:social-image-asset-id="socialImageAssetId"
           v-model:layout-id="layoutId"
           :selected-block="selectedBlock"
+          :selected-hero="selectedHero"
           :active-fields="activeFields"
           :active-label="activeComponent?.label"
           :editable="isEditing"
           :page-validation-message="pageValidationMessage"
           :published-layout-id="props.publishedLayoutId"
           :has-published-revision="props.hasPublishedRevision"
+          :legacy-hero-conversion="legacyHeroConversion"
           @insert="insertPaletteItem"
           @dragstart="startPaletteDrag"
           @update-block="updateSelectedBlock"
+          @update-hero="updateSelectedHero"
+          @convert-legacy-hero="convertSelectedHero"
           @show-page-properties="showPageProperties"
         />
       </aside>
@@ -507,15 +542,19 @@ watch(mode, (nextMode) => {
           v-model:social-image-asset-id="socialImageAssetId"
           v-model:layout-id="layoutId"
           :selected-block="selectedBlock"
+          :selected-hero="selectedHero"
           :active-fields="activeFields"
           :active-label="activeComponent?.label"
           :editable="isEditing"
           :page-validation-message="pageValidationMessage"
           :published-layout-id="props.publishedLayoutId"
           :has-published-revision="props.hasPublishedRevision"
+          :legacy-hero-conversion="legacyHeroConversion"
           @insert="insertPaletteItem"
           @dragstart="startPaletteDrag"
           @update-block="updateSelectedBlock"
+          @update-hero="updateSelectedHero"
+          @convert-legacy-hero="convertSelectedHero"
           @show-page-properties="showPageProperties"
         />
       </template>

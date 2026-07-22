@@ -1,17 +1,18 @@
+import type { JSONContent } from '@tiptap/core'
+
 import {
-  isPageBlockComponentKey,
+  isPortablePageAssetPath,
+  isSafePageUrl,
   isValidCuratedPageBlockAttrs,
   type PageBlockComponentKey,
   type StoredPageBlockAttrs
 } from './page-blocks'
+import { normalizePageHeroAttrs } from './page-hero'
 
-export const PAGE_PATTERN_CONTRACT_VERSION = 1
+export const PAGE_PATTERN_CONTRACT_VERSION = 2
 export const PAGE_BLOCK_REGISTRY_VERSION = 1
 
-export type PagePatternNode = {
-  type: 'pageBlock'
-  attrs: StoredPageBlockAttrs & { component: PageBlockComponentKey }
-}
+export type PageLibraryEntryModel = 'configured-block' | 'editable-unit' | 'document-pattern'
 
 export type PagePatternDefinition = {
   key: string
@@ -21,44 +22,197 @@ export type PagePatternDefinition = {
   category: 'Starter' | 'Hero' | 'Content' | 'Trust' | 'FAQ' | 'Conversion'
   icon: string
   keywords: string[]
-  insertion: 'pattern'
+  model: PageLibraryEntryModel
   compatibility: {
     editor: 'page'
     patternContract: typeof PAGE_PATTERN_CONTRACT_VERSION
     blockRegistry: typeof PAGE_BLOCK_REGISTRY_VERSION
-    requiredBlocks: PageBlockComponentKey[]
+    requiredConfiguredBlocks: PageBlockComponentKey[]
+    requiredEditableUnits: Array<'pageHero'>
   }
   content: {
     type: 'doc'
-    content: PagePatternNode[]
+    content: JSONContent[]
   }
 }
 
-function block(
-  component: PageBlockComponentKey,
-  props: Record<string, unknown>,
-  media: Record<string, unknown> = {}
-): PagePatternNode {
+const configuredPatternBlocks = new Set<PageBlockComponentKey>(['pageFAQ', 'pageLogos'])
+const MAX_PATTERN_NODES = 200
+const MAX_PATTERN_DEPTH = 8
+const MAX_PATTERN_TEXT = 20_000
+const forbiddenStoredKeys = new Set([
+  'class',
+  'style',
+  'ui',
+  'html',
+  'componentName',
+  'renderer',
+  'onClick',
+  'onUpdate'
+])
+
+function text(value: string, marks?: JSONContent['marks']): JSONContent {
+  return { type: 'text', text: value, ...(marks?.length ? { marks } : {}) }
+}
+
+function paragraph(value: string | JSONContent[], attrs?: Record<string, unknown>): JSONContent {
+  return {
+    type: 'paragraph',
+    ...(attrs ? { attrs } : {}),
+    content: typeof value === 'string' ? [text(value)] : value
+  }
+}
+
+function heading(value: string, level: 1 | 2 | 3 | 4, textAlign?: 'left' | 'center'): JSONContent {
+  return {
+    type: 'heading',
+    attrs: { level, ...(textAlign ? { textAlign } : {}) },
+    content: [text(value)]
+  }
+}
+
+function actionParagraph(actions: Array<{ label: string, href: string }>): JSONContent {
+  const content: JSONContent[] = []
+  actions.forEach((action, index) => {
+    if (index) content.push(text('  '))
+    content.push(text(action.label, [{ type: 'link', attrs: { href: action.href, target: '_self' } }]))
+  })
+  return paragraph(content)
+}
+
+function listItem(title: string, description: string): JSONContent {
+  return {
+    type: 'listItem',
+    content: [paragraph([
+      text(title, [{ type: 'bold' }]),
+      text(` — ${description}`)
+    ])]
+  }
+}
+
+function configuredBlock(
+  component: 'pageFAQ' | 'pageLogos',
+  props: Record<string, unknown>
+): JSONContent {
   return {
     type: 'pageBlock',
-    attrs: { component, props, advanced: {}, media }
+    attrs: { component, props, advanced: {}, media: {} } satisfies StoredPageBlockAttrs
   }
+}
+
+function centeredHero(): JSONContent {
+  return {
+    type: 'pageHero',
+    attrs: { orientation: 'vertical', reverse: false },
+    content: [
+      heading('[Add your primary promise]', 1, 'center'),
+      paragraph('[Explain who this is for and why it matters.]', { textAlign: 'center' }),
+      actionParagraph([
+        { label: '[Primary action]', href: '#next' },
+        { label: '[Secondary action]', href: '#details' }
+      ])
+    ]
+  }
+}
+
+function splitHero(): JSONContent {
+  return {
+    type: 'pageHero',
+    attrs: { orientation: 'horizontal', reverse: false },
+    content: [
+      heading('[Add your product promise]', 1),
+      paragraph('[Describe the outcome in one or two concise sentences.]'),
+      actionParagraph([{ label: '[Primary action]', href: '#next' }]),
+      { type: 'imageUpload' }
+    ]
+  }
+}
+
+function featureGrid(): JSONContent[] {
+  return [
+    heading('[Add the section promise]', 2),
+    paragraph('[Connect these capabilities to a concrete reader outcome.]'),
+    {
+      type: 'bulletList',
+      content: [
+        listItem('[Feature one]', '[Explain the first benefit.]'),
+        listItem('[Feature two]', '[Explain the second benefit.]'),
+        listItem('[Feature three]', '[Explain the third benefit.]')
+      ]
+    }
+  ]
+}
+
+function mediaContent(): JSONContent[] {
+  return [
+    heading('[Explain one important idea]', 2),
+    paragraph('[Add supporting detail, then insert or replace an image with the normal Image tool.]'),
+    actionParagraph([{ label: '[Learn more]', href: '#details' }]),
+    { type: 'imageUpload' }
+  ]
+}
+
+function testimonial(): JSONContent[] {
+  return [
+    {
+      type: 'blockquote',
+      content: [paragraph('[Add a specific customer outcome in their own words.]')]
+    },
+    paragraph('[Add the customer name] — [Add role and company]'),
+    configuredBlock('pageLogos', {
+      title: 'Trusted by teams like yours',
+      items: [
+        { name: '[Customer one]', src: '', alt: 'Add the Customer one logo' },
+        { name: '[Customer two]', src: '', alt: 'Add the Customer two logo' },
+        { name: '[Customer three]', src: '', alt: 'Add the Customer three logo' },
+        { name: '[Customer four]', src: '', alt: 'Add the Customer four logo' }
+      ]
+    })
+  ]
+}
+
+function faq(): JSONContent {
+  return configuredBlock('pageFAQ', {
+    headline: 'Questions',
+    title: 'Frequently asked questions',
+    description: 'A concise introduction to common questions.',
+    items: [
+      { question: '[Add the first question]', answer: '[Add a direct, useful answer.]' },
+      { question: '[Add the second question]', answer: '[Add a direct, useful answer.]' },
+      { question: '[Add the third question]', answer: '[Add a direct, useful answer.]' }
+    ]
+  })
+}
+
+function closingCta(): JSONContent[] {
+  return [
+    heading('[Restate the desired outcome]', 2, 'center'),
+    paragraph('[Remove the last uncertainty and invite the next step.]', { textAlign: 'center' }),
+    actionParagraph([
+      { label: '[Primary action]', href: '#start' },
+      { label: '[Secondary action]', href: '#contact' }
+    ])
+  ]
 }
 
 function pattern(
-  definition: Omit<PagePatternDefinition, 'version' | 'insertion' | 'compatibility'>
-    & { requiredBlocks: PageBlockComponentKey[] }
+  definition: Omit<PagePatternDefinition, 'version' | 'compatibility'>
+    & { requiredConfiguredBlocks?: PageBlockComponentKey[], requiredEditableUnits?: Array<'pageHero'> }
 ): PagePatternDefinition {
-  const { requiredBlocks, ...metadata } = definition
+  const {
+    requiredConfiguredBlocks = [],
+    requiredEditableUnits = [],
+    ...metadata
+  } = definition
   return {
     ...metadata,
-    version: 1,
-    insertion: 'pattern',
+    version: 2,
     compatibility: {
       editor: 'page',
       patternContract: PAGE_PATTERN_CONTRACT_VERSION,
       blockRegistry: PAGE_BLOCK_REGISTRY_VERSION,
-      requiredBlocks
+      requiredConfiguredBlocks,
+      requiredEditableUnits
     }
   }
 }
@@ -79,218 +233,90 @@ export const pagePatternDefinitions: PagePatternDefinition[] = [
   pattern({
     key: 'centered-hero',
     label: 'Centered hero',
-    summary: 'A focused introduction with two clear next steps.',
+    summary: 'Editable headline, supporting copy, and links in a grouped Hero.',
     category: 'Hero',
     icon: 'i-lucide-align-center',
     keywords: ['banner', 'headline', 'introduction', 'landing'],
-    requiredBlocks: ['pageHero'],
-    content: {
-      type: 'doc',
-      content: [block('pageHero', {
-        headline: '[Add an eyebrow]',
-        title: '[Add your primary promise]',
-        description: '[Explain who this is for and why it matters.]',
-        orientation: 'vertical',
-        links: [
-          { label: '[Primary action]', to: '#next', icon: 'i-lucide-arrow-right' },
-          { label: '[Secondary action]', to: '#details', color: 'neutral', variant: 'subtle' }
-        ]
-      })]
-    }
+    model: 'editable-unit',
+    requiredEditableUnits: ['pageHero'],
+    content: { type: 'doc', content: [centeredHero()] }
   }),
   pattern({
     key: 'split-hero',
     label: 'Split hero',
-    summary: 'A horizontal hero with an intentional media placeholder.',
+    summary: 'An editable Hero ready for media through the normal Image tool.',
     category: 'Hero',
     icon: 'i-lucide-columns-2',
     keywords: ['banner', 'image', 'media', 'product'],
-    requiredBlocks: ['pageHero'],
-    content: {
-      type: 'doc',
-      content: [block('pageHero', {
-        headline: '[Add an eyebrow]',
-        title: '[Add your product promise]',
-        description: '[Describe the outcome in one or two concise sentences.]',
-        orientation: 'horizontal',
-        links: [{ label: '[Primary action]', to: '#next', icon: 'i-lucide-arrow-right' }]
-      }, {
-        url: '',
-        alt: '',
-        requiredAction: 'Add a hero image and descriptive alternative text.'
-      })]
-    }
+    model: 'editable-unit',
+    requiredEditableUnits: ['pageHero'],
+    content: { type: 'doc', content: [splitHero()] }
   }),
   pattern({
     key: 'feature-grid',
-    label: 'Feature grid',
-    summary: 'A reviewed three-feature section with typed icons and copy.',
+    label: 'Feature list',
+    summary: 'Ordinary editable headings, copy, and feature list items.',
     category: 'Content',
-    icon: 'i-lucide-grid-3x3',
-    keywords: ['benefits', 'capabilities', 'features', 'grid'],
-    requiredBlocks: ['pageSection'],
-    content: {
-      type: 'doc',
-      content: [block('pageSection', {
-        headline: 'Why it works',
-        title: '[Add the section promise]',
-        description: '[Connect these capabilities to a concrete reader outcome.]',
-        features: [
-          { title: '[Feature one]', description: '[Explain the first benefit.]', icon: 'i-lucide-sparkles', orientation: 'vertical' },
-          { title: '[Feature two]', description: '[Explain the second benefit.]', icon: 'i-lucide-badge-check', orientation: 'vertical' },
-          { title: '[Feature three]', description: '[Explain the third benefit.]', icon: 'i-lucide-heart', orientation: 'vertical' }
-        ]
-      })]
-    }
+    icon: 'i-lucide-list-checks',
+    keywords: ['benefits', 'capabilities', 'features', 'list'],
+    model: 'document-pattern',
+    content: { type: 'doc', content: featureGrid() }
   }),
   pattern({
     key: 'media-content',
     label: 'Media and content',
-    summary: 'A responsive content section paired with an authored asset.',
+    summary: 'Editable copy with a prompt to add media through the normal Image tool.',
     category: 'Content',
     icon: 'i-lucide-panel-left',
     keywords: ['image', 'media', 'product', 'story'],
-    requiredBlocks: ['pageSection'],
-    content: {
-      type: 'doc',
-      content: [block('pageSection', {
-        headline: '[Add a section label]',
-        title: '[Explain one important idea]',
-        description: '[Add supporting detail that gives the image context.]',
-        orientation: 'horizontal',
-        links: [{ label: '[Learn more]', to: '#details', icon: 'i-lucide-arrow-right' }]
-      }, {
-        url: '',
-        alt: '',
-        requiredAction: 'Add a supporting image and descriptive alternative text.'
-      })]
-    }
+    model: 'document-pattern',
+    content: { type: 'doc', content: mediaContent() }
   }),
   pattern({
     key: 'testimonial-social-proof',
     label: 'Testimonial and social proof',
-    summary: 'A customer quote followed by a reviewed logo cloud.',
+    summary: 'Editable testimonial copy plus a configured logo collection.',
     category: 'Trust',
     icon: 'i-lucide-message-square-quote',
     keywords: ['customer', 'logos', 'proof', 'quote', 'testimonial'],
-    requiredBlocks: ['pageTestimonial', 'pageLogos'],
-    content: {
-      type: 'doc',
-      content: [
-        block('pageTestimonial', {
-          quote: '[Add a specific customer outcome in their own words.]',
-          author: '[Add the customer name]',
-          role: '[Add role]',
-          company: '[Add company]'
-        }, {
-          url: '',
-          alt: '',
-          requiredAction: 'Add the customer portrait or leave this intentionally text-only.'
-        }),
-        block('pageLogos', {
-          title: 'Trusted by teams like yours',
-          items: [
-            { name: '[Customer one]', src: '', alt: 'Add the Customer one logo' },
-            { name: '[Customer two]', src: '', alt: 'Add the Customer two logo' },
-            { name: '[Customer three]', src: '', alt: 'Add the Customer three logo' },
-            { name: '[Customer four]', src: '', alt: 'Add the Customer four logo' }
-          ]
-        })
-      ]
-    }
+    model: 'document-pattern',
+    requiredConfiguredBlocks: ['pageLogos'],
+    content: { type: 'doc', content: testimonial() }
   }),
   pattern({
     key: 'faq',
     label: 'Frequently asked questions',
-    summary: 'A keyboard-accessible accordion for common objections.',
+    summary: 'A configured keyboard-accessible accordion with a finite item list.',
     category: 'FAQ',
     icon: 'i-lucide-circle-help',
     keywords: ['accordion', 'answers', 'questions', 'support'],
-    requiredBlocks: ['pageFAQ'],
-    content: {
-      type: 'doc',
-      content: [block('pageFAQ', {
-        headline: 'Questions',
-        title: 'Frequently asked questions',
-        description: '[Add a short introduction or remove it.]',
-        items: [
-          { question: '[Add the first question]', answer: '[Add a direct, useful answer.]' },
-          { question: '[Add the second question]', answer: '[Add a direct, useful answer.]' },
-          { question: '[Add the third question]', answer: '[Add a direct, useful answer.]' }
-        ]
-      })]
-    }
+    model: 'configured-block',
+    requiredConfiguredBlocks: ['pageFAQ'],
+    content: { type: 'doc', content: [faq()] }
   }),
   pattern({
     key: 'closing-cta',
     label: 'Closing call to action',
-    summary: 'A concise final prompt with primary and secondary actions.',
+    summary: 'Ordinary editable closing copy and safe links.',
     category: 'Conversion',
     icon: 'i-lucide-megaphone',
     keywords: ['action', 'closing', 'conversion', 'signup'],
-    requiredBlocks: ['pageCTA'],
-    content: {
-      type: 'doc',
-      content: [block('pageCTA', {
-        title: '[Restate the desired outcome]',
-        description: '[Remove the last uncertainty and invite the next step.]',
-        variant: 'soft',
-        links: [
-          { label: '[Primary action]', to: '#start', icon: 'i-lucide-arrow-right' },
-          { label: '[Secondary action]', to: '#contact', color: 'neutral', variant: 'subtle' }
-        ]
-      })]
-    }
+    model: 'document-pattern',
+    content: { type: 'doc', content: closingCta() }
   }),
   pattern({
     key: 'starter-page',
     label: 'Marketing starter page',
-    summary: 'A complete reviewed page from hero through closing action.',
+    summary: 'A complete editable page with one configured FAQ.',
     category: 'Starter',
     icon: 'i-lucide-panels-top-left',
     keywords: ['blank alternative', 'full page', 'landing', 'starter'],
-    requiredBlocks: ['pageHero', 'pageSection', 'pageTestimonial', 'pageFAQ', 'pageCTA'],
+    model: 'document-pattern',
+    requiredConfiguredBlocks: ['pageFAQ'],
+    requiredEditableUnits: ['pageHero'],
     content: {
       type: 'doc',
-      content: [
-        block('pageHero', {
-          headline: '[Add an eyebrow]',
-          title: '[Add your primary promise]',
-          description: '[Explain who this is for and why it matters.]',
-          orientation: 'horizontal',
-          links: [{ label: '[Primary action]', to: '#features', icon: 'i-lucide-arrow-right' }]
-        }, { url: '', alt: '', requiredAction: 'Add a hero image and descriptive alternative text.' }),
-        block('pageSection', {
-          headline: 'Why it works',
-          title: '[Add the section promise]',
-          description: '[Connect the capabilities to a reader outcome.]',
-          features: [
-            { title: '[Feature one]', description: '[Explain the benefit.]', icon: 'i-lucide-sparkles', orientation: 'vertical' },
-            { title: '[Feature two]', description: '[Explain the benefit.]', icon: 'i-lucide-badge-check', orientation: 'vertical' },
-            { title: '[Feature three]', description: '[Explain the benefit.]', icon: 'i-lucide-heart', orientation: 'vertical' }
-          ]
-        }),
-        block('pageTestimonial', {
-          quote: '[Add a specific customer outcome in their own words.]',
-          author: '[Add the customer name]',
-          role: '[Add role]',
-          company: '[Add company]'
-        }),
-        block('pageFAQ', {
-          headline: 'Questions',
-          title: 'Frequently asked questions',
-          items: [
-            { question: '[Add the first question]', answer: '[Add a direct, useful answer.]' },
-            { question: '[Add the second question]', answer: '[Add a direct, useful answer.]' }
-          ]
-        }),
-        block('pageCTA', {
-          title: '[Restate the desired outcome]',
-          description: '[Invite the reader to take the next step.]',
-          variant: 'soft',
-          links: [{ label: '[Primary action]', to: '#start', icon: 'i-lucide-arrow-right' }]
-        })
-      ]
+      content: [splitHero(), ...featureGrid(), ...testimonial().slice(0, 2), faq(), ...closingCta()]
     }
   })
 ]
@@ -300,39 +326,132 @@ export const pagePatternRegistry = {
   byKey: Object.fromEntries(pagePatternDefinitions.map(item => [item.key, item])) as Record<PagePatternKey, PagePatternDefinition>
 }
 
+type ValidationState = {
+  issues: string[]
+  nodes: number
+  text: number
+  configuredBlocks: Set<PageBlockComponentKey>
+  editableUnits: Set<'pageHero'>
+}
+
+function record(value: unknown): Record<string, any> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, any>
+    : null
+}
+
+function validatePatternValue(
+  value: unknown,
+  state: ValidationState,
+  path: string,
+  depth: number
+) {
+  if (depth > MAX_PATTERN_DEPTH) {
+    state.issues.push('Pattern content exceeds the nesting budget.')
+    return
+  }
+  if (Array.isArray(value)) {
+    value.forEach((child, index) => validatePatternValue(child, state, `${path}.${index + 1}`, depth))
+    return
+  }
+  const node = record(value)
+  if (!node || typeof node.type !== 'string') {
+    state.issues.push(`${path} is not a Tiptap JSON node or mark.`)
+    return
+  }
+
+  state.nodes += 1
+  if (state.nodes > MAX_PATTERN_NODES) {
+    state.issues.push('Pattern content exceeds the node budget.')
+    return
+  }
+  if (Object.keys(node).some(key => forbiddenStoredKeys.has(key))) {
+    state.issues.push(`${path} contains a forbidden runtime key.`)
+  }
+  const attrs = record(node.attrs)
+  if (attrs && Object.keys(attrs).some(key => forbiddenStoredKeys.has(key))) {
+    state.issues.push(`${path} contains forbidden stored attributes.`)
+  }
+
+  if (typeof node.text === 'string') {
+    state.text += node.text.length
+    if (node.text.length > 5_000 || state.text > MAX_PATTERN_TEXT) {
+      state.issues.push('Pattern content exceeds the text budget.')
+    }
+  }
+  if (node.type === 'image') {
+    if (!attrs || typeof attrs.src !== 'string' || !attrs.src || !isPortablePageAssetPath(attrs.src)) {
+      state.issues.push(`${path} has an unsafe or malformed image source.`)
+    }
+  }
+  if (node.type === 'link') {
+    if (!attrs || typeof attrs.href !== 'string' || !isSafePageUrl(attrs.href)
+      || (attrs.target !== undefined && !['_self', '_blank'].includes(attrs.target))) {
+      state.issues.push(`${path} has an unsafe or malformed link.`)
+    }
+  }
+  if (node.type === 'pageBlock') {
+    const blockAttrs = attrs as StoredPageBlockAttrs | null
+    const component = blockAttrs?.component
+    if (!blockAttrs || !configuredPatternBlocks.has(component as PageBlockComponentKey)
+      || !isValidCuratedPageBlockAttrs(blockAttrs)) {
+      state.issues.push(`${path} is not an approved configured block.`)
+    } else {
+      state.configuredBlocks.add(component as PageBlockComponentKey)
+    }
+  }
+  if (node.type === 'pageHero') {
+    if (!normalizePageHeroAttrs(attrs ?? {})) state.issues.push(`${path} has invalid Hero attributes.`)
+    state.editableUnits.add('pageHero')
+  }
+
+  if (Array.isArray(node.marks)) validatePatternValue(node.marks, state, `${path}.marks`, depth)
+  if (Array.isArray(node.content)) validatePatternValue(node.content, state, `${path}.content`, depth + 1)
+}
+
+export function validatePagePatternContent(content: unknown) {
+  const state: ValidationState = {
+    issues: [],
+    nodes: 0,
+    text: 0,
+    configuredBlocks: new Set(),
+    editableUnits: new Set()
+  }
+  if (!Array.isArray(content) || !content.length) {
+    state.issues.push('Pattern content must be a non-empty document fragment.')
+    return state
+  }
+  validatePatternValue(content, state, 'Pattern', 0)
+  return state
+}
+
 export function validatePagePatternDefinition(definition: PagePatternDefinition) {
   const issues: string[] = []
   if (!Number.isInteger(definition.version) || definition.version < 1) issues.push('Pattern version must be a positive integer.')
   if (definition.compatibility.editor !== 'page') issues.push('Pattern is not compatible with the page editor.')
   if (definition.compatibility.patternContract !== PAGE_PATTERN_CONTRACT_VERSION) issues.push('Unsupported pattern contract version.')
   if (definition.compatibility.blockRegistry !== PAGE_BLOCK_REGISTRY_VERSION) issues.push('Unsupported block registry version.')
-  if (definition.content.type !== 'doc' || !definition.content.content.length) issues.push('Pattern content must be a non-empty document fragment.')
+  if (!['configured-block', 'editable-unit', 'document-pattern'].includes(definition.model)) issues.push('Pattern has an unsupported library model.')
+  if (definition.content.type !== 'doc') issues.push('Pattern content must be a document fragment.')
 
-  const required = new Set(definition.compatibility.requiredBlocks)
-  definition.content.content.forEach((node, index) => {
-    if (!node || typeof node !== 'object') {
-      issues.push(`Pattern node ${index + 1} is invalid.`)
-      return
-    }
-    if (node.type !== 'pageBlock') {
-      issues.push(`Pattern node ${index + 1} is not a page block.`)
-      return
-    }
-    if (!node.attrs || typeof node.attrs !== 'object' || Array.isArray(node.attrs)) {
-      issues.push(`Pattern node ${index + 1} is missing attributes.`)
-      return
-    }
-    if (!isPageBlockComponentKey(node.attrs.component)) {
-      issues.push(`Pattern node ${index + 1} uses an unsupported block.`)
-      return
-    }
-    if (!required.has(node.attrs.component)) issues.push(`Pattern node ${index + 1} is missing compatibility metadata.`)
-    if (!isValidCuratedPageBlockAttrs(node.attrs)) issues.push(`Pattern node ${index + 1} has invalid curated properties.`)
-  })
+  const validated = validatePagePatternContent(definition.content.content)
+  issues.push(...validated.issues)
+  for (const key of definition.compatibility.requiredConfiguredBlocks) {
+    if (!validated.configuredBlocks.has(key)) issues.push(`Pattern is missing required configured block ${key}.`)
+  }
+  for (const key of validated.configuredBlocks) {
+    if (!definition.compatibility.requiredConfiguredBlocks.includes(key)) issues.push(`Pattern is missing compatibility metadata for ${key}.`)
+  }
+  for (const key of definition.compatibility.requiredEditableUnits) {
+    if (!validated.editableUnits.has(key)) issues.push(`Pattern is missing required editable unit ${key}.`)
+  }
+  for (const key of validated.editableUnits) {
+    if (!definition.compatibility.requiredEditableUnits.includes(key)) issues.push(`Pattern is missing compatibility metadata for ${key}.`)
+  }
   return issues
 }
 
-export function clonePagePatternContent(key: PagePatternKey) {
+export function clonePagePatternContent(key: PagePatternKey): JSONContent[] {
   return structuredClone(pagePatternRegistry.byKey[key].content.content)
 }
 
