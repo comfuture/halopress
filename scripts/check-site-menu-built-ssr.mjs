@@ -292,6 +292,18 @@ function seedSql() {
           { type: 'heading', attrs: { level: 1 }, content: [{ type: 'text', text: 'Built structural hero' }] },
           { type: 'paragraph', content: [{ type: 'text', text: 'Structural hero body' }] }
         ]
+      },
+      {
+        type: 'image',
+        attrs: { src: 'https://tracker.example/pixel.png', alt: 'Blocked external image' }
+      },
+      {
+        type: 'image',
+        attrs: { src: '/api/private/image', alt: 'Blocked private image' }
+      },
+      {
+        type: 'listItem',
+        content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Bare list item must fall back' }] }]
       }
     ]
   })
@@ -749,6 +761,10 @@ async function assertThemeDelivery(origin, stateDirectory, stateArgs) {
   assert.ok(page.rendering.html.includes('Built standalone delivery'))
   assert.ok(page.rendering.html.includes('data-halo-contract-version="2"'))
   assert.ok(!page.rendering.html.includes('data-halo-color-mode'))
+  assert.ok(!page.rendering.html.includes('tracker.example'))
+  assert.ok(!page.rendering.html.includes('/api/private/image'))
+  assert.ok(!page.rendering.html.includes('<li'), 'Standalone v2 must not emit a bare list item')
+  assert.ok(!page.rendering.html.includes('Bare list item must fall back'))
   assert.equal(page.content.content[1].content[0].text, 'Built standalone delivery')
   assert.equal(page.content.content[2].type, 'pageHero')
   return manifest
@@ -769,6 +785,10 @@ async function assertBuiltPageMode(origin, expectedMode) {
   assert.equal(response.status, 200, `Expected built Page SSR for ${expectedMode}, received ${response.status}`)
   assert.ok(html.includes('data-site-document-renderer'), 'Expected built Page SSR to use the native Site document renderer')
   assert.ok(html.includes('Built standalone delivery'), 'Expected the native Site renderer to render raw Page JSON')
+  assert.ok(!/<img[^>]+src="https:\/\/tracker\.example\/pixel\.png"/.test(html), 'Native Site SSR must reject external authored image sources')
+  assert.ok(!/<img[^>]+src="\/api\/private\/image"/.test(html), 'Native Site SSR must reject non-asset authored image paths')
+  assert.ok(html.includes('[Unsupported content: listItem]'), 'Native Site SSR must replace a bare list item')
+  assert.ok(!/<li[\s\S]{0,300}Bare list item must fall back/.test(html), 'Native Site SSR must not emit a rejected list item')
   assert.ok(!html.includes('data-halo-contract-version="2"'), 'Site SSR must not inject the standalone HTML artifact')
   const modeAttribute = `data-halo-color-mode="${expectedMode}"`
   assert.match(

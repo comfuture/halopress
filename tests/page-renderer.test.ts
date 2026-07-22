@@ -240,6 +240,60 @@ describe('page document renderer', () => {
     })
   })
 
+  it('renders only canonical site-owned assets in native rich text', () => {
+    const normalized = normalizeAuthoredDocument({
+      type: 'doc',
+      content: [
+        { type: 'image', attrs: { src: 'https://tracker.example/pixel.png' } },
+        { type: 'image', attrs: { src: 'http://127.0.0.1/private.png' } },
+        { type: 'image', attrs: { src: '/api/private/image' } },
+        { type: 'image', attrs: { src: '/assets/native-image/raw?revision=2#preview', alt: 'Native image' } }
+      ]
+    })
+
+    expect(normalized.content).toEqual([
+      { type: 'fallback', message: '[Unsupported content: image]' },
+      { type: 'fallback', message: '[Unsupported content: image]' },
+      { type: 'fallback', message: '[Unsupported content: image]' },
+      {
+        type: 'image',
+        src: '/assets/native-image/raw?revision=2#preview',
+        alt: 'Native image'
+      }
+    ])
+  })
+
+  it('accepts listItem only as a direct child of a list', () => {
+    const item = {
+      type: 'listItem',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Item' }] }]
+    }
+    const normalized = normalizeAuthoredDocument({
+      type: 'doc',
+      content: [
+        item,
+        { type: 'blockquote', content: [structuredClone(item)] },
+        { type: 'bulletList', content: [structuredClone(item)] }
+      ]
+    })
+
+    expect(normalized.content[0]).toEqual({
+      type: 'fallback',
+      message: '[Unsupported content: listItem]'
+    })
+    expect(normalized.content[1]).toEqual({
+      type: 'blockquote',
+      content: [{ type: 'fallback', message: '[Unsupported content: listItem]' }]
+    })
+    expect(normalized.content[2]).toEqual({
+      type: 'bulletList',
+      content: [{
+        type: 'listItem',
+        content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Item', marks: [] }] }]
+      }]
+    })
+  })
+
   it('keeps malformed child fallbacks context-valid without traversing hidden subtrees', () => {
     const hiddenChildren = Array.from({ length: 2_100 }, (_, index) => ({
       type: 'heading',

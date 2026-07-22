@@ -532,6 +532,11 @@ function writeRichTextFallback(writer: PortableWriter, context: PortableNodeCont
   writer.push('<p class="halo-content-fallback" role="status">Unsupported content</p>')
 }
 
+function resolveRichTextAssetUrl(value: unknown, origin: string, standaloneV2: boolean) {
+  if (standaloneV2 && (typeof value !== 'string' || !isPortablePageAssetPath(value))) return null
+  return resolvePortableAssetUrl(value, origin)
+}
+
 function writeRichTextNode(
   writer: PortableWriter,
   value: unknown,
@@ -553,7 +558,7 @@ function writeRichTextNode(
         ? type === 'listItem'
         : options.context === 'code'
           ? type === 'text' || type === 'hardBreak'
-          : true
+          : type !== 'listItem'
     if (!allowed) {
       writeRichTextFallback(writer, options.context)
       return
@@ -575,7 +580,7 @@ function writeRichTextNode(
     return
   }
   if (type === 'image') {
-    const src = resolvePortableAssetUrl(node.attrs?.src, origin)
+    const src = resolveRichTextAssetUrl(node.attrs?.src, origin, options.standaloneV2)
     if (!src) {
       writer.push('<span class="halo-media-fallback" role="img" aria-label="Image unavailable">Image unavailable</span>')
       return

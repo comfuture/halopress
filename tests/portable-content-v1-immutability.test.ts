@@ -58,6 +58,25 @@ describe('portable content v1 immutability', () => {
           ]
         }]
       }, { origin }),
+      reviewBoundaries: createPortablePageRendering({
+        type: 'doc',
+        content: [
+          { type: 'image', attrs: { src: 'https://tracker.example/pixel.png' } },
+          { type: 'image', attrs: { src: '/api/private/image' } },
+          { type: 'image', attrs: { src: '/assets/site-image/raw' } },
+          {
+            type: 'listItem',
+            content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Bare' }] }]
+          },
+          {
+            type: 'blockquote',
+            content: [{
+              type: 'listItem',
+              content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Nested bare' }] }]
+            }]
+          }
+        ]
+      }, { origin }),
       budget: createPortablePageRendering({
         type: 'doc',
         content: Array.from({ length: 8 }, () => ({
@@ -82,6 +101,7 @@ describe('portable content v1 immutability', () => {
       malformed: '36ebcfd26f0f2c14b69866dff0ecabaf1b3bea2745c8d744a3452b4b09b051e9:887',
       legacy: 'c26c9ca1a2ad7dd93e56b53937b5c40feaf5b24f0e3b840c174ac26522192378:496',
       structuralV1: '30cdc342337f85d766ffbb30e6f557655dda70b4ff8e1cccb9a773e376541bb6:441',
+      reviewBoundaries: 'bbf785ba517272d5e4dbe9a04406d877ceede4f848956a8ecfdcb356674da9c7:831',
       budget: '9eab5aabe0ea978f9137823874551988a0b4a08b0b1f006377042270dddf0dfe:463',
       structured: 'cd5f4bc46eb4d3b634656aebb194e450681a0ddf05224b5c4d6e1ce5fbcf37f7:653'
     })
