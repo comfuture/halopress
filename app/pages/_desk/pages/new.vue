@@ -5,6 +5,7 @@ import { validatePageDocumentBlocks } from '~~/shared/page-blocks'
 import { buildPageDocumentFromPattern } from '~~/shared/page-patterns'
 import { derivePublicSeoTitle } from '~~/shared/public-seo'
 import PageEditor from '~/components/PageEditor.vue'
+import { validatePageDocumentForPublication } from '~/editor/page/validation'
 
 definePageMeta({
   layout: 'desk'
@@ -78,7 +79,7 @@ const lastSavedJson = ref(stableStringify(buildSnapshot()))
 const currentJson = computed(() => stableStringify(buildSnapshot()))
 const isDirty = computed(() => currentJson.value !== lastSavedJson.value)
 const draftValidationIssues = computed(() => validatePageDocumentBlocks(state.content, { allowUnknown: true }))
-const publishValidationIssues = computed(() => validatePageDocumentBlocks(state.content))
+const publishValidationIssues = computed(() => validatePageDocumentForPublication(state.content))
 const hasStarterChoice = computed(() => starterChoice.value !== null)
 const canSaveDraft = computed(() => hasStarterChoice.value && isDirty.value && !draftValidationIssues.value.length && !savingDraft.value)
 const canPublish = computed(() => hasStarterChoice.value && isDirty.value && !publishValidationIssues.value.length && !publishing.value)

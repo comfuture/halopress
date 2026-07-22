@@ -4,6 +4,7 @@ import type { JSONContent } from '@tiptap/vue-3'
 import { validatePageDocumentBlocks } from '~~/shared/page-blocks'
 import { derivePublicSeoTitle } from '~~/shared/public-seo'
 import PageEditor from '~/components/PageEditor.vue'
+import { validatePageDocumentForPublication } from '~/editor/page/validation'
 
 definePageMeta({
   layout: 'desk'
@@ -80,7 +81,7 @@ const lastSavedJson = ref('')
 const currentJson = computed(() => stableStringify(buildSnapshot()))
 const isDirty = computed(() => !!doc.value && currentJson.value !== lastSavedJson.value)
 const draftValidationIssues = computed(() => validatePageDocumentBlocks(state.content, { allowUnknown: true }))
-const publishValidationIssues = computed(() => validatePageDocumentBlocks(state.content))
+const publishValidationIssues = computed(() => validatePageDocumentForPublication(state.content))
 const canSaveDraft = computed(() => !!doc.value && !isDeleted.value && isDirty.value && !draftValidationIssues.value.length && !savingDraft.value)
 const canPublish = computed(() => !!doc.value && !isDeleted.value && (
   isDirty.value || ['never-published', 'unpublished', 'published-with-draft'].includes(doc.value?.publicationState)

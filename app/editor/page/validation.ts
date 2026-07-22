@@ -1,5 +1,6 @@
 import { getSchema } from '@tiptap/core'
 
+import { validatePageDocumentBlocks } from '~~/shared/page-blocks'
 import { normalizePageHeroAttrs } from '~~/shared/page-hero'
 import { createPageProfile } from '../profiles'
 
@@ -70,4 +71,12 @@ export function validatePageDocumentImageUploads(value: unknown) {
   return containsNodeType(value, 'imageUpload')
     ? [{ path: 'content', message: 'Page has an unfinished image upload.' } satisfies PageHeroValidationIssue]
     : []
+}
+
+export function validatePageDocumentForPublication(value: unknown) {
+  return [
+    ...validatePageDocumentBlocks(value),
+    ...validatePageDocumentHeroes(value),
+    ...validatePageDocumentImageUploads(value)
+  ]
 }

@@ -1,8 +1,8 @@
 import { badRequest } from '../utils/http'
 import { validatePageDocumentBlocks } from '~~/shared/page-blocks'
 import {
+  validatePageDocumentForPublication,
   validatePageDocumentHeroes,
-  validatePageDocumentImageUploads
 } from '../../app/editor/page/validation'
 
 export const emptyPageDocument = { type: 'doc', content: [{ type: 'paragraph' }] }
@@ -39,17 +39,14 @@ export function normalizePageContent(
   if (document.type !== 'doc') throw badRequest('Page content must be a Tiptap document')
   if (document.content !== undefined && !Array.isArray(document.content)) throw badRequest('Invalid page content')
 
-  const issues = validatePageDocumentBlocks(document, {
-    allowUnknown: options.mode !== 'publish'
-  })
-  if (issues.length) throw badRequest(issues[0]!.message)
-  const heroIssues = validatePageDocumentHeroes(document, {
-    allowImageUpload: options.mode !== 'publish'
-  })
-  if (heroIssues.length) throw badRequest(heroIssues[0]!.message)
   if (options.mode === 'publish') {
-    const uploadIssues = validatePageDocumentImageUploads(document)
-    if (uploadIssues.length) throw badRequest(uploadIssues[0]!.message)
+    const issues = validatePageDocumentForPublication(document)
+    if (issues.length) throw badRequest(issues[0]!.message)
+  } else {
+    const issues = validatePageDocumentBlocks(document, { allowUnknown: true })
+    if (issues.length) throw badRequest(issues[0]!.message)
+    const heroIssues = validatePageDocumentHeroes(document, { allowImageUpload: true })
+    if (heroIssues.length) throw badRequest(heroIssues[0]!.message)
   }
 
   return document
