@@ -20,7 +20,7 @@ describe('Desk product copy', () => {
     ['app/pages/_desk/assets/index.vue', 'Upload and manage files you can reuse across your site.'],
     ['app/pages/_desk/assets/[assetId].vue', 'Preview and manage this file.'],
     ['app/pages/_desk/pages/index.vue', 'Build and publish standalone pages for your site.'],
-    ['app/pages/_desk/settings/authentication.vue', 'Configure Google sign-in while keeping password access and explicit account linking.']
+    ['app/components/settings/AuthenticationPanel.vue', 'Configure Google sign-in while keeping password access and explicit account linking.']
   ])('uses helpful guidance in %s', async (path, expected) => {
     expect(await readProjectFile(path)).toContain(expected)
   })

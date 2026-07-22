@@ -1,13 +1,10 @@
 <script setup lang="ts">
 import type { NavigationMenuItem } from '@nuxt/ui'
+import { buildSettingsNavigation } from '~~/shared/settings-sections'
 import { buildSiteAdminNavigation } from '~~/shared/site-admin-sections'
 
 const route = useRoute()
-const { presentation } = await useSitePresentation()
-const colorMode = useColorMode()
-watch(() => presentation.value.appearance.colorMode, preference => {
-  colorMode.preference = preference
-}, { immediate: true })
+useDeskColorMode()
 
 const { data, signOut } = useAuth()
 const { enabled: siteModeEnabled } = useSiteMode()
@@ -21,10 +18,14 @@ function setNavigationOpen(value: string, open: boolean) {
   openNavItems.value = [...next]
 }
 
-watch(siteModeEnabled, enabled => setNavigationOpen('site', enabled), { immediate: true })
+watch(siteModeEnabled, enabled => {
+  const siteRoute = route.path === '/_desk/site' || route.path.startsWith('/_desk/site/')
+  setNavigationOpen('site', enabled || siteRoute)
+}, { immediate: true })
 watch(() => route.path, path => {
   if (path === '/_desk/site' || path.startsWith('/_desk/site/')) setNavigationOpen('site', true)
-})
+  if (path === '/_desk/settings' || path.startsWith('/_desk/settings/')) setNavigationOpen('settings', true)
+}, { immediate: true })
 
 const activeContentBase = computed(() => {
   const parts = route.path.split('/').filter(Boolean)
@@ -36,8 +37,6 @@ const activeContentBase = computed(() => {
 
 const isSchemasRoute = computed(() => route.path === '/_desk/schemas' || route.path.startsWith('/_desk/schemas/'))
 const isUsersRoute = computed(() => route.path === '/_desk/users' || route.path.startsWith('/_desk/users/'))
-const isSettingsRoute = computed(() => route.path === '/_desk/settings' || route.path.startsWith('/_desk/settings/'))
-
 const isContentRoute = computed(() => activeContentBase.value !== null)
 const isAssetsRoute = computed(() => route.path === '/_desk/assets' || route.path.startsWith('/_desk/assets/'))
 const isPagesRoute = computed(() => route.path === '/_desk/pages' || route.path.startsWith('/_desk/pages/'))
@@ -53,6 +52,7 @@ const contentChildren = computed(() => {
 })
 
 const siteNavigation = computed(() => buildSiteAdminNavigation(route.path, siteModeEnabled.value))
+const settingsNavigation = computed(() => buildSettingsNavigation(route.path))
 
 const navItems = computed<NavigationMenuItem[]>(() => ([
   {
@@ -92,13 +92,8 @@ const navItems = computed<NavigationMenuItem[]>(() => ([
     icon: 'i-lucide-panels-top-left',
     active: isPagesRoute.value
   },
-  ...(siteNavigation.value ? [siteNavigation.value] : []),
-  {
-    label: 'Settings',
-    to: '/_desk/settings',
-    icon: 'i-lucide-settings',
-    active: isSettingsRoute.value
-  },
+  siteNavigation.value,
+  settingsNavigation.value,
   {
     label: 'Viewer',
     to: '/',

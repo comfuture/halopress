@@ -66,7 +66,7 @@ export function getOnboardingItems(status: OnboardingStatus): OnboardingItem[] {
     key: 'google',
     title: 'Configure Google OAuth',
     complete: status.googleOAuth.complete,
-    to: '/_desk/settings/authentication'
+    to: '/_desk/settings/access#authentication'
   })
 
   return items

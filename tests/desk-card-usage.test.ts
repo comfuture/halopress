@@ -41,7 +41,7 @@ describe('Desk card usage', () => {
       'app/pages/_desk/assets/index.vue': 1,
       'app/pages/_desk/index.vue': 2,
       'app/pages/_desk/pages/index.vue': 1,
-      'app/pages/_desk/settings/membership.vue': 1
+      'app/components/settings/MembershipPanel.vue': 1
     })
   })
 
@@ -53,7 +53,7 @@ describe('Desk card usage', () => {
       'app/components/cms/ReferencePicker.vue',
       'app/pages/_desk/schemas/[schemaKey]/index.vue',
       'app/pages/_desk/schemas/[schemaKey]/settings.vue',
-      'app/pages/_desk/settings/authentication.vue'
+      'app/components/settings/AuthenticationPanel.vue'
     ]
 
     for (const file of groupedFormFiles) {
