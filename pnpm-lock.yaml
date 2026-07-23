@@ -182,6 +182,19 @@ importers:
         specifier: 4.110.0
         version: 4.110.0
 
+  packages/korean-search-tokenizer:
+    dependencies:
+      garu-ko:
+        specifier: 0.9.11
+        version: 0.9.11
+    devDependencies:
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@types/node@25.1.0)(happy-dom@20.10.6)(vite@7.3.6(@types/node@25.1.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0))
+
 packages:
 
   '@alloc/quick-lru@5.2.0':
@@ -3832,6 +3845,9 @@ packages:
 
   fzf@0.5.2:
     resolution: {integrity: sha512-Tt4kuxLXFKHy8KT40zwsUPUkg1CrsgY25FxA2U/j/0WgEDCk3ddc/zLTCCcbSHX9FcKtLuVaDGtGE/STWC+j3Q==}
+
+  garu-ko@0.9.11:
+    resolution: {integrity: sha512-IArc01JYHS4y+fhYaWsXR+H/CZgUoqvLyxi/odn0K5J1U7jQmHcGlXZWAfJK/TtsH63pqj/ggaB2TQmm5elb1w==}
 
   gensync@1.0.0-beta.2:
     resolution: {integrity: sha512-3hN7NaskYvMDLQY55gnW3NQ+mesEAepTqlg+VEbj7zzqEMBVNhzcGYYeqFo/TlYz6eQiFcp1HcsCZO+nGgS8zg==}
@@ -9722,6 +9738,8 @@ snapshots:
   fuse.js@7.4.2: {}
 
   fzf@0.5.2: {}
+
+  garu-ko@0.9.11: {}
 
   gensync@1.0.0-beta.2: {}
 
