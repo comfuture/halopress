@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import type { BreadcrumbItem, NavigationMenuItem } from '@nuxt/ui'
-import type { SchemaPresentation } from '~/utils/schema-presentation-settings'
+import {
+  schemaPresentationForEditor,
+  type SchemaPresentation
+} from '~/utils/schema-presentation-settings'
 import type { SchemaSearchField } from '~/utils/schema-search-configuration'
 
 definePageMeta({
@@ -18,15 +21,6 @@ type RolePermission = {
   canDelete: boolean
   canAdmin: boolean
   locked?: boolean
-}
-
-const DEFAULT_PRESENTATION: SchemaPresentation = {
-  contractVersion: 1,
-  preset: 'generic',
-  collectionTemplate: 'list',
-  detailTemplate: 'document',
-  structuredDataType: 'WebPage',
-  slots: {}
 }
 
 const route = useRoute()
@@ -82,7 +76,7 @@ const fields = computed<SchemaSearchField[]>({
 })
 
 const presentation = computed<SchemaPresentation>({
-  get: () => (ast.value?.presentation ?? DEFAULT_PRESENTATION) as SchemaPresentation,
+  get: () => schemaPresentationForEditor(ast.value?.presentation),
   set: value => {
     if (ast.value) ast.value.presentation = value
   }
