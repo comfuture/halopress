@@ -5,6 +5,9 @@ import { parse as parseJsonc } from 'jsonc-parser'
 import { describe, expect, it, vi } from 'vitest'
 
 import {
+  SEARCH_ANALYZER_ARTIFACT_VERSION_ID
+} from '../../../shared/search-analyzer-artifact'
+import {
   createDurableSearchAnalyzer,
   DURABLE_ANALYZER_DESCRIPTOR
 } from '../src/durable-analyzer-client'
@@ -62,6 +65,7 @@ describe('Durable analyzer identity and client', () => {
       .digest('hex')
 
     expect(descriptor.artifactDescriptorSha256).toBe(digest(identityInput))
+    expect(descriptor.artifactVersionId).toBe(SEARCH_ANALYZER_ARTIFACT_VERSION_ID)
     expect(descriptor.objectName).toBe(`garu:${digest(identityInput)}`)
     expect(digest({ ...identityInput, analyzerSourceSha256: 'changed-fixture' }))
       .not.toBe(descriptor.artifactDescriptorSha256)

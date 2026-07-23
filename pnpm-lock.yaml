@@ -123,6 +123,9 @@ importers:
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@libsql/client@0.17.4)
+      garu-ko:
+        specifier: 0.9.11
+        version: 0.9.11(patch_hash=cb6e2f579010643bcbf0bff60c4e5206cf512b5ab9d50a0162fe16060e7e2d25)
       jose:
         specifier: ^6.2.3
         version: 6.2.3

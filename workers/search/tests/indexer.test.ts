@@ -7,11 +7,11 @@ import {
 
 import { processFullTextJob } from '../src/indexer'
 import { pendingJobIds } from '../src/repository'
-import type { SearchWorkerEnv } from '../src/types'
+import type { SearchStore } from '../../../shared/search-store'
 import { applyMigrations, SqliteD1 } from './sqlite-d1'
 
 let db: SqliteD1
-let env: SearchWorkerEnv
+let store: SearchStore
 
 function fakeTokenizer(): KoreanSearchTokenizer {
   return {
@@ -124,13 +124,7 @@ function seedPublishedJob(args: {
 beforeEach(async () => {
   db = new SqliteD1()
   await applyMigrations(db)
-  env = {
-    DB: db,
-    SEARCH_INDEX_QUEUE: {
-      async send() {},
-      async sendBatch() {}
-    }
-  }
+  store = db
 })
 
 afterEach(() => db.close())
@@ -141,9 +135,9 @@ describe('lazy search indexer', () => {
     const base = fakeTokenizer()
     let firstBatch = true
     const result = await processFullTextJob({
-      env,
+      store,
       jobId: seeded.jobId,
-      tokenizer: async () => ({
+      analyzer: async () => ({
         async analyzeBatch(request) {
           return {
             batchId: request.batchId,
@@ -181,9 +175,9 @@ describe('lazy search indexer', () => {
       UPDATE full_text_job SET available_at = 0 WHERE id = ?
     `).run(seeded.jobId)
     await expect(processFullTextJob({
-      env,
+      store,
       jobId: seeded.jobId,
-      tokenizer: async () => base
+      analyzer: async () => base
     })).resolves.toMatchObject({ outcome: 'ready' })
     expect(db.sqlite.prepare(`
       SELECT count(*) AS count FROM full_text_fts WHERE content_id = ?
@@ -193,9 +187,9 @@ describe('lazy search indexer', () => {
   it('fails a non-retryable analyzer item without consuming retry claims', async () => {
     const seeded = seedPublishedJob()
     const result = await processFullTextJob({
-      env,
+      store,
       jobId: seeded.jobId,
-      tokenizer: async () => ({
+      analyzer: async () => ({
         async analyzeBatch(request) {
           return {
             batchId: request.batchId,
@@ -229,9 +223,9 @@ describe('lazy search indexer', () => {
   it('checkpoints 50+ sentences and activates only the complete generation', async () => {
     const seeded = seedPublishedJob()
     const result = await processFullTextJob({
-      env,
+      store,
       jobId: seeded.jobId,
-      tokenizer: async () => fakeTokenizer()
+      analyzer: async () => fakeTokenizer()
     })
 
     expect(result.outcome).toBe('ready')
@@ -285,9 +279,9 @@ describe('lazy search indexer', () => {
     `).run(seeded.indexGeneration, seeded.contentId, seeded.revisionId)
 
     const result = await processFullTextJob({
-      env,
+      store,
       jobId: seeded.jobId,
-      tokenizer: async () => fakeTokenizer()
+      analyzer: async () => fakeTokenizer()
     })
     expect(result.outcome).toBe('ready')
     expect(db.sqlite.prepare(`
@@ -295,9 +289,9 @@ describe('lazy search indexer', () => {
       WHERE content_id = ?
     `).get(seeded.contentId)).toEqual({ count: 6 })
     await expect(processFullTextJob({
-      env,
+      store,
       jobId: seeded.jobId,
-      tokenizer: async () => fakeTokenizer()
+      analyzer: async () => fakeTokenizer()
     })).resolves.toMatchObject({ outcome: 'not-claimed' })
   })
 
@@ -324,9 +318,9 @@ describe('lazy search indexer', () => {
       return originalAnalyze(text)
     }
     const result = await processFullTextJob({
-      env,
+      store,
       jobId: seeded.jobId,
-      tokenizer: async () => tokenizer
+      analyzer: async () => tokenizer
     })
 
     expect(result.outcome).toBe('stale')
@@ -342,9 +336,9 @@ describe('lazy search indexer', () => {
   it('keeps the active generation when a competing build owns activation', async () => {
     const initial = seedPublishedJob()
     await processFullTextJob({
-      env,
+      store,
       jobId: initial.jobId,
-      tokenizer: async () => fakeTokenizer()
+      analyzer: async () => fakeTokenizer()
     })
     const competing = seedPublishedJob({
       revisionId: 'revision-2',
@@ -367,9 +361,9 @@ describe('lazy search indexer', () => {
     }
 
     await expect(processFullTextJob({
-      env,
+      store,
       jobId: competing.jobId,
-      tokenizer: async () => tokenizer
+      analyzer: async () => tokenizer
     })).resolves.toMatchObject({ outcome: 'retry' })
     expect(db.sqlite.prepare(`
       SELECT DISTINCT index_generation, published_revision_id
@@ -383,9 +377,9 @@ describe('lazy search indexer', () => {
   it('records retryable failure state and redispatches expired jobs', async () => {
     const seeded = seedPublishedJob()
     const result = await processFullTextJob({
-      env,
+      store,
       jobId: seeded.jobId,
-      tokenizer: async () => {
+      analyzer: async () => {
         throw new Error('model unavailable')
       }
     })
@@ -406,9 +400,9 @@ describe('lazy search indexer', () => {
   it('removes every active and staged row idempotently', async () => {
     const seeded = seedPublishedJob()
     await processFullTextJob({
-      env,
+      store,
       jobId: seeded.jobId,
-      tokenizer: async () => fakeTokenizer()
+      analyzer: async () => fakeTokenizer()
     })
     db.sqlite.prepare(`
       UPDATE content
@@ -426,26 +420,26 @@ describe('lazy search indexer', () => {
     `).run(seeded.contentId, seeded.revisionId, KOREAN_SEARCH_TOKENIZER_GENERATION)
 
     await expect(processFullTextJob({
-      env,
+      store,
       jobId: 'remove-1',
-      tokenizer: async () => fakeTokenizer()
+      analyzer: async () => fakeTokenizer()
     })).resolves.toMatchObject({ outcome: 'removed' })
     expect(db.sqlite.prepare(`
       SELECT count(*) AS count FROM full_text_fts WHERE content_id = ?
     `).get(seeded.contentId)).toEqual({ count: 0 })
     await expect(processFullTextJob({
-      env,
+      store,
       jobId: 'remove-1',
-      tokenizer: async () => fakeTokenizer()
+      analyzer: async () => fakeTokenizer()
     })).resolves.toMatchObject({ outcome: 'not-claimed' })
   })
 
   it('marks a delayed removal stale after the content is republished', async () => {
     const initial = seedPublishedJob()
     await processFullTextJob({
-      env,
+      store,
       jobId: initial.jobId,
-      tokenizer: async () => fakeTokenizer()
+      analyzer: async () => fakeTokenizer()
     })
     db.sqlite.prepare(`
       INSERT INTO full_text_job (
@@ -462,15 +456,15 @@ describe('lazy search indexer', () => {
       indexGeneration: 'generation-2'
     })
     await processFullTextJob({
-      env,
+      store,
       jobId: republished.jobId,
-      tokenizer: async () => fakeTokenizer()
+      analyzer: async () => fakeTokenizer()
     })
 
     await expect(processFullTextJob({
-      env,
+      store,
       jobId: 'remove-delayed',
-      tokenizer: async () => fakeTokenizer()
+      analyzer: async () => fakeTokenizer()
     })).resolves.toMatchObject({ outcome: 'stale' })
     expect(db.sqlite.prepare(`
       SELECT DISTINCT index_generation, published_revision_id

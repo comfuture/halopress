@@ -1,5 +1,8 @@
 import { KOREAN_SEARCH_TOKENIZER_GENERATION } from '@halopress/korean-search-tokenizer'
-import type { D1Database, D1PreparedStatement } from './types'
+import type {
+  SearchPreparedStatement,
+  SearchStore
+} from '../../../shared/search-store'
 
 export type FullTextJobRow = {
   id: string
@@ -31,7 +34,7 @@ function epochSeconds(date = Date.now()) {
   return Math.floor(date / 1000)
 }
 
-export async function claimFullTextJob(db: D1Database, id: string, now = epochSeconds()) {
+export async function claimFullTextJob(db: SearchStore, id: string, now = epochSeconds()) {
   return await db.prepare(`
     UPDATE full_text_job
     SET status = 'processing',
@@ -55,7 +58,7 @@ export async function claimFullTextJob(db: D1Database, id: string, now = epochSe
   ).first<FullTextJobRow>()
 }
 
-export async function loadIndexTarget(db: D1Database, job: FullTextJobRow) {
+export async function loadIndexTarget(db: SearchStore, job: FullTextJobRow) {
   return await db.prepare(`
     SELECT
       pr.content_json,
@@ -87,7 +90,7 @@ export async function loadIndexTarget(db: D1Database, job: FullTextJobRow) {
   ).first<IndexTargetRow>()
 }
 
-export async function targetStillEligible(db: D1Database, job: FullTextJobRow) {
+export async function targetStillEligible(db: SearchStore, job: FullTextJobRow) {
   const row = await db.prepare(`
     SELECT 1 AS eligible
     FROM content c
@@ -104,13 +107,13 @@ export async function targetStillEligible(db: D1Database, job: FullTextJobRow) {
 }
 
 export async function initializeIndexBuild(
-  db: D1Database,
+  db: SearchStore,
   job: FullTextJobRow,
   target: IndexTargetRow,
   totalChunks: number
 ) {
   const now = epochSeconds()
-  const statements: D1PreparedStatement[] = []
+  const statements: SearchPreparedStatement[] = []
   if (job.checkpoint === 0) {
     statements.push(db.prepare(`
       DELETE FROM full_text_chunk WHERE index_generation = ?
@@ -158,7 +161,7 @@ export async function initializeIndexBuild(
 }
 
 export async function storeAnalyzedChunk(args: {
-  db: D1Database
+  db: SearchStore
   job: FullTextJobRow
   target: IndexTargetRow
   chunkIndex: number
@@ -211,7 +214,7 @@ export async function storeAnalyzedChunk(args: {
 }
 
 export async function activateIndexGeneration(
-  db: D1Database,
+  db: SearchStore,
   job: FullTextJobRow,
   target: IndexTargetRow,
   totalChunks: number
@@ -322,7 +325,7 @@ export async function activateIndexGeneration(
   ])
 }
 
-export async function removeContentIndex(db: D1Database, job: FullTextJobRow) {
+export async function removeContentIndex(db: SearchStore, job: FullTextJobRow) {
   const now = epochSeconds()
   await db.batch([
     db.prepare(`
@@ -385,7 +388,7 @@ export async function removeContentIndex(db: D1Database, job: FullTextJobRow) {
   return completed?.status === 'ready' ? 'removed' as const : 'stale' as const
 }
 
-export async function markJobStale(db: D1Database, job: FullTextJobRow, reason: string) {
+export async function markJobStale(db: SearchStore, job: FullTextJobRow, reason: string) {
   const now = epochSeconds()
   await db.batch([
     db.prepare(`DELETE FROM full_text_chunk WHERE index_generation = ?`).bind(job.index_generation),
@@ -405,7 +408,7 @@ export async function markJobStale(db: D1Database, job: FullTextJobRow, reason: 
   ])
 }
 
-export async function markJobRetry(db: D1Database, job: FullTextJobRow, error: unknown) {
+export async function markJobRetry(db: SearchStore, job: FullTextJobRow, error: unknown) {
   const now = epochSeconds()
   const message = error instanceof Error ? error.message.slice(0, 2000) : String(error).slice(0, 2000)
   const terminal = job.attempt_count >= 5
@@ -426,7 +429,7 @@ export async function markJobRetry(db: D1Database, job: FullTextJobRow, error: u
   return { terminal, delay }
 }
 
-export async function markJobFailed(db: D1Database, job: FullTextJobRow, error: unknown) {
+export async function markJobFailed(db: SearchStore, job: FullTextJobRow, error: unknown) {
   const now = epochSeconds()
   const message = error instanceof Error
     ? error.message.slice(0, 2000)
@@ -446,7 +449,7 @@ export async function markJobFailed(db: D1Database, job: FullTextJobRow, error: 
   ])
 }
 
-export async function pendingJobIds(db: D1Database, limit = 50) {
+export async function pendingJobIds(db: SearchStore, limit = 50) {
   const now = epochSeconds()
   const rows = await db.prepare(`
     SELECT id
@@ -459,7 +462,7 @@ export async function pendingJobIds(db: D1Database, limit = 50) {
   return (rows.results ?? []).map(row => row.id)
 }
 
-export async function reconcileSchemaJobs(db: D1Database, job: FullTextJobRow) {
+export async function reconcileSchemaJobs(db: SearchStore, job: FullTextJobRow) {
   const now = epochSeconds()
   const candidates = await db.prepare(`
     SELECT

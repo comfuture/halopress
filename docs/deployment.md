@@ -35,11 +35,14 @@ appears in the Desk checklist or blocks its completion.
 
 ## Node production
 
-Build HaloPress for Nitro's Node server preset and start the generated entry
+HaloPress supports Node `>=22.17.0 <25`. Node 22's built-in `node:sqlite` API is
+still marked active development, so upgrades outside that range are not assumed
+compatible. Apply the existing migrations before starting the generated entry
 point:
 
 ```bash
 pnpm exec nuxt build --preset node-server
+pnpm db:migrate
 NODE_ENV=production HOST=0.0.0.0 PORT=3000 node .output/server/index.mjs
 ```
 
@@ -69,13 +72,31 @@ deployment hostname in Theme data. The source-controlled v1 default is available
 during pre-install missing-table requests, but legacy-derived and customized
 artifacts must be durably snapshotted before their URLs are advertised.
 
-Node uses the same SQLite and filesystem asset adapters as local development.
-Mount persistent storage for `.data/halopress.sqlite` and `.data/r2/`; an
-ephemeral application filesystem will lose content and uploads when the instance
-is replaced. The database must also persist immutable historical Theme artifacts;
-cached Page/headless envelopes may continue to request their digest URLs after a
-new Theme is active. Database or asset adapter redesign and provider-specific packaging
-are outside this guide.
+Node uses the same SQLite connection and filesystem asset adapters as local
+development. It does not open a second search database. Mount persistent storage
+for `.data/halopress.sqlite`, its `-wal` and `-shm` companions, and `.data/r2/`;
+an ephemeral application filesystem will lose content and uploads when the
+instance is replaced. Migration `0011_add_korean_full_text_search.sql` must be
+present before startup. The search runner validates those tables and reports an
+unavailable state instead of silently creating a divergent schema.
+
+The database connection enables WAL, `synchronous=NORMAL`, foreign keys, and a
+5-second busy timeout. Keep the SQLite file and WAL on one host and one local
+filesystem. PostgreSQL, another SQLite driver, network filesystems, and
+multi-host SQLite are unsupported. Include the database, WAL, and immutable
+historical Theme artifacts in a coordinated backup; cached Page/headless
+envelopes may continue to request old Theme digest URLs after a new Theme is
+active.
+
+The Node process starts one long-lived Garu Worker Thread and one durable SQLite
+poller. The poller checks pending or expired leases every second and processes
+at most four jobs per cycle. Publication only nudges it in-process; losing that
+nudge does not lose work. The database poll is the correctness path after a
+restart. `SIGTERM`/Nitro shutdown stops polling, waits for the active cycle, and
+terminates the analyzer thread. The health endpoint
+`GET /__halopress/search/analyzer-health` reports analyzer generation,
+initialization/call timing, Worker-reported RSS, pending-call bounds, and runner
+state without caching.
 
 ## Cloudflare production
 

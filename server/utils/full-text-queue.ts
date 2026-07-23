@@ -14,7 +14,14 @@ function waitUntil(event: H3Event) {
 
 export function queueFullTextReconcile(event: H3Event) {
   const queue = (event as any)?.context?.cloudflare?.env?.SEARCH_INDEX_QUEUE as QueueBinding | undefined
-  if (!queue?.send) return
+  if (!queue?.send) {
+    if (!(event as any)?.context?.cloudflare) {
+      import('../search/node-runtime')
+        .then(module => module.nudgeNodeSearchRuntime())
+        .catch(() => {})
+    }
+    return
+  }
   const task = queue.send({ kind: 'reconcile' })
   const schedule = waitUntil(event)
   if (schedule) schedule(task)

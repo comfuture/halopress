@@ -40,9 +40,9 @@ export async function handleSearchQueue(
     }
     const startedAt = performance.now()
     const result = await processFullTextJob({
-      env,
+      store: env.DB,
       jobId: message.body.jobId,
-      tokenizer: analyzer
+      analyzer
     })
     if (result.dispatchIds.length) {
       await env.SEARCH_INDEX_QUEUE.sendBatch(result.dispatchIds.map(jobId => ({

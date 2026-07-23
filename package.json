@@ -2,6 +2,9 @@
   "name": "halopress",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22.17.0 <25"
+  },
   "scripts": {
     "build": "pnpm build:app && pnpm build:search-worker",
     "build:app": "node --max-old-space-size=4096 node_modules/nuxt/bin/nuxt.mjs build",
@@ -13,6 +16,7 @@
     "lint": "eslint .",
     "test": "vitest run && pnpm test:workspaces",
     "test:workspaces": "pnpm --filter @halopress/korean-search-tokenizer test && pnpm --filter @halopress/search-worker test",
+    "test:node-search:built-runtime": "node scripts/check-node-search-built-runtime.mjs",
     "test:site-menu:built-ssr": "HALOPRESS_SITE_MENU_SSR_FIXTURE=1 pnpm build && node scripts/check-site-menu-built-ssr.mjs",
     "test:site-theme:built-ssr": "HALOPRESS_SITE_MENU_SSR_FIXTURE=1 pnpm build && node scripts/check-site-menu-built-ssr.mjs",
     "test:site-layout:built-ssr": "HALOPRESS_SITE_MENU_SSR_FIXTURE=1 pnpm build && node scripts/check-site-menu-built-ssr.mjs",
@@ -59,6 +63,7 @@
     "@tiptap/y-tiptap": "3.0.6",
     "canvas-confetti": "^1.9.4",
     "drizzle-orm": "^0.45.2",
+    "garu-ko": "0.9.11",
     "jose": "^6.2.3",
     "next-auth": "4.24.14",
     "nuxt": "^4.4.8",
