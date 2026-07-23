@@ -14,6 +14,10 @@ export type KeywordSearchCapabilities = {
   tokenizerGeneration: string
   queryEpoch: number | null
   indexAvailable: boolean
+  analyzer: {
+    status: 'initializing' | 'available' | 'unavailable'
+    retryable: boolean
+  }
   available: boolean
   enabledFields: number
 }
@@ -182,7 +186,11 @@ export function createKeywordSearchClient(options: KeywordSearchClientOptions) {
               retryable: false
             } satisfies KeywordSearchClientError
           }
-          capabilities = value
+          const analyzerTransient = value.mode === 'server'
+            && value.analyzer.status !== 'available'
+            && value.analyzer.retryable
+          capabilities = analyzerTransient ? null : value
+          if (analyzerTransient) capabilitiesPromise = null
           publish({
             status: value.available ? 'idle' : 'unavailable',
             mode: value.mode,
