@@ -371,7 +371,7 @@ if [ "$DRY_RUN" -eq 0 ]; then
 fi
 
 pnpm --filter @halopress/search-worker exec tsx scripts/prepare-assets.mjs
-if [ "$DRY_RUN" -eq 0 ]; then
+if [ "$DRY_RUN" -eq 0 ] && [ -z "${WORKERS_CI:-}" ]; then
   echo 'Running deployed real-Garu Durable Object compatibility gate...'
   DURABLE_COMPATIBILITY_JSON="$(bash scripts/preflight-cloudflare-durable-search.sh "$MAIN_WORKER_NAME")"
   node -e '
@@ -385,6 +385,8 @@ console.log(JSON.stringify({
   cleanupVerified: result.cleanupVerified
 }))
 ' "$DURABLE_COMPATIBILITY_JSON"
+elif [ "$DRY_RUN" -eq 0 ]; then
+  echo 'Workers Builds pins deploys to the connected main Worker; the post-deploy main activation gate will validate real Garu and WebAssembly compatibility.'
 else
   echo '[dry-run] Skipping the remote Durable Object compatibility deployment.'
 fi

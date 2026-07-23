@@ -535,6 +535,28 @@ migrations_dir = "migrations"
     expect(result.stdout).toContain('"cleanupVerified":true')
   })
 
+  it('uses the deployed main activation gate when Workers Builds pins the Worker name', async () => {
+    const fixture = await createFixture(baseConfig({ database_id: 'existing-id' }))
+    const result = await run('bash', [deployScript, '--config', fixture.configPath], {
+      cwd: projectRoot,
+      env: { ...fixture.env, WORKERS_CI: '1' }
+    })
+
+    expect(result).toMatchObject({ code: 0 })
+    const calls = await readCalls(fixture.logPath)
+    expect(calls).not.toContainEqual(expect.arrayContaining([
+      'deploy',
+      expect.stringContaining('wrangler.durable-probe.jsonc')
+    ]))
+    expect(calls).not.toContainEqual(expect.arrayContaining([
+      'delete',
+      expect.stringContaining('wrangler.durable-probe.jsonc')
+    ]))
+    expect(calls).toContainEqual(['deploy', '--config', fixture.configPath])
+    expect(result.stdout).toContain('Workers Builds pins deploys to the connected main Worker')
+    expect(result.stdout).toContain('Main Worker Durable Object activation gate passed')
+  })
+
   it('converges the config on one same-script Durable Object topology', async () => {
     const fixture = await createFixture(baseConfig({ database_id: 'existing-id' }))
     const result = await run('bash', [deployScript, '--config', fixture.configPath], {
