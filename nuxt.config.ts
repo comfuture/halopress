@@ -83,6 +83,7 @@ export default defineNuxtConfig({
 
   vite: {
     optimizeDeps: {
+      exclude: ['garu-ko/browser'],
       include: [
         '@nuxt/ui > prosemirror-state',
         '@nuxt/ui > prosemirror-transform',
