@@ -122,6 +122,10 @@ if (args[0] === 'queues' && args[1] === 'create') {
 }
 
 if (args[0] === 'queues' && args[1] === 'consumer' && args[2] === 'remove') {
+  if (process.env.MOCK_CONSUMER_REMOVE_MISSING === args[4]) {
+    console.error("No worker consumer '" + args[4] + "' exists for queue " + args[3])
+    process.exit(1)
+  }
   if (process.env.MOCK_CONSUMER_REMOVE_FAIL === args[4]) {
     console.error('mock consumer removal failure')
     process.exit(1)
@@ -685,6 +689,25 @@ migrations_dir = "migrations"
       'delete', 'halopress-test-search', '--config', fixture.configPath, '--force'
     ])
     expect(result.stderr).toContain('mock consumer removal failure')
+  })
+
+  it('continues idempotent cleanup when the legacy Queue consumer is absent', async () => {
+    const fixture = await createFixture(baseConfig({ database_id: 'existing-id' }))
+    const result = await run('bash', [deployScript, '--config', fixture.configPath], {
+      cwd: projectRoot,
+      env: {
+        ...fixture.env,
+        MOCK_CONSUMER_REMOVE_MISSING: 'halopress-test-search'
+      }
+    })
+
+    expect(result).toMatchObject({ code: 0 })
+    expect(await readCalls(fixture.logPath)).toContainEqual([
+      'delete', 'halopress-test-search', '--config', fixture.configPath, '--force'
+    ])
+    expect(result.stdout).toContain(
+      'Legacy search Worker halopress-test-search was not a consumer'
+    )
   })
 
   it('keeps the legacy Worker when the deployed main activation response is invalid', async () => {

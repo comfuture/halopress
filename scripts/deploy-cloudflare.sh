@@ -464,7 +464,8 @@ NODE
     && [[ "$CONSUMER_REMOVE_OUTPUT" != *'not found'* ]] \
     && [[ "$CONSUMER_REMOVE_OUTPUT" != *'does not exist'* ]] \
     && [[ "$CONSUMER_REMOVE_OUTPUT" != *'not a consumer'* ]] \
-    && [[ "$CONSUMER_REMOVE_OUTPUT" != *'No consumer'* ]]; then
+    && [[ "$CONSUMER_REMOVE_OUTPUT" != *'No consumer'* ]] \
+    && [[ "$CONSUMER_REMOVE_OUTPUT" != *'No worker consumer'* ]]; then
     printf '%s\n' "$CONSUMER_REMOVE_OUTPUT" >&2
     exit "$CONSUMER_REMOVE_EXIT"
   fi
