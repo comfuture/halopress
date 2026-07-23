@@ -34,6 +34,16 @@ describe('Desk editorial safety UI', () => {
       expect(editor).toContain('Reload latest')
       expect(editor).toContain('body: { revision')
     }
+
+    const [settings, settingsDraft] = await Promise.all([
+      source('app/pages/_desk/schemas/[schemaKey]/settings.vue'),
+      source('app/composables/useSchemaSettingsDraft.ts')
+    ])
+    expect(settings).toContain('A newer Schema draft is available')
+    expect(settings).toContain('Your local presentation and search selections are preserved.')
+    expect(settings).toContain('Reload latest')
+    expect(settingsDraft).toContain('revision: revision.value')
+    expect(settingsDraft).toContain('conflict.value')
   })
 
   it('creates drafts before invoking explicit publish commands', async () => {
@@ -62,7 +72,7 @@ describe('Desk editorial safety UI', () => {
     expect(pageList).toContain(`{ label: 'Deleted', value: 'deleted' }`)
   })
 
-  it('exposes schema lifecycle state, impact preview, guarded deletion, and typed purge confirmation', async () => {
+  it('moves guarded Schema lifecycle actions to the inventory and loads impact after action intent', async () => {
     const settings = await source('app/pages/_desk/schemas/[schemaKey]/settings.vue')
     const schemaList = await source('app/pages/_desk/schemas/index.vue')
     const schemaEditor = await source('app/pages/_desk/schemas/[schemaKey]/index.vue')
@@ -73,22 +83,26 @@ describe('Desk editorial safety UI', () => {
     expect(schemaList).toContain('highlight-color="warning"')
     expect(schemaEditor).toContain('/definition`')
     expect(schemaEditor).toContain('This schema is inactive')
+    expect(settings).not.toContain('/lifecycle')
+    expect(settings).not.toContain('Schema lifecycle')
 
     for (const contract of [
+      '<UDropdownMenu',
       '<UBadge',
       '<UAlert',
       '<UModal',
       '<UForm',
       '<UFormField',
       '<UInput',
-      'Delete empty schema',
-      'Purge schema and content',
+      'Delete empty Schema',
+      'Purge Schema and content',
       'confirmation: z.string().refine',
-      'transitionLifecycle(\'deactivate\')',
-      'transitionLifecycle(\'reactivate\')',
+      'openLifecycleAction(schema, \'deactivate\')',
+      'openLifecycleAction(schema, \'reactivate\')',
+      'await $fetch<LifecycleImpact>(`/api/schema/${schema.schemaKey}/lifecycle`)',
       '/purge`'
     ]) {
-      expect(settings).toContain(contract)
+      expect(schemaList).toContain(contract)
     }
   })
 })
