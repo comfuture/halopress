@@ -8,6 +8,8 @@ const imageProvider = process.env.NUXT_IMAGE_PROVIDER
   || (isCloudflareBuild ? 'cloudflare' : 'ipx')
 const cloudflareBaseURL = process.env.NUXT_IMAGE_CLOUDFLARE_BASE_URL
 const ipxAssetsAlias = process.env.NUXT_IPX_ALIAS_ASSETS || 'http://localhost:3000/assets'
+const garuNodeEntry = fileURLToPath(import.meta.resolve('garu-ko'))
+const garuModelAsset = fileURLToPath(import.meta.resolve('garu-ko/worker/model'))
 
 export default defineNuxtConfig({
   modules: ['@nuxt/eslint', '@nuxt/ui', '@nuxt/image', '@sidebase/nuxt-auth'],
@@ -58,7 +60,12 @@ export default defineNuxtConfig({
 
   nitro: {
     preset: 'cloudflare-module',
-    errorHandler: '~~/server/error-handler.ts'
+    errorHandler: '~~/server/error-handler.ts',
+    externals: {
+      // The Node analyzer thread imports this package from an eval worker.
+      // Trace it explicitly so a copied node-server output stays self-contained.
+      traceInclude: [garuNodeEntry, garuModelAsset]
+    }
   },
 
   hooks: {

@@ -7,6 +7,7 @@ import type {
   SearchAnalyzerBatchRequest,
   SearchAnalyzerBatchResponse
 } from '../../../shared/search-analyzer'
+import type { SearchStore } from '../../../shared/search-store'
 
 import {
   activateIndexGeneration,
@@ -21,7 +22,6 @@ import {
   storeAnalyzedChunk,
   targetStillEligible
 } from './repository'
-import type { SearchWorkerEnv } from './types'
 
 const ANALYZER_BATCH_SIZE = 4
 
@@ -73,33 +73,33 @@ function sourceText(args: {
 }
 
 export async function processFullTextJob(args: {
-  env: SearchWorkerEnv
+  store: SearchStore
   jobId: string
-  tokenizer: () => Promise<DocumentAnalyzer>
+  analyzer: () => Promise<DocumentAnalyzer>
 }) {
-  const job = await claimFullTextJob(args.env.DB, args.jobId)
+  const job = await claimFullTextJob(args.store, args.jobId)
   if (!job) return { outcome: 'not-claimed' as const, dispatchIds: [] as string[] }
 
   try {
     if (job.operation === 'remove') {
-      const outcome = await removeContentIndex(args.env.DB, job)
+      const outcome = await removeContentIndex(args.store, job)
       return { outcome, dispatchIds: [] as string[] }
     }
     if (job.operation === 'schema-sync' || job.operation === 'reindex-sync') {
-      const dispatchIds = await reconcileSchemaJobs(args.env.DB, job)
+      const dispatchIds = await reconcileSchemaJobs(args.store, job)
       return { outcome: 'reconciled' as const, dispatchIds }
     }
     if (job.operation !== 'index' && job.operation !== 'reindex') {
-      await markJobStale(args.env.DB, job, `Unsupported operation: ${job.operation}`)
+      await markJobStale(args.store, job, `Unsupported operation: ${job.operation}`)
       return { outcome: 'stale' as const, dispatchIds: [] as string[] }
     }
 
-    const target = await loadIndexTarget(args.env.DB, job)
+    const target = await loadIndexTarget(args.store, job)
     if (!target
       || target.current_status !== 'published'
       || target.current_revision_id !== job.target_revision_id
       || target.full_text !== 1) {
-      await markJobStale(args.env.DB, job, 'Publication or field eligibility changed')
+      await markJobStale(args.store, job, 'Publication or field eligibility changed')
       return { outcome: 'stale' as const, dispatchIds: [] as string[] }
     }
     const text = sourceText({
@@ -108,13 +108,13 @@ export async function processFullTextJob(args: {
       fieldId: job.field_id
     })
     if (text === null) {
-      await markJobStale(args.env.DB, job, 'Published field contract is unavailable')
+      await markJobStale(args.store, job, 'Published field contract is unavailable')
       return { outcome: 'stale' as const, dispatchIds: [] as string[] }
     }
 
     const chunks = splitTokenizerChunks(text)
-    await initializeIndexBuild(args.env.DB, job, target, chunks.length)
-    const analyzer = await args.tokenizer()
+    await initializeIndexBuild(args.store, job, target, chunks.length)
+    const analyzer = await args.analyzer()
     for (let index = job.checkpoint; index < chunks.length; index += ANALYZER_BATCH_SIZE) {
       const batch = chunks.slice(index, index + ANALYZER_BATCH_SIZE)
       const batchId = `${job.id}:${index}`
@@ -159,7 +159,7 @@ export async function processFullTextJob(args: {
           throw new Error('Analyzer item tokenizer generation changed')
         }
         await storeAnalyzedChunk({
-          db: args.env.DB,
+          db: args.store,
           job,
           target,
           chunkIndex: index + offset,
@@ -170,21 +170,21 @@ export async function processFullTextJob(args: {
       }
     }
 
-    if (!await targetStillEligible(args.env.DB, job)) {
-      await markJobStale(args.env.DB, job, 'Publication changed before activation')
+    if (!await targetStillEligible(args.store, job)) {
+      await markJobStale(args.store, job, 'Publication changed before activation')
       return { outcome: 'stale' as const, dispatchIds: [] as string[] }
     }
-    await activateIndexGeneration(args.env.DB, job, target, chunks.length)
+    await activateIndexGeneration(args.store, job, target, chunks.length)
     return { outcome: 'ready' as const, dispatchIds: [] as string[] }
   } catch (error) {
     if (error instanceof AnalyzerItemError && !error.retryable) {
-      await markJobFailed(args.env.DB, job, error)
+      await markJobFailed(args.store, job, error)
       return {
         outcome: 'failed' as const,
         dispatchIds: [] as string[]
       }
     }
-    const retry = await markJobRetry(args.env.DB, job, error)
+    const retry = await markJobRetry(args.store, job, error)
     return {
       outcome: retry.terminal ? 'failed' as const : 'retry' as const,
       dispatchIds: [] as string[],

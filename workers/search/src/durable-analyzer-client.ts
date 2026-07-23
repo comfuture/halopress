@@ -1,5 +1,8 @@
 import analyzerDescriptor from './generated-analyzer/descriptor.json'
-import type { SearchAnalyzer } from '../../../shared/search-analyzer'
+import type {
+  SearchAnalyzer,
+  SearchAnalyzerCompatibility
+} from '../../../shared/search-analyzer'
 
 export type DurableAnalyzerDescriptor = {
   artifactVersionId: string
@@ -10,10 +13,20 @@ export type DurableAnalyzerDescriptor = {
 
 type AnalyzerDurableObjectNamespace = {
   idFromName(name: string): unknown
-  get(id: unknown): SearchAnalyzer
+  get(id: unknown): DurableSearchAnalyzer
 }
 
 export const DURABLE_ANALYZER_DESCRIPTOR = analyzerDescriptor as DurableAnalyzerDescriptor
+
+export type DurableAnalyzerCompatibility = SearchAnalyzerCompatibility & {
+  objectName: string
+  wasmModuleTag: '[object WebAssembly.Module]'
+  modelByteLength: number
+}
+
+export type DurableSearchAnalyzer = Omit<SearchAnalyzer, 'compatibility'> & {
+  compatibility(): Promise<DurableAnalyzerCompatibility>
+}
 
 function eventLog(event: string, detail: Record<string, unknown>) {
   console.log(JSON.stringify({
@@ -28,7 +41,7 @@ function eventLog(event: string, detail: Record<string, unknown>) {
 
 export function createDurableSearchAnalyzer(
   namespace: AnalyzerDurableObjectNamespace
-): SearchAnalyzer {
+): DurableSearchAnalyzer {
   const object = namespace.get(namespace.idFromName(
     DURABLE_ANALYZER_DESCRIPTOR.objectName
   ))

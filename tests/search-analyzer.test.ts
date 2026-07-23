@@ -31,7 +31,7 @@ describe('server keyword-search analyzer boundary', () => {
     const analyzeQuery = vi.fn(async () => terms)
     const requestEvent = event({ analyzeQuery })
 
-    expect(hasServerSearchAnalyzer(requestEvent)).toBe(true)
+    await expect(hasServerSearchAnalyzer(requestEvent)).resolves.toBe(true)
     await expect(analyzeKeywordSearchRequest(requestEvent, {
       mode: 'raw',
       contractVersion: 1,

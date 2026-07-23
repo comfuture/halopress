@@ -1,9 +1,21 @@
 # Korean full-text search operations
 
-HaloPress deploys one Cloudflare Worker. The code-owned entry wrapper composes
-Nitro `fetch` with Queue `queue`, scheduled reconciliation, and a same-script
-SQLite-backed `AnalyzerDurableObject`. There is no auxiliary search Worker,
-Loader, or Pipeline resource.
+HaloPress has two supported compositions over one analyzer, indexer, lease, and
+SQLite FTS5 contract:
+
+| Responsibility | Cloudflare | Node |
+| --- | --- | --- |
+| Analyzer | same-script `AnalyzerDurableObject` | one long-lived Worker Thread |
+| Durable jobs | D1 `full_text_job` | local SQLite `full_text_job` |
+| Wake-up | Queue plus scheduled reconciliation | one-second SQLite polling plus disposable nudge |
+| Index/query | D1 SQLite FTS5 | local SQLite FTS5 |
+
+Cloudflare still deploys one Worker. The code-owned entry wrapper composes Nitro
+`fetch` with Queue `queue`, scheduled reconciliation, and the same-script
+SQLite-backed DO. Node does not emulate those bindings: it composes the portable
+search core with the application's existing `.data/halopress.sqlite` connection.
+There is no auxiliary search Worker, Loader, Pipeline, Redis, or process per
+request.
 
 Content and immutable publication revisions remain authoritative. Publishing,
 unpublishing, deleting, and publishing a Schema write a durable `full_text_job`
@@ -31,6 +43,17 @@ pending or expired leases.
 - The DO does not store authoritative work or index state and currently performs
   no application storage writes. SQLite is selected because Workers Free
   supports SQLite-backed Durable Objects.
+- The portable compatibility response contains only the analyzer contract,
+  artifact identity, and tokenizer metadata. DO `objectName`, compiled-module
+  representation, and model-byte diagnostics remain in the Cloudflare adapter.
+- Node uses the same content-derived artifact identity. Its executor bounds 32
+  pending calls, owns one model/Wasm initialization, restarts after a thread
+  exit, and propagates initialization or call failure as retryable unavailable
+  state rather than empty search terms.
+- The Node runner polls SQLite every second, claims at most four jobs per cycle,
+  and uses the existing five-minute leases and checkpoints. The in-process
+  publication nudge only reduces latency; pending and expired database rows are
+  recovered after restart without it.
 
 One final D1 batch rechecks the current publication revision and field
 eligibility, replaces the FTS rows, and activates the complete generation.
@@ -114,6 +137,42 @@ chunk progress, tokenizer generation, query epoch, and the latest error.
   behavior is enabled.
 - D1 unavailability affects indexing and queries, not source content. Restore D1,
   apply migrations, and run a full reindex.
+- On Node, keep `.data/halopress.sqlite`, `-wal`, and `-shm` on the same local
+  host. The shared connection uses WAL, `synchronous=NORMAL`, and a 5-second busy
+  timeout. Apply migration 0011 before startup. Missing search tables leave the
+  runner visibly unavailable.
+- A crashed Node analyzer rejects outstanding calls retryably and starts a new
+  long-lived thread for the same artifact generation. Durable checkpoints, not
+  memory, determine where indexing resumes.
+- Stop the Node process with `SIGTERM`. Nitro waits for the current bounded
+  cycle, stops polling, and terminates the Worker Thread; no second process or
+  orphan thread is expected.
+
+## Node validation evidence
+
+Validation on 2026-07-24 used Node 24.13.0 and the pinned Garu 0.9.11 model:
+
+| Measurement | Result |
+| --- | --- |
+| Model bytes | 1,438,231 |
+| Cold Worker initialization | 46.875 ms |
+| Five warm two-item batches | 6.899, 2.129, 1.077, 0.972, 0.762 ms |
+| Worker-reported process RSS after warm calls | 143,343,616 bytes |
+| Durable polling bound | 1,000 ms plus one bounded cycle |
+| Event-loop check | a zero-delay main-thread timer advanced during Worker analysis |
+
+These latency and RSS values are environment evidence, not capacity promises.
+The automated runtime suite also closes and reopens a temporary file after a
+partial checkpoint, resumes to six complete chunks, runs a permission-gated
+BM25 query, retains the prior active FTS generation during a WAL write, restarts
+a crashed analyzer, and shuts down a built Node SSR process cleanly. Run:
+
+```bash
+pnpm vitest run tests/node-search-analyzer.test.ts \
+  tests/node-search-sqlite-integration.test.ts
+pnpm exec nuxt build --preset node-server
+pnpm test:node-search:built-runtime
+```
 
 ## Measured topology comparison
 

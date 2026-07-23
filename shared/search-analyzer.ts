@@ -42,10 +42,7 @@ export type SearchAnalyzerBatchResponse = {
 export type SearchAnalyzerCompatibility = {
   analyzerContractVersion: typeof SEARCH_ANALYZER_CONTRACT_VERSION
   artifactVersionId: string
-  objectName: string
   tokenizer: KoreanSearchTokenizerMetadata
-  wasmModuleTag: '[object WebAssembly.Module]'
-  modelByteLength: number
 }
 
 export type SearchAnalyzer = {

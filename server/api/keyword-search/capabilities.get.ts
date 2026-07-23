@@ -3,7 +3,9 @@ import { setHeader } from 'h3'
 import { KOREAN_SEARCH_TOKENIZER_GENERATION } from '@halopress/korean-search-tokenizer'
 
 import { getRawDb } from '../../db/db'
-import { hasServerSearchAnalyzer } from '../../utils/search-analyzer'
+import {
+  getServerSearchAnalyzerAvailability
+} from '../../utils/search-analyzer'
 import { getSchemaRoleKey } from '../../utils/schema-permission'
 
 export default defineEventHandler(async (event) => {
@@ -11,7 +13,7 @@ export default defineEventHandler(async (event) => {
   const mode = config.public.keywordSearchMode === 'server' ? 'server' : 'browser'
   const roleKey = await getSchemaRoleKey(event)
   const db = await getRawDb(event)
-  const [control, fields] = await Promise.all([
+  const [control, fields, analyzer] = await Promise.all([
     db.prepare(`
       SELECT tokenizer_generation, query_epoch, status
       FROM full_text_control WHERE key = 'singleton'
@@ -44,7 +46,8 @@ export default defineEventHandler(async (event) => {
               )
           )
         )
-    `).bind(roleKey === 'admin' ? 1 : 0, roleKey).first<{ count: number }>()
+    `).bind(roleKey === 'admin' ? 1 : 0, roleKey).first<{ count: number }>(),
+    getServerSearchAnalyzerAvailability(event)
   ])
   const indexAvailable = control?.status === 'available' && Number(fields?.count) > 0
   setHeader(
@@ -63,10 +66,11 @@ export default defineEventHandler(async (event) => {
     tokenizerGeneration: control?.tokenizer_generation ?? KOREAN_SEARCH_TOKENIZER_GENERATION,
     queryEpoch: control?.query_epoch ?? null,
     indexAvailable,
+    analyzer,
     available: indexAvailable
       && (
         mode === 'browser'
-        || hasServerSearchAnalyzer(event)
+        || analyzer.status === 'available'
         || Boolean(config.public.keywordSearchBrowserFallback)
       ),
     enabledFields: Number(fields?.count ?? 0)

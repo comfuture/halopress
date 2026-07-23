@@ -19,23 +19,34 @@ type SqlMethod = 'run' | 'all' | 'values' | 'get'
 type NodeSqlite = {
   exec: (sql: string) => void
   prepare: (sql: string) => {
-    run: (...params: any[]) => { changes?: number; lastInsertRowid?: number }
+    run: (...params: any[]) => {
+      changes?: number | bigint
+      lastInsertRowid?: number | bigint
+    }
     all: (...params: any[]) => any[]
     get: (...params: any[]) => any
     columns: () => { name: string }[]
   }
+  close: () => void
 }
 
 let localDb: NodeSqlite | null = null
 
-async function getLocalDb(): Promise<NodeSqlite> {
+export function getLocalSqlitePath() {
+  return join(process.cwd(), '.data', 'halopress.sqlite')
+}
+
+export async function getLocalSqlite(): Promise<NodeSqlite> {
   if (localDb) return localDb
   const { DatabaseSync } = await import('node:sqlite')
   await import('node:fs/promises').then(fs => fs.mkdir(join(process.cwd(), '.data'), { recursive: true }))
 
-  const dbPath = join(process.cwd(), '.data', 'halopress.sqlite')
+  const dbPath = getLocalSqlitePath()
   localDb = new DatabaseSync(dbPath) as unknown as NodeSqlite
   localDb.exec('PRAGMA foreign_keys = ON;')
+  localDb.exec('PRAGMA journal_mode = WAL;')
+  localDb.exec('PRAGMA synchronous = NORMAL;')
+  localDb.exec('PRAGMA busy_timeout = 5000;')
   return localDb
 }
 
@@ -54,7 +65,7 @@ export async function getDb(event?: H3Event): Promise<Db> {
   }
 
   // Local dev path: Node 22 built-in SQLite (node:sqlite) via drizzle sqlite-proxy.
-  const sqlite = await getLocalDb()
+  const sqlite = await getLocalSqlite()
 
   const callback = async (sql: string, params: any[], method: SqlMethod) => {
     const stmt = sqlite.prepare(sql)
@@ -85,7 +96,7 @@ export async function getRawDb(event?: H3Event) {
   if (d1) return d1
   if (cf) throw new Error('Missing Cloudflare D1 binding: DB')
 
-  const sqlite = await getLocalDb()
+  const sqlite = await getLocalSqlite()
   return {
     prepare(query: string) {
       return {

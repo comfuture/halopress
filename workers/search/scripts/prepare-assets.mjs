@@ -28,7 +28,7 @@ const wasmSha256 = sha256(wasm)
 const analyzerSources = [
   '../../../shared/search-analyzer.ts',
   '../src/analyzer-batch.ts',
-  '../src/durable-analyzer.ts',
+  '../../../server/search/node-analyzer-worker-source.ts',
   '../../../packages/korean-search-tokenizer/src/index.ts',
   '../../../packages/korean-search-tokenizer/src/worker.ts'
 ]

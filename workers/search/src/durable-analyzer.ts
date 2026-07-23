@@ -8,9 +8,9 @@ import garuWasmModule from './generated-assets/garu_wasm_bg.wasm'
 import { analyzeSearchBatch } from './analyzer-batch'
 import {
   SEARCH_ANALYZER_CONTRACT_VERSION,
-  type SearchAnalyzer,
   type SearchAnalyzerBatchRequest
 } from '../../../shared/search-analyzer'
+import type { DurableSearchAnalyzer } from './durable-analyzer-client'
 
 type DurableAnalyzerDescriptor = {
   artifactVersionId: string
@@ -21,7 +21,7 @@ type DurableAnalyzerDescriptor = {
 
 const descriptor = analyzerDescriptor as DurableAnalyzerDescriptor
 
-export class AnalyzerDurableObject extends DurableObject implements SearchAnalyzer {
+export class AnalyzerDurableObject extends DurableObject implements DurableSearchAnalyzer {
   private tokenizer() {
     return createWorkerTokenizer({
       wasmModule: garuWasmModule,
