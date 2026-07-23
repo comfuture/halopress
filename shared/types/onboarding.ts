@@ -19,6 +19,9 @@ export type OnboardingStatus = {
   content: {
     complete: boolean
   }
+  site: {
+    complete: boolean
+  }
   domain: {
     complete: boolean
   }

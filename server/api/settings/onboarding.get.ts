@@ -6,6 +6,7 @@ import { content as contentTable, schema as schemaTable, schemaActive as schemaA
 import { requireAdmin } from '../../utils/auth'
 import { BOOTSTRAP_CONTENT_ID, isBootstrapSchema } from '../../utils/bootstrap'
 import { getGoogleAuthenticationSettings } from '../../utils/google-authentication-settings'
+import { getSiteMode } from '../../utils/site-mode-settings'
 import {
   buildOnboardingStatus,
   getImageTransformationsStatus,
@@ -22,7 +23,7 @@ export default defineEventHandler(async (event) => {
     development: import.meta.dev
   })
 
-  const [activeSchemas, publishedContent, googleOAuth, imageTransformations] = await Promise.all([
+  const [activeSchemas, publishedContent, googleOAuth, imageTransformations, siteMode] = await Promise.all([
     db
       .select({
         schemaKey: schemaActiveTable.schemaKey,
@@ -46,7 +47,8 @@ export default defineEventHandler(async (event) => {
       .where(and(eq(contentTable.status, 'published'), ne(contentTable.id, BOOTSTRAP_CONTENT_ID)))
       .get(),
     getGoogleAuthenticationSettings(event),
-    getImageTransformationsStatus(deployment, event)
+    getImageTransformationsStatus(deployment, event),
+    getSiteMode(event)
   ])
 
   const customSchemas = activeSchemas.filter((schema: { schemaKey: string, version: number, note: string | null }) => !isBootstrapSchema(schema))
@@ -57,6 +59,7 @@ export default defineEventHandler(async (event) => {
     schemasComplete: customSchemas.length > 0,
     firstSchemaKey: customSchemas[0]?.schemaKey ?? null,
     contentComplete: publishedContentCount > 0,
+    siteComplete: siteMode.enabled,
     domainComplete: hasCompletedDomainGuidance(deployment, requestUrl.hostname),
     imageTransformationsComplete: imageTransformations,
     googleOAuthComplete: googleOAuth.configured && googleOAuth.enabled

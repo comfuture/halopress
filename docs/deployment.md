@@ -6,9 +6,9 @@ actually serving the request.
 
 | Runtime | Setup checklist | Media processing |
 | --- | --- | --- |
-| Local development | Schema, content, Google OAuth | IPX; no domain or Cloudflare Images task |
-| Node production | Schema, content, public site URL, Google OAuth | IPX; no Cloudflare Images task |
-| Cloudflare Workers | Schema, content, custom domain, Image Transformations, Google OAuth | Cloudflare Images with raw-asset fallback |
+| Local development | Schema, content, Site activation, Google OAuth (4 tasks) | IPX; no domain or Cloudflare Images task |
+| Node production | Schema, content, Site activation, public site URL, Google OAuth (5 tasks) | IPX; no Cloudflare Images task |
+| Cloudflare Workers | Schema, content, Site activation, custom domain, Image Transformations, Google OAuth (6 tasks) | Cloudflare Images with raw-asset fallback |
 
 Nuxt development mode selects local setup, including when the Cloudflare Nitro
 preset supplies emulated Worker context to the dev server. Outside development,
@@ -98,11 +98,16 @@ a specific custom domain and reject alternate workers.dev authority.
 
 ## Checklist completion and dismissal
 
-Schema creation, content publication, and Google OAuth status keep the same
-completion rules in every runtime. Platform-specific items count only when they
-apply. The progress maximum and completed count therefore vary with the runtime,
-and the widget automatically hides after every applicable item is complete.
+Schema creation, content publication, Site activation, and Google OAuth status
+keep the same completion rules in every runtime. Site activation links to the
+existing Site General control and is complete only while the persisted Site mode
+is enabled. Platform-specific Domain and Image Transformations items count only
+when they apply. The progress maximum and completed count therefore vary with the
+runtime, and the widget automatically hides after every applicable item is
+complete.
 
-Dismissal remains browser-local through the Desk onboarding cookie. Dismissing
-the widget prevents its initial status request in that browser; it does not mark
+Dismissal remains browser-local through the versioned Desk onboarding cookie.
+The Site activation requirement advances that version so browsers that dismissed
+the previous checklist receive the new guidance once. Dismissing the current
+widget prevents its initial status request in that browser; it does not mark
 server-side setup tasks complete or change another browser's checklist.

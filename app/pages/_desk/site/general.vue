@@ -210,7 +210,7 @@ async function refreshAll() {
     </template>
 
     <div class="space-y-6">
-      <section class="space-y-5 rounded-lg border border-default p-5">
+      <section id="site-features" class="scroll-mt-6 space-y-5 rounded-lg border border-default p-5">
         <div class="flex flex-wrap items-start justify-between gap-4">
           <div class="max-w-2xl space-y-1">
             <h2 class="font-semibold text-highlighted">

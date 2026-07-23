@@ -38,6 +38,7 @@ function onboardingStatus(
   overrides: Partial<{
     domain: boolean
     images: boolean
+    site: boolean
   }> = {}
 ): OnboardingStatus {
   return buildOnboardingStatus({
@@ -45,6 +46,7 @@ function onboardingStatus(
     schemasComplete: complete,
     firstSchemaKey: complete ? 'article' : null,
     contentComplete: complete,
+    siteComplete: overrides.site ?? complete,
     domainComplete: overrides.domain ?? complete,
     imageTransformationsComplete: overrides.images ?? complete,
     googleOAuthComplete: complete
@@ -169,14 +171,21 @@ describe('dashboard onboarding', () => {
     const nodeItems = getOnboardingItems(onboardingStatus(nodeDeployment, false))
     const localItems = getOnboardingItems(onboardingStatus(localDeployment, false))
 
-    expect(cloudflareItems.map(item => item.key)).toEqual(['schema', 'content', 'domain', 'images', 'google'])
+    expect(cloudflareItems.map(item => item.key)).toEqual(['schema', 'content', 'site', 'domain', 'images', 'google'])
+    expect(cloudflareItems[2]).toMatchObject({
+      key: 'site',
+      title: 'Enable Site',
+      complete: false,
+      to: '/_desk/site/general#site-features'
+    })
+    expect(cloudflareItems[2]).not.toHaveProperty('external')
     expect(cloudflareItems.find(item => item.key === 'domain')).toMatchObject({
       title: 'Set up a custom domain',
       external: true
     })
     expect(cloudflareItems.find(item => item.key === 'images')?.to).toContain('developers.cloudflare.com/images/')
 
-    expect(nodeItems.map(item => item.key)).toEqual(['schema', 'content', 'domain', 'google'])
+    expect(nodeItems.map(item => item.key)).toEqual(['schema', 'content', 'site', 'domain', 'google'])
     expect(nodeItems.find(item => item.key === 'domain')).toMatchObject({
       title: 'Use a public site URL',
       external: true
@@ -184,7 +193,7 @@ describe('dashboard onboarding', () => {
     expect(nodeItems.find(item => item.key === 'domain')?.to).toContain('docs/deployment.md#node-production')
     expect(nodeItems.every(item => !item.to.includes('developers.cloudflare.com'))).toBe(true)
 
-    expect(localItems.map(item => item.key)).toEqual(['schema', 'content', 'google'])
+    expect(localItems.map(item => item.key)).toEqual(['schema', 'content', 'site', 'google'])
   })
 
   it('encodes the first schema key in the content creation link', () => {
@@ -200,10 +209,12 @@ describe('dashboard onboarding', () => {
     const nodeItems = getOnboardingItems(onboardingStatus(nodeDeployment, true, { images: false }))
     const localItems = getOnboardingItems(onboardingStatus(localDeployment, true, { domain: false, images: false }))
 
-    expect(getOnboardingProgress(cloudflareItems)).toEqual({ completed: 5, total: 5, complete: true })
-    expect(getOnboardingProgress(nodeItems)).toEqual({ completed: 4, total: 4, complete: true })
-    expect(getOnboardingProgress(localItems)).toEqual({ completed: 3, total: 3, complete: true })
-    expect(hasCompletedOnboarding(cloudflareItems.slice(0, 4))).toBe(true)
+    expect(getOnboardingProgress(cloudflareItems)).toEqual({ completed: 6, total: 6, complete: true })
+    expect(getOnboardingProgress(nodeItems)).toEqual({ completed: 5, total: 5, complete: true })
+    expect(getOnboardingProgress(localItems)).toEqual({ completed: 4, total: 4, complete: true })
+    expect(hasCompletedOnboarding(cloudflareItems.slice(0, 5))).toBe(true)
+    expect(getOnboardingProgress(getOnboardingItems(onboardingStatus(localDeployment, true, { site: false }))))
+      .toEqual({ completed: 3, total: 4, complete: false })
     expect(hasCompletedOnboarding([{ complete: true }, { complete: false }])).toBe(false)
     expect(hasCompletedOnboarding([])).toBe(true)
     expect(formatOnboardingProgressLabel()).toBe('Onboarding progress')
@@ -233,6 +244,7 @@ describe('dashboard onboarding', () => {
       },
       schemas: { complete: true, firstSchemaKey: 'article' },
       content: { complete: true },
+      site: { complete: true },
       domain: { complete: true },
       imageTransformations: { complete: true },
       googleOAuth: { complete: true }
@@ -309,7 +321,8 @@ describe('dashboard onboarding', () => {
     expect(widget).toContain(':get-value-label="getProgressLabel"')
     expect(widget).toContain(':get-value-text="getProgressValue"')
     expect(widget).toContain('data.value ? progress.value.complete : false')
-    expect(widget).toContain('useCookie<boolean>(\'halopress_onboarding_dismissed_v1\'')
+    expect(widget).toContain('useCookie<boolean>(\'halopress_onboarding_dismissed_v2\'')
+    expect(widget).not.toContain('halopress_onboarding_dismissed_v1')
     expect(widget).toContain('immediate: !dismissed.value')
     expect(widget).toContain('server: false')
     expect(widget).toContain('now - lastRefreshAt < 30_000')
@@ -336,16 +349,23 @@ describe('dashboard onboarding', () => {
     expect(settings).not.toContain('<SettingsShell')
 
     const onboarding = await readFile(join(projectRoot, 'app/utils/onboarding.ts'), 'utf8')
+    expect(onboarding).toContain('to: \'/_desk/site/general#site-features\'')
     expect(onboarding).toContain('to: \'/_desk/settings/access#authentication\'')
 
     const statusApi = await readFile(join(projectRoot, 'server/api/settings/onboarding.get.ts'), 'utf8')
     expect(statusApi).toContain('BOOTSTRAP_CONTENT_ID')
     expect(statusApi).toContain('isBootstrapSchema')
     expect(statusApi).toContain('getImageTransformationsStatus(deployment, event)')
+    expect(statusApi).toContain('getSiteMode(event)')
+    expect(statusApi).toContain('siteComplete: siteMode.enabled')
     expect(statusApi).not.toContain('hostname: requestUrl.hostname')
 
+    const siteGeneral = await readFile(join(projectRoot, 'app/pages/_desk/site/general.vue'), 'utf8')
+    expect(siteGeneral).toContain('id="site-features"')
+    expect(siteGeneral.match(/v-model="modeState\.enabled"/g)).toHaveLength(1)
+
     const deploymentGuide = await readFile(join(projectRoot, 'docs/deployment.md'), 'utf8')
-    expect(deploymentGuide).toContain('| Node production | Schema, content, public site URL, Google OAuth |')
+    expect(deploymentGuide).toContain('| Node production | Schema, content, Site activation, public site URL, Google OAuth (5 tasks) |')
     expect(deploymentGuide).toContain('A provider-assigned hostname and a custom domain are both valid public')
     expect(deploymentGuide).toMatch(/cannot enable Cloudflare links, probes, or\s+capabilities/)
 

@@ -25,6 +25,7 @@ type OnboardingStatusInput = {
   schemasComplete: boolean
   firstSchemaKey: string | null
   contentComplete: boolean
+  siteComplete: boolean
   domainComplete: boolean
   imageTransformationsComplete: boolean
   googleOAuthComplete: boolean
@@ -163,6 +164,9 @@ export function buildOnboardingStatus(input: OnboardingStatusInput): OnboardingS
     },
     content: {
       complete: input.contentComplete
+    },
+    site: {
+      complete: input.siteComplete
     },
     domain: {
       complete: input.domainComplete
