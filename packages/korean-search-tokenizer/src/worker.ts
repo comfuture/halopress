@@ -7,6 +7,8 @@ export * from './index'
 let cachedTokenizer: Promise<ReturnType<typeof createSearchTokenizer>> | null = null
 
 class WorkerGaru extends GaruBase {
+  // The public forwarding constructor intentionally exposes GaruBase's protected constructor.
+  // eslint-disable-next-line @typescript-eslint/no-useless-constructor
   constructor(wasmInstance: GaruWasm, modelSize: number) {
     super(wasmInstance, modelSize)
   }
