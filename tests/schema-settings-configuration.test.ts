@@ -15,6 +15,7 @@ import {
 } from '../app/utils/schema-search-configuration'
 import {
   buildSchemaPresentationPreset,
+  schemaPresentationForEditor,
   schemaPresentationPresetReplacements
 } from '../app/utils/schema-presentation-settings'
 
@@ -140,6 +141,34 @@ describe('Schema Settings configuration contracts', () => {
       slots: { title: 'title-id', body: 'body-id', price: 'price-id' },
       extensionContract: { retained: true }
     })
+  })
+
+  it('supplies missing presentation slots without mutating or replacing complete stored values', () => {
+    const complete = {
+      contractVersion: 1 as const,
+      preset: 'generic' as const,
+      collectionTemplate: 'list' as const,
+      detailTemplate: 'document' as const,
+      slots: { title: 'title-id' },
+      extensionContract: { retained: true }
+    }
+    expect(schemaPresentationForEditor(complete)).toBe(complete)
+
+    const legacy = {
+      contractVersion: 1 as const,
+      preset: 'generic' as const,
+      collectionTemplate: 'list' as const,
+      detailTemplate: 'document' as const,
+      layoutId: 'layout-a',
+      extensionContract: { retained: true }
+    }
+    const normalized = schemaPresentationForEditor(legacy)
+    expect(normalized).not.toBe(legacy)
+    expect(normalized).toEqual({
+      ...legacy,
+      slots: {}
+    })
+    expect(legacy).not.toHaveProperty('slots')
   })
 
   it('uses one revision-aware AST for presentation and search while keeping Permissions immediate', async () => {

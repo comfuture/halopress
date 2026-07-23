@@ -18,6 +18,24 @@ export type SchemaPresentationField = {
   system?: boolean
 }
 
+type StoredSchemaPresentation = Omit<SchemaPresentation, 'slots'> & {
+  slots?: SchemaPresentation['slots']
+}
+
+export function schemaPresentationForEditor(
+  value: StoredSchemaPresentation | null | undefined
+): SchemaPresentation {
+  if (value?.slots !== undefined) return value as SchemaPresentation
+  return {
+    contractVersion: 1,
+    preset: 'generic',
+    collectionTemplate: 'list',
+    detailTemplate: 'document',
+    ...value,
+    slots: {}
+  }
+}
+
 const SLOT_KINDS = {
   title: ['string', 'text'],
   description: ['string', 'text', 'richtext'],
