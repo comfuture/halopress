@@ -10,6 +10,10 @@ const capabilities = {
   tokenizerGeneration: 'generation-1',
   queryEpoch: 1,
   indexAvailable: true,
+  analyzer: {
+    status: 'available' as const,
+    retryable: true
+  },
   available: true,
   enabledFields: 1
 }
@@ -131,6 +135,41 @@ describe('headless keyword search client', () => {
       status: 'ready',
       fallback: true,
       items: [{ id: 'fallback' }]
+    })
+  })
+
+  it('refetches a retryable transient server capability on retry', async () => {
+    const transient = {
+      ...capabilities,
+      analyzer: {
+        status: 'initializing' as const,
+        retryable: true
+      },
+      available: false
+    }
+    const capabilityResponses = [transient, capabilities]
+    const fetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (!init?.method) return json(capabilityResponses.shift()!)
+      return json(result('recovered'))
+    }) as typeof globalThis.fetch
+    const client = createKeywordSearchClient({
+      fetch,
+      loadBrowserTokenizer: vi.fn()
+    })
+
+    await client.search({ query: '학교' })
+    expect(client.state).toMatchObject({
+      status: 'unavailable',
+      items: []
+    })
+
+    await client.retry()
+
+    expect(fetch).toHaveBeenCalledTimes(3)
+    expect(client.state).toMatchObject({
+      status: 'ready',
+      mode: 'server',
+      items: [{ id: 'recovered' }]
     })
   })
 
