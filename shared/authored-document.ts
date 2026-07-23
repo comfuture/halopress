@@ -278,6 +278,28 @@ function normalizeImage(node: Record<string, any>): AuthoredImageNode | Extract<
   }
 }
 
+function normalizePageBlockProps(key: string, props: Record<string, unknown>) {
+  if (key !== 'pageLogos' || !Array.isArray(props.items)) return props
+  return {
+    ...props,
+    items: props.items.map((candidate) => {
+      if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return candidate
+      const item = candidate as Record<string, unknown>
+      if (typeof item.src !== 'string' || isPortablePageAssetPath(item.src)) return item
+      const safeItem = { ...item }
+      delete safeItem.src
+      return safeItem
+    })
+  }
+}
+
+function normalizePageBlockMedia(media: Record<string, unknown>) {
+  if (typeof media.url !== 'string' || isPortablePageAssetPath(media.url)) return media
+  const safeMedia = { ...media }
+  delete safeMedia.url
+  return safeMedia
+}
+
 function isPageHeroSequence(content: AuthoredDocumentNode[]) {
   let index = 0
   if (content[index]?.type === 'paragraph') index += 1
@@ -342,9 +364,9 @@ function normalizeNode(
       if (resolved.status !== 'known') return { type: 'pageBlock', attrs }
       const deliveryAttrs: StoredPageBlockAttrs = {
         component: resolved.key,
-        props: resolved.props,
+        props: normalizePageBlockProps(resolved.key, resolved.props),
         advanced: {},
-        media: resolved.media
+        media: normalizePageBlockMedia(resolved.media)
       }
       const title = typeof resolved.props.title === 'string' ? resolved.props.title : ''
       const headingLevel = resolved.key === 'pageHero' ? 1 : 2

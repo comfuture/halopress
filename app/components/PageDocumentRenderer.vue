@@ -2,12 +2,9 @@
 import { normalizeAuthoredDocument } from '~~/shared/authored-document'
 import PageBlockView from '~/editor/page/PageBlockView.vue'
 
-const props = withDefaults(defineProps<{
+const props = defineProps<{
   document: unknown
-  isolated?: boolean
-}>(), {
-  isolated: false
-})
+}>()
 
 const normalized = computed(() => normalizeAuthoredDocument(props.document, {
   allowPageBlocks: true,
@@ -20,7 +17,6 @@ const normalized = computed(() => normalizeAuthoredDocument(props.document, {
     class="site-document site-page-document"
     data-page-document-renderer
     data-site-document-renderer
-    :data-site-document-isolated="isolated ? 'true' : undefined"
   >
     <template v-for="(node, index) in normalized.content" :key="index">
       <div
