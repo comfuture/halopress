@@ -11,6 +11,7 @@ export const KOREAN_SEARCH_TOKENIZER_GENERATION = [
 ].join(':')
 
 export const MAX_DOCUMENT_CHUNK_BYTES = 24 * 1024
+export const MAX_DOCUMENT_CHUNK_SENTENCES = 10
 export const MAX_QUERY_BYTES = 512
 export const MAX_QUERY_TERMS = 64
 export const MAX_TERM_BYTES = 128
@@ -121,9 +122,16 @@ export function validateSearchTerms(terms: unknown, options: { maxTerms?: number
   })
 }
 
-export function splitTokenizerChunks(value: string, maxBytes = MAX_DOCUMENT_CHUNK_BYTES) {
+export function splitTokenizerChunks(
+  value: string,
+  maxBytes = MAX_DOCUMENT_CHUNK_BYTES,
+  maxSentences = MAX_DOCUMENT_CHUNK_SENTENCES
+) {
   if (!Number.isInteger(maxBytes) || maxBytes < 256) {
     throw new RangeError('Tokenizer chunk size must be at least 256 bytes')
+  }
+  if (!Number.isInteger(maxSentences) || maxSentences < 1) {
+    throw new RangeError('Tokenizer chunk sentence limit must be positive')
   }
   const normalized = normalizeSearchText(value)
   if (!normalized) return []
@@ -131,16 +139,20 @@ export function splitTokenizerChunks(value: string, maxBytes = MAX_DOCUMENT_CHUN
   const segments = normalized.match(/[^.!?。！？\n]+[.!?。！？]?|\n+/gu) ?? [normalized]
   const chunks: string[] = []
   let current = ''
+  let currentSentences = 0
   const pushCurrent = () => {
     const chunk = current.trim()
     if (chunk) chunks.push(chunk)
     current = ''
+    currentSentences = 0
   }
 
   for (const segment of segments) {
+    if (current && currentSentences >= maxSentences) pushCurrent()
     const candidate = current ? `${current} ${segment.trim()}` : segment.trim()
     if (candidate && utf8Bytes(candidate) <= maxBytes) {
       current = candidate
+      currentSentences += 1
       continue
     }
     pushCurrent()
@@ -156,6 +168,7 @@ export function splitTokenizerChunks(value: string, maxBytes = MAX_DOCUMENT_CHUN
       partial = symbol
     }
     current = partial
+    currentSentences = partial ? 1 : 0
   }
   pushCurrent()
   return chunks

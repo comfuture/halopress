@@ -27,5 +27,19 @@
       "binding": "CONTENT_ASSETS",
       "bucket_name": "halopress-content-assets"
     }
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "SEARCH_INDEX_QUEUE",
+        "queue": "halopress-search-index"
+      }
+    ]
+  },
+  "services": [
+    {
+      "binding": "SEARCH_WORKER",
+      "service": "halopress-search"
+    }
   ]
 }

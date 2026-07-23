@@ -6,6 +6,7 @@
 .cache
 .wrangler
 dist
+workers/search/src/generated-assets
 
 # Node dependencies
 node_modules
