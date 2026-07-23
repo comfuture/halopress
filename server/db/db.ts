@@ -6,6 +6,12 @@ import * as tables from './schema'
 
 type D1Database = {
   exec: (sql: string) => Promise<unknown>
+  prepare: (sql: string) => {
+    bind: (...params: unknown[]) => {
+      first: <T>() => Promise<T | null>
+      all: <T>() => Promise<{ results?: T[] }>
+    }
+  }
 }
 
 type SqlMethod = 'run' | 'all' | 'values' | 'get'
@@ -71,4 +77,29 @@ export async function getDb(event?: H3Event): Promise<Db> {
   }
 
   return drizzleProxy(callback as any, { schema: tables })
+}
+
+export async function getRawDb(event?: H3Event) {
+  const cf = (event as any)?.context?.cloudflare
+  const d1: D1Database | undefined = cf?.env?.DB
+  if (d1) return d1
+  if (cf) throw new Error('Missing Cloudflare D1 binding: DB')
+
+  const sqlite = await getLocalDb()
+  return {
+    prepare(query: string) {
+      return {
+        bind(...params: any[]) {
+          return {
+            async first<T>() {
+              return (sqlite.prepare(query).get(...params) as T | undefined) ?? null
+            },
+            async all<T>() {
+              return { results: sqlite.prepare(query).all(...params) as T[] }
+            }
+          }
+        }
+      }
+    }
+  }
 }
