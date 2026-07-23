@@ -76,6 +76,7 @@ describe('Desk navigation', () => {
     expect(layout).toContain(':collapsed="collapsed"')
     expect(layout).toContain(':tooltip="collapsed"')
     expect(layout).toContain(':popover="collapsed"')
+    expect(layout).toContain(':ui="{ linkLabel: collapsed ? \'!block sr-only\' : undefined }"')
     expect(layout).toContain('<UDashboardSidebar class="min-h-dvh" resizable collapsible')
   })
 })

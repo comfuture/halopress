@@ -95,6 +95,7 @@ async function logout() {
           :collapsed="collapsed"
           :tooltip="collapsed"
           :popover="collapsed"
+          :ui="{ linkLabel: collapsed ? '!block sr-only' : undefined }"
         />
       </template>
 
