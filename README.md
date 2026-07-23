@@ -2,12 +2,12 @@
   <picture>
     <source
       media="(prefers-color-scheme: dark)"
-      srcset="./public/branding/halopress-mark-3d-final-dark.png"
+      srcset="./public/branding/halopress-brand-artwork-dark.png"
     >
     <img
-      src="./public/branding/halopress-mark-3d-final-light.png"
-      width="420"
-      alt="HaloPress — a warm halo floating above a digital publishing desk"
+      src="./public/branding/halopress-brand-artwork-light.png"
+      width="480"
+      alt="HaloPress grape and sky paper mark surrounding a transparent star"
     >
   </picture>
 </p>

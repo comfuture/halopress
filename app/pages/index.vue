@@ -42,6 +42,9 @@ const curationSchema = computed(() => schemas.value[0]?.schemaKey || null)
 const curationField = 'featured'
 const curationValues = ['home']
 const showCuration = computed(() => Boolean(curationSchema.value))
+const showHaloPressBrandArtwork = computed(() =>
+  presentation.value.general.siteName === 'HaloPress' && !presentation.value.general.logoUrl
+)
 </script>
 
 <template>
@@ -58,9 +61,27 @@ const showCuration = computed(() => Boolean(curationSchema.value))
       <template #right />
 
       <UPageBody>
-        <UPageHero :title="presentation.general.siteName" headline="Schema-driven publishing"
+        <UPageHero
+          :title="presentation.general.siteName"
+          headline="Schema-driven publishing"
           description="Design schemas once, publish structured content everywhere, and keep teams aligned with clear versions."
-          :links="heroLinks" />
+          :links="heroLinks"
+          :orientation="showHaloPressBrandArtwork ? 'horizontal' : 'vertical'"
+          :ui="showHaloPressBrandArtwork
+            ? {
+                container: 'gap-10 py-12 sm:py-16 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,0.72fr)]',
+                wrapper: 'text-left',
+                links: 'justify-start'
+              }
+            : { container: 'py-12 sm:py-16' }"
+        >
+          <AppBrandArtwork
+            v-if="showHaloPressBrandArtwork"
+            class="aspect-square w-full max-w-lg rounded-2xl border border-default shadow-lg"
+            loading="eager"
+            fetchpriority="high"
+          />
+        </UPageHero>
 
         <UPageSection title="Recent updates" description="Latest published entries by schema.">
           <UPageGrid v-if="schemas.length" class="gap-6">

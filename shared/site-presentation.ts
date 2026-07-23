@@ -259,7 +259,7 @@ export function toPublicSitePresentation(
       locale: value.general.locale,
       logoUrl: assetUrl(value.general.logoAssetId),
       faviconUrl: assetUrl(value.general.faviconAssetId) || '/favicon.ico',
-      socialImageUrl: assetUrl(value.general.socialImageAssetId) || '/branding/halopress-mark-3d-final-dark.png'
+      socialImageUrl: assetUrl(value.general.socialImageAssetId) || '/branding/halopress-social-card.png'
     },
     appearance: value.appearance,
     shell: value.shell,
