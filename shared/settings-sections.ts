@@ -1,4 +1,4 @@
-export type SettingsSectionId = 'preferences' | 'access'
+export type SettingsSectionId = 'preferences' | 'access' | 'operations'
 
 export type SettingsSection = {
   id: SettingsSectionId
@@ -32,6 +32,13 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     description: 'Sign-in providers, account admission, roles, and invitations.',
     icon: 'i-lucide-shield-check',
     to: '/_desk/settings/access'
+  },
+  {
+    id: 'operations',
+    label: 'Operations',
+    description: 'Background indexing health and recovery controls.',
+    icon: 'i-lucide-activity',
+    to: '/_desk/settings/operations'
   }
 ] as const
 
