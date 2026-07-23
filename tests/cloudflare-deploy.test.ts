@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { chmod, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { parse as parseJsonc } from 'jsonc-parser'
@@ -34,11 +34,28 @@ async function run(command: string, args: string[], options: { cwd: string, env?
 async function createFixture(config: Record<string, unknown>) {
   const directory = await mkdtemp(join(tmpdir(), 'halopress-cloudflare-deploy-'))
   const configPath = join(directory, 'wrangler.jsonc')
+  const searchDirectory = join(directory, 'workers/search')
+  const searchConfigPath = join(searchDirectory, 'wrangler.jsonc')
   const logPath = join(directory, 'wrangler-calls.jsonl')
   const listCountPath = join(directory, 'list-count')
   const secretMetaPath = join(directory, 'secret-meta.json')
   const mockPath = join(directory, 'wrangler-mock.mjs')
   await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`)
+  await mkdir(searchDirectory, { recursive: true })
+  await writeFile(searchConfigPath, `${JSON.stringify({
+    name: 'halopress-test-search',
+    main: 'src/index.ts',
+    compatibility_date: '2026-05-18',
+    d1_databases: [{
+      binding: 'DB',
+      database_name: 'placeholder',
+      migrations_dir: '../../server/db/migrations'
+    }],
+    queues: {
+      producers: [{ binding: 'SEARCH_INDEX_QUEUE', queue: 'halopress-test-search-index' }],
+      consumers: [{ queue: 'halopress-test-search-index' }]
+    }
+  }, null, 2)}\n`)
   await writeFile(mockPath, `#!/usr/bin/env node
 import { appendFileSync, existsSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 
@@ -103,7 +120,27 @@ if (args[0] === 'd1' && args[1] === 'migrations' && args[2] === 'apply') {
   process.exit(0)
 }
 
+if (args[0] === 'queues' && args[1] === 'info') {
+  if (process.env.MOCK_QUEUE_MISSING === '1') {
+    console.error('Queue not found')
+    process.exit(1)
+  }
+  console.log('Queue exists')
+  process.exit(0)
+}
+
+if (args[0] === 'queues' && args[1] === 'create') {
+  console.log('Queue created')
+  process.exit(0)
+}
+
 if (args[0] === 'deploy') {
+  const configIndex = args.indexOf('--config')
+  const isSearchDeploy = configIndex >= 0 && args[configIndex + 1] === process.env.MOCK_SEARCH_CONFIG
+  if (isSearchDeploy && process.env.MOCK_SEARCH_DEPLOY_FAIL === '1') {
+    console.error('mock search deploy failure')
+    process.exit(1)
+  }
   const separatedIndex = args.indexOf('--secrets-file')
   const equalsArgument = args.find(argument => argument.startsWith('--secrets-file='))
   const secretsFile = separatedIndex >= 0 ? args[separatedIndex + 1] : equalsArgument?.slice('--secrets-file='.length)
@@ -123,7 +160,7 @@ if (args[0] === 'deploy') {
       authSecretLength: typeof authSecret === 'string' ? authSecret.length : 0
     }))
   }
-  if (process.env.MOCK_DEPLOY_FAIL === '1') {
+  if (!isSearchDeploy && process.env.MOCK_DEPLOY_FAIL === '1') {
     console.error('mock deploy failure')
     process.exit(1)
   }
@@ -139,13 +176,16 @@ process.exit(2)
   return {
     directory,
     configPath,
+    searchConfigPath,
     logPath,
     secretMetaPath,
     env: {
       HALOPRESS_WRANGLER_BIN: mockPath,
       MOCK_LOG: logPath,
       MOCK_LIST_COUNT: listCountPath,
-      MOCK_SECRET_META: secretMetaPath
+      MOCK_SECRET_META: secretMetaPath,
+      MOCK_SEARCH_CONFIG: searchConfigPath,
+      HALOPRESS_SEARCH_WRANGLER_CONFIG: searchConfigPath
     }
   }
 }
@@ -200,6 +240,12 @@ migrations_dir = "migrations"
     expect(await readCalls(fixture.logPath)).toEqual([
       ['d1', 'migrations', 'apply', 'DB', '--remote', '--config', fixture.configPath]
     ])
+    const searchConfig = JSON.parse(await readFile(fixture.searchConfigPath, 'utf8'))
+    expect(searchConfig.d1_databases[0]).toMatchObject({
+      binding: 'DB',
+      database_name: 'halopress-test',
+      database_id: 'existing-id'
+    })
   })
 
   it('adopts an existing same-name D1 database before applying migrations', async () => {
@@ -344,18 +390,49 @@ migrations_dir = "migrations"
     ])
   })
 
+  it('creates a missing Queue before deploying the search Worker and main Worker', async () => {
+    const fixture = await createFixture(baseConfig({ database_id: 'existing-id' }))
+    const result = await run('bash', [deployScript, '--config', fixture.configPath], {
+      cwd: projectRoot,
+      env: { ...fixture.env, MOCK_QUEUE_MISSING: '1' }
+    })
+
+    expect(result).toMatchObject({ code: 0 })
+    const calls = await readCalls(fixture.logPath)
+    expect(calls.slice(2)).toEqual([
+      ['queues', 'info', 'halopress-test-search-index', '--config', fixture.searchConfigPath],
+      ['queues', 'create', 'halopress-test-search-index', '--config', fixture.searchConfigPath],
+      ['deploy', '--config', fixture.searchConfigPath],
+      ['deploy', '--config', fixture.configPath]
+    ])
+  })
+
+  it('does not deploy the main Worker when the search Worker deployment fails', async () => {
+    const fixture = await createFixture(baseConfig({ database_id: 'existing-id' }))
+    const result = await run('bash', [deployScript, '--config', fixture.configPath], {
+      cwd: projectRoot,
+      env: { ...fixture.env, MOCK_SEARCH_DEPLOY_FAIL: '1' }
+    })
+
+    expect(result.code).not.toBe(0)
+    const calls = await readCalls(fixture.logPath)
+    expect(calls.at(-1)).toEqual(['deploy', '--config', fixture.searchConfigPath])
+    expect(calls).not.toContainEqual(['deploy', '--config', fixture.configPath])
+  })
+
   it('preserves an existing auth secret without passing a secrets file', async () => {
     const fixture = await createFixture(baseConfig({ database_id: 'existing-id' }))
     const result = await run('bash', [deployScript, '--config', fixture.configPath], {
       cwd: projectRoot,
       env: fixture.env
     })
-
     expect(result).toMatchObject({ code: 0 })
     expect(result.stdout).not.toContain('Generated NUXT_AUTH_SECRET')
     expect(await readCalls(fixture.logPath)).toEqual([
       ['secret', 'list', '--format', 'json', '--config', fixture.configPath],
       ['d1', 'migrations', 'apply', 'DB', '--remote', '--config', fixture.configPath],
+      ['queues', 'info', 'halopress-test-search-index', '--config', fixture.searchConfigPath],
+      ['deploy', '--config', fixture.searchConfigPath],
       ['deploy', '--config', fixture.configPath]
     ])
     await expect(readFile(fixture.secretMetaPath)).rejects.toThrow()
@@ -377,8 +454,12 @@ migrations_dir = "migrations"
       ['secret', 'list', '--format', 'json', '--config', fixture.configPath],
       ['d1', 'migrations', 'apply', 'DB', '--remote', '--config', fixture.configPath]
     ])
-    expect(calls[2]?.slice(0, 3)).toEqual(['deploy', '--config', fixture.configPath])
-    expect(calls[2]?.filter(argument => argument === '--secrets-file')).toHaveLength(1)
+    expect(calls[2]).toEqual([
+      'queues', 'info', 'halopress-test-search-index', '--config', fixture.searchConfigPath
+    ])
+    expect(calls[3]).toEqual(['deploy', '--config', fixture.searchConfigPath])
+    expect(calls[4]?.slice(0, 3)).toEqual(['deploy', '--config', fixture.configPath])
+    expect(calls[4]?.filter(argument => argument === '--secrets-file')).toHaveLength(1)
 
     const secretMeta = JSON.parse(await readFile(fixture.secretMetaPath, 'utf8'))
     expect(secretMeta).toMatchObject({ mode: 0o600, authSecretCount: 1, authSecretLength: 64 })
@@ -489,6 +570,7 @@ migrations_dir = "migrations"
     expect(result).toMatchObject({ code: 0 })
     expect(result.stdout).toContain('[dry-run]')
     expect(await readCalls(fixture.logPath)).toEqual([
+      ['deploy', '--config', fixture.searchConfigPath, '--dry-run'],
       ['deploy', '--config', fixture.configPath, '--dry-run']
     ])
     expect(JSON.parse(await readFile(fixture.configPath, 'utf8')).d1_databases[0].database_id).toBeUndefined()
@@ -528,6 +610,8 @@ migrations_dir = "migrations"
       ['secret', 'list', '--format', 'json', ...common, '--name', 'halopress-staging-worker'],
       ['d1', 'list', '--json', ...common],
       ['d1', 'migrations', 'apply', 'DB', '--remote', ...common],
+      ['queues', 'info', 'halopress-test-search-index', '--config', fixture.searchConfigPath],
+      ['deploy', '--config', fixture.searchConfigPath],
       ['deploy', ...common, '--name', 'halopress-staging-worker']
     ])
     const patched = JSON.parse(await readFile(fixture.configPath, 'utf8'))

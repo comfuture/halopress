@@ -9,7 +9,9 @@ D1_DATABASE="${HALOPRESS_D1_DATABASE:-DB}"
 PREPARE_ARGS=()
 SECRET_SCOPE_ARGS=()
 DEPLOY_ARGS=()
+SEARCH_DEPLOY_ARGS=()
 DRY_RUN=0
+MAIN_CONFIG_PATH=""
 USER_SECRETS_FILE=""
 GENERATED_SECRETS_DIR=""
 GENERATED_SECRETS_FILE=""
@@ -121,6 +123,7 @@ while [ "$#" -gt 0 ]; do
       DRY_RUN=1
       PREPARE_ARGS+=("$1")
       DEPLOY_ARGS+=("$1")
+      SEARCH_DEPLOY_ARGS+=("$1")
       shift
       ;;
     --env|-e|--config|-c)
@@ -133,6 +136,9 @@ while [ "$#" -gt 0 ]; do
       PREPARE_ARGS+=("$flag" "$1")
       SECRET_SCOPE_ARGS+=("$flag" "$1")
       DEPLOY_ARGS+=("$flag" "$1")
+      if [ "$flag" = "--config" ] || [ "$flag" = "-c" ]; then
+        MAIN_CONFIG_PATH="$1"
+      fi
       shift
       ;;
     --env-file)
@@ -176,6 +182,9 @@ while [ "$#" -gt 0 ]; do
       PREPARE_ARGS+=("$1")
       SECRET_SCOPE_ARGS+=("$1")
       DEPLOY_ARGS+=("$1")
+      if [[ "$1" == --config=* ]] || [[ "$1" == -c=* ]]; then
+        MAIN_CONFIG_PATH="${1#*=}"
+      fi
       shift
       ;;
     --env-file=*)
@@ -207,6 +216,32 @@ while [ "$#" -gt 0 ]; do
       ;;
   esac
 done
+
+if [ -n "${HALOPRESS_SEARCH_WRANGLER_CONFIG:-}" ]; then
+  SEARCH_CONFIG_PATH="$HALOPRESS_SEARCH_WRANGLER_CONFIG"
+elif [ -n "$MAIN_CONFIG_PATH" ]; then
+  SEARCH_CONFIG_PATH="$(cd "$(dirname "$MAIN_CONFIG_PATH")" && pwd)/workers/search/wrangler.jsonc"
+else
+  SEARCH_CONFIG_PATH="$ROOT_DIR/workers/search/wrangler.jsonc"
+fi
+if [ ! -f "$SEARCH_CONFIG_PATH" ]; then
+  echo "Missing required search Worker configuration: $SEARCH_CONFIG_PATH" >&2
+  echo 'Set HALOPRESS_SEARCH_WRANGLER_CONFIG when using a custom main Wrangler configuration.' >&2
+  exit 1
+fi
+SEARCH_QUEUE_NAME="$(node -e '
+const { readFileSync } = require("node:fs")
+const { parse } = require("jsonc-parser")
+const config = parse(readFileSync(process.argv[1], "utf8"))
+const producers = config?.queues?.producers
+const consumers = config?.queues?.consumers
+const queue = producers?.find(entry => entry.binding === "SEARCH_INDEX_QUEUE")?.queue
+if (!queue || !consumers?.some(entry => entry.queue === queue)) process.exit(1)
+process.stdout.write(queue)
+' "$SEARCH_CONFIG_PATH")" || {
+  echo "Search Worker queue bindings are invalid in $SEARCH_CONFIG_PATH" >&2
+  exit 1
+}
 
 USER_SECRET_STATUS="missing"
 if [ -n "$USER_SECRETS_FILE" ]; then
@@ -260,7 +295,10 @@ if [ "$DRY_RUN" -eq 0 ]; then
   fi
 fi
 
-node scripts/prepare-cloudflare-d1.mjs "$D1_DATABASE" "${PREPARE_ARGS[@]}"
+node scripts/prepare-cloudflare-d1.mjs \
+  "$D1_DATABASE" \
+  --search-config "$SEARCH_CONFIG_PATH" \
+  "${PREPARE_ARGS[@]}"
 
 if [ "$DRY_RUN" -eq 0 ] && [ "$SECRET_STATUS" = "missing" ] && [ -z "$USER_SECRETS_FILE" ]; then
   create_generated_secrets_file
@@ -268,5 +306,20 @@ if [ "$DRY_RUN" -eq 0 ] && [ "$SECRET_STATUS" = "missing" ] && [ -z "$USER_SECRE
   echo "Generated ${AUTH_SECRET_NAME} for this Worker; the value was not printed and will be preserved on later deploys."
 fi
 
-echo 'Deploying Cloudflare Worker...'
+if [ "$DRY_RUN" -eq 0 ]; then
+  if ! run_wrangler queues info "$SEARCH_QUEUE_NAME" --config "$SEARCH_CONFIG_PATH"; then
+    echo "Creating Cloudflare Queue ${SEARCH_QUEUE_NAME}..."
+    run_wrangler queues create "$SEARCH_QUEUE_NAME" --config "$SEARCH_CONFIG_PATH"
+  fi
+fi
+
+node workers/search/scripts/prepare-assets.mjs
+echo 'Deploying search Worker...'
+if [ "${#SEARCH_DEPLOY_ARGS[@]}" -gt 0 ]; then
+  run_wrangler deploy --config "$SEARCH_CONFIG_PATH" "${SEARCH_DEPLOY_ARGS[@]}"
+else
+  run_wrangler deploy --config "$SEARCH_CONFIG_PATH"
+fi
+
+echo 'Deploying main Cloudflare Worker...'
 run_wrangler deploy "${DEPLOY_ARGS[@]}"

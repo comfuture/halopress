@@ -207,9 +207,17 @@ HaloPress runs as a Cloudflare Worker with:
 
 - D1 binding: `DB`
 - R2 binding: `CONTENT_ASSETS`
+- Queue producer: `SEARCH_INDEX_QUEUE`
+- Auxiliary Worker service: `SEARCH_WORKER`
 - Static assets: `.output/public`
 - Worker entry: `.output/server/index.mjs`
 - Automatically managed Worker secret: `NUXT_AUTH_SECRET`
+
+Korean full-text indexing and raw-query tokenization run in the separately
+deployed `halopress-search` Worker. It shares D1 with the main Worker but does not
+receive the main authentication secret. See the
+[full-text search operations guide](docs/full-text-search.md) for topology,
+recovery, quotas, and D1 smoke tests.
 
 Local development uses Nuxt Image's `ipx` provider and proxies dynamic
 `/assets` URLs through the local application. Workers Builds automatically use
@@ -228,8 +236,10 @@ same publishing guarantee:
 
 1. resolve or create the configured D1 database;
 2. apply all remote D1 migrations;
-3. publish the Worker only after the database is ready, reusing or building the
-   Nuxt output as needed and provisioning or attaching the R2 bucket.
+3. create or reuse the search Queue and publish the auxiliary search Worker;
+4. publish the main Worker only after the database and search topology are ready,
+   reusing or building the Nuxt output as needed and provisioning or attaching
+   the R2 bucket.
 
 The first public Worker version therefore never runs against an unmigrated
 database.
@@ -249,9 +259,11 @@ Builds. When deployment completes, open the generated `/_install` URL. Start wit
 email/password enabled and create the password administrator first; Google OAuth
 can be added afterward.
 
-The defaults in `wrangler.jsonc` are `halopress` for D1 and
-`halopress-content-assets` for R2. Give them site-specific names when one account
-will host multiple HaloPress installations.
+The defaults are `halopress` for D1, `halopress-content-assets` for R2,
+`halopress-search` for the auxiliary Worker, and `halopress-search-index` for its
+Queue. Give every resource a site-specific name when one account will host
+multiple HaloPress installations. Keep the main service binding and both Queue
+bindings aligned with the auxiliary configuration.
 
 ### Deploy from a terminal
 
