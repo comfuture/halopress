@@ -24,6 +24,7 @@ export default defineEventHandler(async (event) => {
       WHERE full_text = 1
     `).bind().first<{ count: number }>()
   ])
+  const indexAvailable = control?.status === 'available' && Number(fields?.count) > 0
   setHeader(event, 'Cache-Control', 'public, max-age=30, stale-while-revalidate=60')
   return {
     contractVersion: 1,
@@ -34,9 +35,9 @@ export default defineEventHandler(async (event) => {
     browserFallback: Boolean(config.public.keywordSearchBrowserFallback),
     tokenizerGeneration: control?.tokenizer_generation ?? KOREAN_SEARCH_TOKENIZER_GENERATION,
     queryEpoch: control?.query_epoch ?? null,
-    available: control?.status === 'available'
-      && Number(fields?.count) > 0
-      && (mode === 'browser' || Boolean(workerUrl)),
+    indexAvailable,
+    available: indexAvailable
+      && (mode === 'browser' || Boolean(workerUrl) || Boolean(config.public.keywordSearchBrowserFallback)),
     enabledFields: Number(fields?.count ?? 0)
   }
 })

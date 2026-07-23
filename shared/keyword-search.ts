@@ -1,5 +1,4 @@
 import {
-  KOREAN_SEARCH_CONTRACT_VERSION,
   KOREAN_SEARCH_TOKENIZER_GENERATION,
   MAX_QUERY_BYTES,
   MAX_QUERY_TERMS,
@@ -58,6 +57,19 @@ export type KeywordSearchResult = {
   score: number
 }
 
+export type KeywordSearchResponse = {
+  contractVersion: typeof KEYWORD_SEARCH_CONTRACT_VERSION
+  tokenizerGeneration: string
+  queryEpoch: number
+  items: KeywordSearchResult[]
+  nextCursor: string | null
+  availability: 'available' | 'partial'
+  indexing: {
+    pending: number
+    failed: number
+  }
+}
+
 export class KeywordSearchError extends Error {
   constructor(
     readonly code: string,
@@ -77,6 +89,13 @@ function utf8Bytes(value: string) {
   return new TextEncoder().encode(value).byteLength
 }
 
+function hasControlCharacter(value: string) {
+  return [...value].some((character) => {
+    const codePoint = character.codePointAt(0) ?? 0
+    return codePoint <= 31 || codePoint === 127
+  })
+}
+
 function stringList(value: unknown, name: string, limit: number) {
   if (value == null) return []
   if (!Array.isArray(value) || value.length > limit) {
@@ -87,7 +106,7 @@ function stringList(value: unknown, name: string, limit: number) {
       throw new KeywordSearchError('invalid_request', `${name} must contain strings`)
     }
     const normalized = entry.trim()
-    if (!normalized || normalized.length > 128 || /[\u0000-\u001f\u007f]/u.test(normalized)) {
+    if (!normalized || normalized.length > 128 || hasControlCharacter(normalized)) {
       throw new KeywordSearchError('invalid_request', `${name} contains an invalid value`)
     }
     return normalized
@@ -379,7 +398,7 @@ function decodeCursor(value: string) {
 export async function executeKeywordSearch(
   db: KeywordSearchDatabase,
   request: KeywordSearchTokenRequest
-) {
+): Promise<KeywordSearchResponse> {
   const control = await db.prepare(`
     SELECT tokenizer_generation, query_epoch, status
     FROM full_text_control
