@@ -102,7 +102,7 @@ describe('installation state', () => {
 
     await runCloudflareMigrations(db)
 
-    expect(batches).toHaveLength(11)
+    expect(batches).toHaveLength(12)
     expect(batches.every(batch => batch.every(statement => typeof statement.query === 'string'))).toBe(true)
     expect(batches.flat().some(statement => statement.query === 'PRAGMA foreign_keys = OFF')).toBe(false)
     expect(batches.flat().some(statement => statement.query === 'PRAGMA defer_foreign_keys = ON')).toBe(true)
@@ -117,7 +117,8 @@ describe('installation state', () => {
       '0007_add_public_routes_and_aliases.sql',
       '0008_add_site_menu_sets.sql',
       '0009_add_site_layout_documents.sql',
-      '0010_add_site_layout_assignments.sql'
+      '0010_add_site_layout_assignments.sql',
+      '0011_add_korean_full_text_search.sql'
     ].map(name => ({
       query: 'INSERT INTO d1_migrations (name) VALUES (?)',
       params: [name]

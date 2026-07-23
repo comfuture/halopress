@@ -95,7 +95,7 @@ function normalizedToken(value: string) {
 export function normalizeSearchText(value: string) {
   return value
     .normalize('NFC')
-    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\u200B-\u200D\u2060\uFEFF]/gu, ' ')
+    .replace(/[\p{Cc}\u200B-\u200D\u2060\uFEFF]/gu, ' ')
     .replace(/\s+/gu, ' ')
     .trim()
 }

@@ -77,7 +77,8 @@ describe('local D1 migration preflight', () => {
       '0007_add_public_routes_and_aliases.sql',
       '0008_add_site_menu_sets.sql',
       '0009_add_site_layout_documents.sql',
-      '0010_add_site_layout_assignments.sql'
+      '0010_add_site_layout_assignments.sql',
+      '0011_add_korean_full_text_search.sql'
     ])
     expect(migrationRequiredMessage(result.pending)).toContain('pnpm db:d1:apply:local')
 
