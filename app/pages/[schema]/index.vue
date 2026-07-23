@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import type { ButtonProps } from '@nuxt/ui'
 import { PUBLIC_PAGE_ROUTE_PREFIX, publicPathFromDecodedSegments, publicPathToHref } from '~~/shared/public-routing'
+import {
+  collectionKeywordFilterFields,
+  collectionKeywordFilters
+} from '~~/shared/collection-keyword-search'
 import { resolveSchemaPresentation } from '~/utils/schema-presentation'
 import BuiltInLayoutRenderer from '~/components/layout-renderer/BuiltInLayoutRenderer.vue'
 import LayoutComposition from '~/components/layout-renderer/LayoutComposition.vue'
@@ -63,6 +67,19 @@ const pageSize = computed(() => {
 })
 const order = computed(() => (route.query.order === 'asc' ? 'asc' : 'desc'))
 const cursor = computed(() => (typeof route.query.cursor === 'string' && route.query.cursor.length ? route.query.cursor : null))
+const keywordQuery = computed(() => {
+  const value = Array.isArray(route.query.q) ? route.query.q[0] : route.query.q
+  return typeof value === 'string' ? value : ''
+})
+const collectionFilterFields = computed(() =>
+  collectionKeywordFilterFields(schema.value?.registry?.fields ?? [])
+)
+const keywordFilters = computed(() =>
+  collectionKeywordFilters(
+    collectionFilterFields.value,
+    route.query as Record<string, unknown>
+  )
+)
 
 let queryResult: Awaited<ReturnType<typeof useHalopressQuery>> | null = null
 if (!isAlias && !standalonePage.value) {
@@ -132,6 +149,16 @@ function goPrev() {
     router.replace({ query: normalizeQuery({ cursor: undefined, pageSize: pageSize.value, order: order.value }) })
   }
 }
+
+async function updateKeywordQuery(query: string) {
+  await navigateTo({
+    path: route.path,
+    query: normalizeQuery({
+      q: query || undefined,
+      cursor: undefined
+    })
+  })
+}
 </script>
 
 <template>
@@ -151,8 +178,23 @@ function goPrev() {
         <h2>Published entries</h2>
         <p>Recently published content for this schema.</p>
       </div>
-      <PublicContentCollectionRenderer :items="items" :schema-key="schemaKey" :template="presentation.collectionTemplate" />
-      <nav class="layout-route-pagination" aria-label="Collection pages">
+      <PublicKeywordSearch
+        :initial-query="keywordQuery"
+        :schema-keys="[schemaKey]"
+        :filters="keywordFilters"
+        :auto-search="Boolean(keywordQuery)"
+        title="Search this collection"
+        description="Search this collection and combine the keyword with filterable field parameters in the URL."
+        heading-tag="h2"
+        @submitted="updateKeywordQuery"
+      />
+      <PublicContentCollectionRenderer
+        v-if="!keywordQuery"
+        :items="items"
+        :schema-key="schemaKey"
+        :template="presentation.collectionTemplate"
+      />
+      <nav v-if="!keywordQuery" class="layout-route-pagination" aria-label="Collection pages">
         <UButton icon="i-lucide-arrow-left" variant="outline" color="neutral" :disabled="!hasPrev" @click="goPrev">Previous</UButton>
         <UButton trailing-icon="i-lucide-arrow-right" :disabled="!hasNext" @click="goNext">Next</UButton>
       </nav>
@@ -178,7 +220,19 @@ function goPrev() {
             <template #right />
             <UPageBody>
               <UPageHero headline="Collection" :title="schema?.title || schemaKey" :description="heroDescription" :links="heroLinks" />
-              <UPageSection title="Published entries" description="Recently published content for this schema.">
+              <UPageSection title="Search this collection" description="Use q with any configured filterable field parameters.">
+                <PublicKeywordSearch
+                  :initial-query="keywordQuery"
+                  :schema-keys="[schemaKey]"
+                  :filters="keywordFilters"
+                  :auto-search="Boolean(keywordQuery)"
+                  title="Search this collection"
+                  description="Search this collection and combine the keyword with filterable field parameters in the URL."
+                  heading-tag="h3"
+                  @submitted="updateKeywordQuery"
+                />
+              </UPageSection>
+              <UPageSection v-if="!keywordQuery" title="Published entries" description="Recently published content for this schema.">
                 <PublicContentCollectionRenderer :items="items" :schema-key="schemaKey" :template="presentation.collectionTemplate" />
                 <div class="mt-8 flex items-center justify-between">
                   <UButton icon="i-lucide-arrow-left" variant="outline" color="neutral" :disabled="!hasPrev" @click="goPrev">Previous</UButton>

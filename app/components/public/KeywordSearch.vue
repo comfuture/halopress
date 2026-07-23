@@ -1,16 +1,26 @@
 <script setup lang="ts">
+import type { KeywordSearchFilter } from '~~/shared/keyword-search'
+
 const props = withDefaults(defineProps<{
   initialQuery?: string
   schemaKeys?: string[]
   fieldIds?: string[]
+  filters?: KeywordSearchFilter[]
   operator?: 'all' | 'any'
   autoSearch?: boolean
+  title?: string
+  description?: string
+  headingTag?: 'h1' | 'h2' | 'h3'
 }>(), {
   initialQuery: '',
   schemaKeys: () => [],
   fieldIds: () => [],
+  filters: () => [],
   operator: 'all',
-  autoSearch: false
+  autoSearch: false,
+  title: 'Search',
+  description: 'Find published content with Korean morphology and exact technical terms.',
+  headingTag: 'h1'
 })
 
 const emit = defineEmits<{
@@ -77,7 +87,8 @@ function currentInput() {
     query: input.value,
     operator: props.operator,
     schemaKeys: props.schemaKeys,
-    fieldIds: props.fieldIds
+    fieldIds: props.fieldIds,
+    filters: props.filters
   }
 }
 
@@ -105,7 +116,17 @@ async function retrySearch() {
 watch(() => props.initialQuery, (value) => {
   if (value === input.value) return
   input.value = value
-  void submit({ updateUrl: false })
+  if (props.autoSearch && value.trim()) void submit({ updateUrl: false })
+  else clear()
+})
+
+watch(() => JSON.stringify([
+  props.schemaKeys,
+  props.fieldIds,
+  props.filters,
+  props.operator
+]), () => {
+  if (props.autoSearch && input.value.trim()) void submit({ updateUrl: false })
 })
 
 onMounted(() => {
@@ -118,11 +139,15 @@ onMounted(() => {
 <template>
   <section class="space-y-6" aria-labelledby="keyword-search-title">
     <header class="space-y-2">
-      <h1 id="keyword-search-title" class="text-3xl font-bold tracking-tight text-highlighted sm:text-4xl">
-        Search
-      </h1>
+      <component
+        :is="headingTag"
+        id="keyword-search-title"
+        class="text-3xl font-bold tracking-tight text-highlighted sm:text-4xl"
+      >
+        {{ title }}
+      </component>
       <p class="max-w-2xl text-muted">
-        Find published content with Korean morphology and exact technical terms.
+        {{ description }}
       </p>
     </header>
 
