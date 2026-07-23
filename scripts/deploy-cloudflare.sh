@@ -12,12 +12,22 @@ DEPLOY_ARGS=()
 SEARCH_DEPLOY_ARGS=()
 DRY_RUN=0
 MAIN_CONFIG_PATH=""
+MAIN_WORKER_NAME_OVERRIDE=""
+WRANGLER_ENV=""
 USER_SECRETS_FILE=""
 GENERATED_SECRETS_DIR=""
 GENERATED_SECRETS_FILE=""
 SECRET_LIST_STDERR_FILE=""
+TOPOLOGY_BACKUP_DIR=""
+TOPOLOGY_MAIN_CONFIG_PATH=""
+TOPOLOGY_SEARCH_CONFIG_PATH=""
 
 cleanup_generated_secrets() {
+  if [ -n "$TOPOLOGY_BACKUP_DIR" ]; then
+    cp "$TOPOLOGY_BACKUP_DIR/main.jsonc" "$TOPOLOGY_MAIN_CONFIG_PATH"
+    cp "$TOPOLOGY_BACKUP_DIR/search.jsonc" "$TOPOLOGY_SEARCH_CONFIG_PATH"
+    rm -rf -- "$TOPOLOGY_BACKUP_DIR"
+  fi
   if [ -n "$GENERATED_SECRETS_DIR" ]; then
     rm -rf -- "$GENERATED_SECRETS_DIR"
   fi
@@ -138,6 +148,8 @@ while [ "$#" -gt 0 ]; do
       DEPLOY_ARGS+=("$flag" "$1")
       if [ "$flag" = "--config" ] || [ "$flag" = "-c" ]; then
         MAIN_CONFIG_PATH="$1"
+      else
+        WRANGLER_ENV="$1"
       fi
       shift
       ;;
@@ -161,6 +173,7 @@ while [ "$#" -gt 0 ]; do
       fi
       SECRET_SCOPE_ARGS+=("$flag" "$1")
       DEPLOY_ARGS+=("$flag" "$1")
+      MAIN_WORKER_NAME_OVERRIDE="$1"
       shift
       ;;
     --secrets-file)
@@ -184,6 +197,8 @@ while [ "$#" -gt 0 ]; do
       DEPLOY_ARGS+=("$1")
       if [[ "$1" == --config=* ]] || [[ "$1" == -c=* ]]; then
         MAIN_CONFIG_PATH="${1#*=}"
+      else
+        WRANGLER_ENV="${1#*=}"
       fi
       shift
       ;;
@@ -195,6 +210,7 @@ while [ "$#" -gt 0 ]; do
     --name=*)
       SECRET_SCOPE_ARGS+=("$1")
       DEPLOY_ARGS+=("$1")
+      MAIN_WORKER_NAME_OVERRIDE="${1#*=}"
       shift
       ;;
     --secrets-file=*)
@@ -224,24 +240,48 @@ elif [ -n "$MAIN_CONFIG_PATH" ]; then
 else
   SEARCH_CONFIG_PATH="$ROOT_DIR/workers/search/wrangler.jsonc"
 fi
+if [ -z "$MAIN_CONFIG_PATH" ]; then
+  MAIN_CONFIG_PATH="$ROOT_DIR/wrangler.jsonc"
+fi
 if [ ! -f "$SEARCH_CONFIG_PATH" ]; then
   echo "Missing required search Worker configuration: $SEARCH_CONFIG_PATH" >&2
   echo 'Set HALOPRESS_SEARCH_WRANGLER_CONFIG when using a custom main Wrangler configuration.' >&2
   exit 1
 fi
+
+if [ "$DRY_RUN" -eq 1 ]; then
+  topology_backup_dir="$(mktemp -d "${TMPDIR:-/tmp}/halopress-topology.XXXXXX")"
+  cp "$MAIN_CONFIG_PATH" "$topology_backup_dir/main.jsonc"
+  cp "$SEARCH_CONFIG_PATH" "$topology_backup_dir/search.jsonc"
+  TOPOLOGY_MAIN_CONFIG_PATH="$MAIN_CONFIG_PATH"
+  TOPOLOGY_SEARCH_CONFIG_PATH="$SEARCH_CONFIG_PATH"
+  TOPOLOGY_BACKUP_DIR="$topology_backup_dir"
+fi
+
+TOPOLOGY_ARGS=(--config "$MAIN_CONFIG_PATH" --search-config "$SEARCH_CONFIG_PATH")
+if [ -n "$WRANGLER_ENV" ]; then
+  TOPOLOGY_ARGS+=(--env "$WRANGLER_ENV")
+fi
+if [ -n "$MAIN_WORKER_NAME_OVERRIDE" ]; then
+  TOPOLOGY_ARGS+=(--main-name "$MAIN_WORKER_NAME_OVERRIDE")
+fi
+if [ -n "${HALOPRESS_SEARCH_WORKER_NAME:-}" ]; then
+  TOPOLOGY_ARGS+=(--search-worker-name "$HALOPRESS_SEARCH_WORKER_NAME")
+fi
+if [ -n "${HALOPRESS_SEARCH_QUEUE_NAME:-}" ]; then
+  TOPOLOGY_ARGS+=(--search-queue-name "$HALOPRESS_SEARCH_QUEUE_NAME")
+fi
+TOPOLOGY_JSON="$(node scripts/prepare-cloudflare-search-topology.mjs "${TOPOLOGY_ARGS[@]}")"
+SEARCH_WORKER_NAME="$(node -e '
+const topology = JSON.parse(process.argv[1])
+if (!topology.searchWorkerName) process.exit(1)
+process.stdout.write(topology.searchWorkerName)
+' "$TOPOLOGY_JSON")"
 SEARCH_QUEUE_NAME="$(node -e '
-const { readFileSync } = require("node:fs")
-const { parse } = require("jsonc-parser")
-const config = parse(readFileSync(process.argv[1], "utf8"))
-const producers = config?.queues?.producers
-const consumers = config?.queues?.consumers
-const queue = producers?.find(entry => entry.binding === "SEARCH_INDEX_QUEUE")?.queue
-if (!queue || !consumers?.some(entry => entry.queue === queue)) process.exit(1)
-process.stdout.write(queue)
-' "$SEARCH_CONFIG_PATH")" || {
-  echo "Search Worker queue bindings are invalid in $SEARCH_CONFIG_PATH" >&2
-  exit 1
-}
+const topology = JSON.parse(process.argv[1])
+if (!topology.searchQueueName) process.exit(1)
+process.stdout.write(topology.searchQueueName)
+' "$TOPOLOGY_JSON")"
 
 USER_SECRET_STATUS="missing"
 if [ -n "$USER_SECRETS_FILE" ]; then
@@ -316,9 +356,9 @@ fi
 node workers/search/scripts/prepare-assets.mjs
 echo 'Deploying search Worker...'
 if [ "${#SEARCH_DEPLOY_ARGS[@]}" -gt 0 ]; then
-  run_wrangler deploy --config "$SEARCH_CONFIG_PATH" "${SEARCH_DEPLOY_ARGS[@]}"
+  run_wrangler deploy --config "$SEARCH_CONFIG_PATH" --name "$SEARCH_WORKER_NAME" "${SEARCH_DEPLOY_ARGS[@]}"
 else
-  run_wrangler deploy --config "$SEARCH_CONFIG_PATH"
+  run_wrangler deploy --config "$SEARCH_CONFIG_PATH" --name "$SEARCH_WORKER_NAME"
 fi
 
 echo 'Deploying main Cloudflare Worker...'
