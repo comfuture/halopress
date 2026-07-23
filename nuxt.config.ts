@@ -109,7 +109,6 @@ export default defineNuxtConfig({
     oauthGoogleClientSecret: '',
     public: {
       keywordSearchMode: 'browser',
-      keywordSearchWorkerUrl: '',
       keywordSearchBrowserFallback: true
     }
   },

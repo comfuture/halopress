@@ -32,7 +32,6 @@ export type QueueBinding<T> = {
 export type SearchWorkerEnv = {
   DB: D1Database
   SEARCH_INDEX_QUEUE: QueueBinding<SearchQueueMessage>
-  SEARCH_ALLOWED_ORIGINS?: string
 }
 
 export type QueueMessage<T> = {

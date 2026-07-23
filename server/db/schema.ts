@@ -394,7 +394,7 @@ export const contentSearchData = sqliteTable('content_search_data', {
   idxFilterValue: index('idx_filter_content_search_value').on(t.projectionScope, t.fieldId, t.dataType, t.value, t.contentId)
 }))
 
-// Durable outbox and retry state for the separately deployed search Worker.
+// Durable outbox and retry state for same-script Queue/DO search indexing.
 // Queue delivery is only a wake-up mechanism; this row remains authoritative.
 export const fullTextJob = sqliteTable('full_text_job', {
   id: text('id').notNull(),

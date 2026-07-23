@@ -136,6 +136,96 @@ beforeEach(async () => {
 afterEach(() => db.close())
 
 describe('lazy search indexer', () => {
+  it('checkpoints only the successful prefix of a mixed analyzer batch', async () => {
+    const seeded = seedPublishedJob()
+    const base = fakeTokenizer()
+    let firstBatch = true
+    const result = await processFullTextJob({
+      env,
+      jobId: seeded.jobId,
+      tokenizer: async () => ({
+        async analyzeBatch(request) {
+          return {
+            batchId: request.batchId,
+            tokenizerGeneration: KOREAN_SEARCH_TOKENIZER_GENERATION,
+            items: request.items.map((item, index) => {
+              if (firstBatch && index === 1) {
+                return {
+                  id: item.id,
+                  ok: false as const,
+                  error: {
+                    code: 'analysis_failed' as const,
+                    message: 'temporary failure',
+                    retryable: true
+                  }
+                }
+              }
+              return {
+                id: item.id,
+                ok: true as const,
+                terms: base.analyzeDocument(item.input)
+              }
+            })
+          }
+        }
+      })
+    })
+    firstBatch = false
+
+    expect(result.outcome).toBe('retry')
+    expect(db.sqlite.prepare(`
+      SELECT status, checkpoint FROM full_text_job WHERE id = ?
+    `).get(seeded.jobId)).toEqual({ status: 'pending', checkpoint: 1 })
+
+    db.sqlite.prepare(`
+      UPDATE full_text_job SET available_at = 0 WHERE id = ?
+    `).run(seeded.jobId)
+    await expect(processFullTextJob({
+      env,
+      jobId: seeded.jobId,
+      tokenizer: async () => base
+    })).resolves.toMatchObject({ outcome: 'ready' })
+    expect(db.sqlite.prepare(`
+      SELECT count(*) AS count FROM full_text_fts WHERE content_id = ?
+    `).get(seeded.contentId)).toEqual({ count: 6 })
+  })
+
+  it('fails a non-retryable analyzer item without consuming retry claims', async () => {
+    const seeded = seedPublishedJob()
+    const result = await processFullTextJob({
+      env,
+      jobId: seeded.jobId,
+      tokenizer: async () => ({
+        async analyzeBatch(request) {
+          return {
+            batchId: request.batchId,
+            tokenizerGeneration: KOREAN_SEARCH_TOKENIZER_GENERATION,
+            items: request.items.map(item => ({
+              id: item.id,
+              ok: false as const,
+              error: {
+                code: 'invalid_input' as const,
+                message: 'invalid bounded chunk',
+                retryable: false
+              }
+            }))
+          }
+        }
+      })
+    })
+
+    expect(result.outcome).toBe('failed')
+    expect(db.sqlite.prepare(`
+      SELECT status, checkpoint, attempt_count, last_error
+      FROM full_text_job WHERE id = ?
+    `).get(seeded.jobId)).toEqual({
+      status: 'failed',
+      checkpoint: 0,
+      attempt_count: 1,
+      last_error: expect.stringContaining('invalid bounded chunk')
+    })
+  })
+
   it('checkpoints 50+ sentences and activates only the complete generation', async () => {
     const seeded = seedPublishedJob()
     const result = await processFullTextJob({

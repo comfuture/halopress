@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
 import { spawn } from 'node:child_process'
-import { access, readFile, writeFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
-import { dirname, resolve } from 'node:path'
+import { resolve } from 'node:path'
 import { applyEdits, modify, parse } from 'jsonc-parser'
 import { experimental_readRawConfig } from 'wrangler'
 
@@ -16,7 +16,6 @@ export function parsePrepareArgs(argv) {
     config: undefined,
     env: undefined,
     envFiles: [],
-    searchConfig: process.env.HALOPRESS_SEARCH_WRANGLER_CONFIG || undefined,
     dryRun: false
   }
   const args = [...argv]
@@ -39,8 +38,7 @@ export function parsePrepareArgs(argv) {
       '-c': 'config',
       '--env': 'env',
       '-e': 'env',
-      '--env-file': 'envFile',
-      '--search-config': 'searchConfig'
+      '--env-file': 'envFile'
     }[argument]
 
     if (flagWithValue) {
@@ -51,11 +49,10 @@ export function parsePrepareArgs(argv) {
       continue
     }
 
-    const equalsMatch = argument?.match(/^(--config|-c|--env|-e|--env-file|--search-config)=(.+)$/)
+    const equalsMatch = argument?.match(/^(--config|-c|--env|-e|--env-file)=(.+)$/)
     if (equalsMatch) {
       const [, flag, value] = equalsMatch
       if (flag === '--env-file') options.envFiles.push(value)
-      else if (flag === '--search-config') options.searchConfig = value
       else if (flag === '--config' || flag === '-c') options.config = value
       else options.env = value
       continue
@@ -236,44 +233,6 @@ export async function normalizeDatabaseBinding(configPath, environment, resolved
   }
 }
 
-export async function normalizeSearchWorkerDatabase(configPath, database, databaseId) {
-  let configText = await readFile(configPath, 'utf8')
-  const parseErrors = []
-  const config = parse(configText, parseErrors, { allowTrailingComma: true, disallowComments: false })
-  if (parseErrors.length > 0) throw new Error(`Could not parse JSONC config: ${configPath}`)
-
-  const databases = config.d1_databases
-  if (!Array.isArray(databases)) throw new Error(`No D1 database array found in ${configPath}`)
-  const matches = databases
-    .map((entry, index) => ({ entry, index }))
-    .filter(({ entry }) => entry.binding === database.binding)
-  if (matches.length !== 1) {
-    throw new Error(`Search Worker must declare exactly one ${database.binding} D1 binding in ${configPath}`)
-  }
-
-  const formattingOptions = { insertSpaces: true, tabSize: 2, eol: '\n' }
-  for (const [key, value] of [
-    ['database_name', database.database_name],
-    ['database_id', databaseId]
-  ]) {
-    configText = applyEdits(configText, modify(
-      configText,
-      ['d1_databases', matches[0].index, key],
-      value,
-      { formattingOptions }
-    ))
-  }
-  await writeFile(configPath, configText)
-
-  const verified = parse(configText, [], { allowTrailingComma: true, disallowComments: false })
-  const row = verified.d1_databases?.filter(entry => entry.binding === database.binding)
-  if (row?.length !== 1
-    || row[0].database_name !== database.database_name
-    || row[0].database_id !== databaseId) {
-    throw new Error(`Failed to synchronize D1 binding "${database.binding}" in ${configPath}`)
-  }
-}
-
 async function listRemoteDatabases(options) {
   const result = await runWrangler(
     ['d1', 'list', '--json', ...wranglerConfigArgs(options)],
@@ -351,20 +310,13 @@ export async function prepareCloudflareD1(options) {
   }
   const runtimeOptions = { ...options, configPath }
   const resolved = resolveDatabaseConfig(configResult.rawConfig, options.database, options.env)
-  const searchConfigPath = resolve(
-    options.searchConfig || dirname(configPath),
-    options.searchConfig ? '' : 'workers/search/wrangler.jsonc'
-  )
-  const hasSearchConfig = await access(searchConfigPath).then(() => true, () => false)
-
   if (options.dryRun) {
     const action = resolved.databaseId
       ? `use configured database_id ${resolved.databaseId}`
       : `resolve or create database "${resolved.database.database_name}"`
     const normalization = resolved.duplicateCount > 0 ? `, normalize ${resolved.duplicateCount} duplicate binding(s)` : ''
-    const searchSync = hasSearchConfig ? ` and synchronize ${searchConfigPath}` : ''
-    console.log(`[dry-run] Would ${action}${normalization}${searchSync}, then apply remote D1 migrations for ${resolved.database.binding}.`)
-    return { ...resolved.database, configPath, searchConfigPath: hasSearchConfig ? searchConfigPath : null, dryRun: true }
+    console.log(`[dry-run] Would ${action}${normalization}, then apply remote D1 migrations for ${resolved.database.binding}.`)
+    return { ...resolved.database, configPath, dryRun: true }
   }
 
   let databaseId = resolved.databaseId
@@ -372,10 +324,6 @@ export async function prepareCloudflareD1(options) {
     databaseId = await resolveOrCreateDatabaseId(runtimeOptions, resolved)
   }
   await normalizeDatabaseBinding(configPath, options.env, resolved, databaseId)
-  if (hasSearchConfig) {
-    await normalizeSearchWorkerDatabase(searchConfigPath, resolved.database, databaseId)
-    console.log(`Configured search Worker D1 binding ${resolved.database.binding} with the same database_id.`)
-  }
   console.log(`Configured D1 binding ${resolved.database.binding} with database_id ${databaseId}.`)
 
   console.log(`Applying remote D1 migrations for ${resolved.database.binding}...`)
@@ -391,8 +339,7 @@ export async function prepareCloudflareD1(options) {
   return {
     ...resolved.database,
     database_id: databaseId,
-    configPath,
-    searchConfigPath: hasSearchConfig ? searchConfigPath : null
+    configPath
   }
 }
 

@@ -24,8 +24,12 @@ const searchContract = readFileSync(
   new URL('../shared/keyword-search.ts', import.meta.url),
   'utf8'
 )
-const searchWorker = readFileSync(
-  new URL('../workers/search/src/index.ts', import.meta.url),
+const analyzerBoundary = readFileSync(
+  new URL('../server/utils/search-analyzer.ts', import.meta.url),
+  'utf8'
+)
+const mainWorkerEntry = readFileSync(
+  new URL('../workers/search/src/main-entry.ts', import.meta.url),
   'utf8'
 )
 
@@ -59,8 +63,10 @@ describe('public keyword search surface', () => {
     expect(searchContract).toContain('WITH readable_schema AS')
     expect(searchContract).toContain('gate.role_key = ?')
     expect(searchContract).toContain('JOIN readable_schema access')
-    expect(searchWorker).toContain('url.pathname === \'/v1/analyze\'')
-    expect(searchWorker).toContain('roleKey: \'anonymous\'')
+    expect(endpoint).toContain('analyzeKeywordSearchRequest(event, raw)')
+    expect(analyzerBoundary).toContain('HALOPRESS_SEARCH_ANALYZER.analyzeQuery')
+    expect(mainWorkerEntry).toContain('SEARCH_ANALYZER_BINDING')
+    expect(mainWorkerEntry).not.toContain('/v1/analyze')
   })
 
   it('exposes explicit loading, unavailable, partial, fallback, empty, retry, and pagination states', () => {

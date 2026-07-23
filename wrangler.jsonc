@@ -1,7 +1,8 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "halopress",
-  "main": ".output/server/index.mjs",
+  "main": "./workers/search/src/main-entry.ts",
+  "minify": true,
   "compatibility_date": "2026-05-18",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "workers_dev": true,
@@ -34,12 +35,48 @@
         "binding": "SEARCH_INDEX_QUEUE",
         "queue": "halopress-search-index"
       }
+    ],
+    "consumers": [
+      {
+        "queue": "halopress-search-index",
+        "max_batch_size": 1,
+        "max_batch_timeout": 5,
+        "max_retries": 5,
+        "max_concurrency": 2
+      }
     ]
   },
-  "services": [
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "SEARCH_ANALYZER_DO",
+        "class_name": "AnalyzerDurableObject"
+      }
+    ]
+  },
+  "migrations": [
     {
-      "binding": "SEARCH_WORKER",
-      "service": "halopress-search"
+      "tag": "search-analyzer-v1",
+      "new_sqlite_classes": ["AnalyzerDurableObject"]
     }
-  ]
+  ],
+  "triggers": {
+    "crons": ["*/5 * * * *"]
+  },
+  "rules": [
+    {
+      "type": "CompiledWasm",
+      "globs": ["**/*.wasm"],
+      "fallthrough": true
+    },
+    {
+      "type": "Data",
+      "globs": ["**/*.gmdl"],
+      "fallthrough": true
+    }
+  ],
+  "vars": {
+    "NUXT_PUBLIC_KEYWORD_SEARCH_MODE": "server",
+    "NUXT_PUBLIC_KEYWORD_SEARCH_BROWSER_FALLBACK": "true"
+  }
 }
