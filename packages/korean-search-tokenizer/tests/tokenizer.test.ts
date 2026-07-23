@@ -70,7 +70,7 @@ describe('Korean search tokenizer contract', () => {
   it('splits long content without losing normalized text', () => {
     const source = Array.from({ length: 60 }, (_, index) => `학교에서 ${index}번째 점심을 먹었다.`).join(' ')
     const chunks = splitTokenizerChunks(source, 256)
-    expect(chunks.length).toBeGreaterThan(1)
+    expect(chunks.length).toBeGreaterThanOrEqual(6)
     expect(chunks.every(chunk => new TextEncoder().encode(chunk).byteLength <= 256)).toBe(true)
     expect(chunks.join(' ')).toBe(normalizeSearchText(source))
   })

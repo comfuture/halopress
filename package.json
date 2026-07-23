@@ -115,6 +115,7 @@
       "readdir-glob>minimatch": "5.1.8"
     },
     "patchedDependencies": {
+      "garu-ko@0.9.11": "patches/garu-ko@0.9.11.patch",
       "next-auth@4.24.14": "patches/next-auth@4.24.14.patch"
     }
   },

@@ -1,0 +1,49 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "halopress-search",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-05-18",
+  "workers_dev": false,
+  "observability": {
+    "enabled": true
+  },
+  "rules": [
+    {
+      "type": "CompiledWasm",
+      "globs": ["**/*.wasm"],
+      "fallthrough": true
+    },
+    {
+      "type": "Data",
+      "globs": ["**/*.gmdl"],
+      "fallthrough": true
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "halopress",
+      "migrations_dir": "../../server/db/migrations"
+    }
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "SEARCH_INDEX_QUEUE",
+        "queue": "halopress-search-index"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "halopress-search-index",
+        "max_batch_size": 1,
+        "max_batch_timeout": 5,
+        "max_retries": 5,
+        "max_concurrency": 2
+      }
+    ]
+  },
+  "triggers": {
+    "crons": ["*/5 * * * *"]
+  }
+}

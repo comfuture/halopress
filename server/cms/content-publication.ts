@@ -10,6 +10,7 @@ import { replaceBase64ImagesInContent } from '../utils/asset-data-url'
 import { conflict, notFound } from '../utils/http'
 import { newId } from '../utils/ids'
 import { getTrustedRequestOrigin } from '../utils/request-origin'
+import { queueFullTextReconcile } from '../utils/full-text-queue'
 import { parseContentJson } from './content-json'
 import { deleteContentProjections, syncContentProjections } from './content-projections'
 import { mutateWithDocumentRevision } from './document-revisions'
@@ -238,6 +239,7 @@ export async function publishContentWorking(args: {
       await bumpFullTextQueryEpoch({ db: tx, statements, now })
     }
   })
+  queueFullTextReconcile(args.event)
   return mutationMetadata(args.existing, args.expectedRevision, {
     status: 'published',
     publicPath,
@@ -401,6 +403,7 @@ export async function unpublishContent(args: {
       await bumpFullTextQueryEpoch({ db: tx, statements, now })
     }
   })
+  queueFullTextReconcile(args.event)
   return mutationMetadata(args.existing, args.expectedRevision, {
     status: 'archived',
     publishedRevisionId: null,
@@ -469,6 +472,7 @@ export async function deleteContent(args: {
       await bumpFullTextQueryEpoch({ db: tx, statements, now })
     }
   })
+  queueFullTextReconcile(args.event)
   return mutationMetadata(args.existing, args.expectedRevision, {
     status: 'deleted',
     publishedRevisionId: null,

@@ -14,6 +14,7 @@ import { assertSchemaKeyCanBePersisted, assertSchemaKeyCanBePublished } from '..
 import { assertExpectedRevision, requireExpectedRevision } from '../../../cms/document-revisions'
 import { getTrustedRequestOrigin } from '../../../utils/request-origin'
 import { queueWidgetCacheInvalidation } from '../../../utils/widget-cache'
+import { queueFullTextReconcile } from '../../../utils/full-text-queue'
 import { assertPublicRouteAvailable } from '../../../cms/public-routes'
 import { commitSchemaPublication } from '../../../cms/schema-publication'
 import {
@@ -172,6 +173,7 @@ export default defineEventHandler(async (event) => {
   // Dynamic Menu sources depend on the exact active search configuration,
   // including changes that do not alter listing fields or migrate content.
   queueWidgetCacheInvalidation(event, `schema:${schemaKey}`)
+  queueFullTextReconcile(event)
 
   return { ok: true, schemaKey, version: nextVersion, migrated, searchIndexed: searchIndex.indexed }
 })

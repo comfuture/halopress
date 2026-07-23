@@ -1,0 +1,19 @@
+{
+  "name": "@halopress/search-worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/prepare-assets.mjs && wrangler deploy --dry-run --config wrangler.jsonc --outdir dist",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@halopress/korean-search-tokenizer": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10",
+    "wrangler": "4.110.0"
+  }
+}
