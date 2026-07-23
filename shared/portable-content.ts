@@ -966,12 +966,18 @@ function writeRichTextDocumentContent(
     writeRichTextFallback(writer)
     return
   }
-  for (const candidate of document.content) {
+  const normalizedDocument = options.allowPageHero
+    ? normalizeAuthoredDocument(document, { allowPageHero: true })
+    : null
+  if (normalizedDocument?.truncated) {
+    throw new PortableRenderBudgetError('Portable rendering budget exceeded')
+  }
+  for (let index = 0; index < document.content.length; index += 1) {
+    const candidate = document.content[index]
     if (options.allowPageHero && candidate && typeof candidate === 'object' && !Array.isArray(candidate)
       && (candidate as Record<string, unknown>).type === 'pageHero') {
       writer.claimNode(1)
-      const normalized = normalizeAuthoredDocument({ type: 'doc', content: [candidate] }, { allowPageHero: true })
-      const hero = normalized.content[0]
+      const hero = normalizedDocument?.content[index]
       if (hero?.type !== 'pageHero') {
         writeRichTextFallback(writer)
         continue

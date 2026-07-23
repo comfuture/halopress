@@ -56,6 +56,32 @@ describe('portable authored-content renderer', () => {
       .toContain('<p class="halo-content-fallback" role="status">Unsupported content</p>')
   })
 
+  it('bounds structural pageHero validation across the whole v2 document', () => {
+    const malformedHero = () => ({
+      type: 'pageHero',
+      content: Array.from({ length: 900 }, () => ({
+        type: 'paragraph',
+        content: [{ type: 'text', text: 'x' }]
+      }))
+    })
+    const document = {
+      type: 'doc',
+      content: [malformedHero(), malformedHero()]
+    }
+    const before = structuredClone(document)
+
+    for (const hero of document.content) {
+      const rendering = createStandalonePageRendering({ type: 'doc', content: [hero] }, { origin })
+      expect(rendering.html).toContain('Unsupported content')
+      expect(rendering.html).not.toContain('Content exceeds portable rendering limits')
+    }
+
+    const rendering = createStandalonePageRendering(document, { origin })
+    expect(rendering.html).toContain('Content exceeds portable rendering limits')
+    expect(rendering.outline).toEqual([])
+    expect(document).toEqual(before)
+  })
+
   it('keeps v2 legacy block and ordinary heading outlines aligned with the native contract', () => {
     const document = {
       type: 'doc',
