@@ -14,6 +14,8 @@ type Invitation = {
   createdAt: string
 }
 
+const props = defineProps<{ scrollToInvitations?: boolean }>()
+
 const toast = useToast()
 const saving = ref(false)
 const inviting = ref(false)
@@ -34,6 +36,22 @@ watch(data, (value) => {
   state.mode = value.mode
   state.defaultRole = value.defaultRole
   invitationState.roleKey = value.defaultRole
+}, { immediate: true })
+
+const invitationNavigationHandled = ref(false)
+watch([() => props.scrollToInvitations, data, pending], async ([shouldScroll, settings, isPending]) => {
+  if (!shouldScroll) {
+    invitationNavigationHandled.value = false
+    return
+  }
+  if (!import.meta.client || isPending || invitationNavigationHandled.value) return
+
+  await nextTick()
+  const target = document.getElementById(settings?.mode === 'invite' ? 'invitations' : 'membership')
+  if (!target) return
+
+  target.scrollIntoView({ block: 'start' })
+  invitationNavigationHandled.value = true
 }, { immediate: true })
 
 const modeItems = [

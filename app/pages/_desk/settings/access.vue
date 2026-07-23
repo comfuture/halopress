@@ -2,12 +2,6 @@
 definePageMeta({ layout: 'desk' })
 
 const route = useRoute()
-
-onMounted(async () => {
-  if (route.query.tab !== 'invites') return
-  await nextTick()
-  document.querySelector('#invitations, #membership')?.scrollIntoView({ block: 'start' })
-})
 </script>
 
 <template>
@@ -18,7 +12,7 @@ onMounted(async () => {
   >
     <div class="space-y-8">
       <SettingsAuthenticationPanel />
-      <SettingsMembershipPanel />
+      <SettingsMembershipPanel :scroll-to-invitations="route.query.tab === 'invites'" />
     </div>
   </SettingsShell>
 </template>

@@ -81,8 +81,10 @@ describe('Settings navigation and ownership', () => {
     expect(membership).toContain('Membership settings are unavailable')
     expect(membership).toContain('Invitations are unavailable')
     expect(membership).toContain('Refresh membership')
-    expect(access).toContain('route.query.tab !== \'invites\'')
-    expect(access).toContain('document.querySelector(\'#invitations, #membership\')')
+    expect(access).toContain(':scroll-to-invitations="route.query.tab === \'invites\'"')
+    expect(access).not.toContain('#invitations, #membership')
+    expect(membership).toContain('watch([() => props.scrollToInvitations, data, pending]')
+    expect(membership).toContain('document.getElementById(settings?.mode === \'invite\' ? \'invitations\' : \'membership\')')
   })
 
   it('preserves legacy route intent with explicit compatibility redirects', async () => {
