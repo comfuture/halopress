@@ -9,7 +9,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@halopress/korean-search-tokenizer": "workspace:*"
+    "@halopress/korean-search-tokenizer": "workspace:*",
+    "garu-ko": "0.9.11"
   },
   "devDependencies": {
     "typescript": "^5.9.3",
