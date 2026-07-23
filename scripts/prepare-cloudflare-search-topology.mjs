@@ -303,8 +303,8 @@ export async function prepareSearchTopology(options) {
       'create or reuse the existing Queue',
       'deploy and invoke an isolated real-Garu Durable Object compatibility probe',
       'delete the isolated compatibility probe',
+      `detach the legacy ${legacySearchWorkerName} Queue consumer immediately before deployment and restore it if deployment or activation fails`,
       'deploy the main Worker with fetch, Queue, cron, and the Analyzer Durable Object',
-      `detach the legacy ${legacySearchWorkerName} Queue consumer after the main consumer is active`,
       `delete the legacy ${legacySearchWorkerName} Worker`
     ],
     continuity: 'D1 outbox leases and generation activation tolerate the bounded legacy/main Queue-consumer handoff.',

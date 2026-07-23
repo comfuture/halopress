@@ -20,8 +20,16 @@ SECRET_LIST_STDERR_FILE=""
 TOPOLOGY_BACKUP_DIR=""
 TOPOLOGY_MAIN_CONFIG_PATH=""
 ACTIVATION_RESPONSE_FILE=""
+LEGACY_CONSUMER_DETACHED=0
+QUEUE_SCOPE_ARGS=()
 
 cleanup_generated_secrets() {
+  local exit_status=$?
+  if [ "$LEGACY_CONSUMER_DETACHED" -eq 1 ]; then
+    if ! restore_legacy_consumer; then
+      echo "WARNING: failed to restore legacy Queue consumer ${LEGACY_SEARCH_WORKER_NAME}; manual recovery is required." >&2
+    fi
+  fi
   if [ -n "$TOPOLOGY_BACKUP_DIR" ]; then
     cp "$TOPOLOGY_BACKUP_DIR/main.jsonc" "$TOPOLOGY_MAIN_CONFIG_PATH"
     rm -rf -- "$TOPOLOGY_BACKUP_DIR"
@@ -35,11 +43,8 @@ cleanup_generated_secrets() {
   if [ -n "$ACTIVATION_RESPONSE_FILE" ]; then
     rm -f -- "$ACTIVATION_RESPONSE_FILE"
   fi
+  return "$exit_status"
 }
-
-trap cleanup_generated_secrets EXIT
-trap 'exit 130' INT
-trap 'exit 143' HUP TERM
 
 run_wrangler() {
   if [ -n "${HALOPRESS_WRANGLER_BIN:-}" ]; then
@@ -48,6 +53,55 @@ run_wrangler() {
     pnpm wrangler "$@"
   fi
 }
+
+is_missing_consumer_error() {
+  local output="$1"
+  [[ "$output" == *'not found'* \
+    || "$output" == *'does not exist'* \
+    || "$output" == *'not a consumer'* \
+    || "$output" == *'No consumer'* \
+    || "$output" == *'No worker consumer'* ]]
+}
+
+restore_legacy_consumer() {
+  local main_remove_output
+  local main_remove_exit
+  local legacy_add_output
+  local legacy_add_exit
+
+  set +e
+  main_remove_output="$(run_wrangler queues consumer remove \
+    "$SEARCH_QUEUE_NAME" \
+    "$MAIN_WORKER_NAME" \
+    "${QUEUE_SCOPE_ARGS[@]}" 2>&1)"
+  main_remove_exit=$?
+  set -e
+  if [ "$main_remove_exit" -ne 0 ] && ! is_missing_consumer_error "$main_remove_output"; then
+    printf '%s\n' "$main_remove_output" >&2
+  fi
+
+  set +e
+  legacy_add_output="$(run_wrangler queues consumer add \
+    "$SEARCH_QUEUE_NAME" \
+    "$LEGACY_SEARCH_WORKER_NAME" \
+    --batch-size 1 \
+    --batch-timeout 5 \
+    --message-retries 5 \
+    --max-concurrency 2 \
+    "${QUEUE_SCOPE_ARGS[@]}" 2>&1)"
+  legacy_add_exit=$?
+  set -e
+  if [ "$legacy_add_exit" -ne 0 ]; then
+    printf '%s\n' "$legacy_add_output" >&2
+    return "$legacy_add_exit"
+  fi
+  LEGACY_CONSUMER_DETACHED=0
+  echo "Restored legacy search Worker ${LEGACY_SEARCH_WORKER_NAME} as Queue consumer after an incomplete main deployment." >&2
+}
+
+trap cleanup_generated_secrets EXIT
+trap 'exit 130' INT
+trap 'exit 143' HUP TERM
 
 parse_secret_list_status() {
   node -e '
@@ -391,6 +445,27 @@ else
   echo '[dry-run] Skipping the remote Durable Object compatibility deployment.'
 fi
 
+if [ "$DRY_RUN" -eq 0 ]; then
+  set +e
+  CONSUMER_REMOVE_OUTPUT="$(run_wrangler queues consumer remove \
+    "$SEARCH_QUEUE_NAME" \
+    "$LEGACY_SEARCH_WORKER_NAME" \
+    "${QUEUE_SCOPE_ARGS[@]}" 2>&1)"
+  CONSUMER_REMOVE_EXIT=$?
+  set -e
+  if [ "$CONSUMER_REMOVE_EXIT" -ne 0 ] \
+    && ! is_missing_consumer_error "$CONSUMER_REMOVE_OUTPUT"; then
+    printf '%s\n' "$CONSUMER_REMOVE_OUTPUT" >&2
+    exit "$CONSUMER_REMOVE_EXIT"
+  fi
+  if [ "$CONSUMER_REMOVE_EXIT" -eq 0 ]; then
+    LEGACY_CONSUMER_DETACHED=1
+    echo "Detached legacy search Worker ${LEGACY_SEARCH_WORKER_NAME} immediately before the Queue consumer handoff."
+  else
+    echo "Legacy search Worker ${LEGACY_SEARCH_WORKER_NAME} was not a consumer of Queue ${SEARCH_QUEUE_NAME}."
+  fi
+fi
+
 echo 'Deploying main Cloudflare Worker with Durable Object search orchestration...'
 set +e
 MAIN_DEPLOY_OUTPUT="$(run_wrangler deploy "${DEPLOY_ARGS[@]}" 2>&1)"
@@ -453,29 +528,8 @@ if (!response.ok
 NODE
   rm -f -- "$ACTIVATION_RESPONSE_FILE"
   ACTIVATION_RESPONSE_FILE=""
+  LEGACY_CONSUMER_DETACHED=0
   echo "Main Worker Durable Object activation gate passed at ${MAIN_ACTIVATION_URL}."
-
-  set +e
-  CONSUMER_REMOVE_OUTPUT="$(run_wrangler queues consumer remove \
-    "$SEARCH_QUEUE_NAME" \
-    "$LEGACY_SEARCH_WORKER_NAME" \
-    --config "$MAIN_CONFIG_PATH" 2>&1)"
-  CONSUMER_REMOVE_EXIT=$?
-  set -e
-  if [ "$CONSUMER_REMOVE_EXIT" -ne 0 ] \
-    && [[ "$CONSUMER_REMOVE_OUTPUT" != *'not found'* ]] \
-    && [[ "$CONSUMER_REMOVE_OUTPUT" != *'does not exist'* ]] \
-    && [[ "$CONSUMER_REMOVE_OUTPUT" != *'not a consumer'* ]] \
-    && [[ "$CONSUMER_REMOVE_OUTPUT" != *'No consumer'* ]] \
-    && [[ "$CONSUMER_REMOVE_OUTPUT" != *'No worker consumer'* ]]; then
-    printf '%s\n' "$CONSUMER_REMOVE_OUTPUT" >&2
-    exit "$CONSUMER_REMOVE_EXIT"
-  fi
-  if [ "$CONSUMER_REMOVE_EXIT" -eq 0 ]; then
-    echo "Detached legacy search Worker ${LEGACY_SEARCH_WORKER_NAME} from Queue ${SEARCH_QUEUE_NAME}."
-  else
-    echo "Legacy search Worker ${LEGACY_SEARCH_WORKER_NAME} was not a consumer of Queue ${SEARCH_QUEUE_NAME}."
-  fi
 
   set +e
   DELETE_OUTPUT="$(run_wrangler delete \

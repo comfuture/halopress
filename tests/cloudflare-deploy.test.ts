@@ -134,6 +134,15 @@ if (args[0] === 'queues' && args[1] === 'consumer' && args[2] === 'remove') {
   process.exit(0)
 }
 
+if (args[0] === 'queues' && args[1] === 'consumer' && args[2] === 'add') {
+  if (process.env.MOCK_CONSUMER_ADD_FAIL === args[4]) {
+    console.error('mock consumer restore failure')
+    process.exit(1)
+  }
+  console.log('Queue consumer added')
+  process.exit(0)
+}
+
 if (args[0] === 'deploy') {
   const configIndex = args.indexOf('--config')
   const isProbeDeploy = configIndex >= 0
@@ -500,7 +509,7 @@ migrations_dir = "migrations"
     ])
   })
 
-  it('creates a missing Queue, validates an isolated DO, deploys main, then deletes the legacy Worker', async () => {
+  it('creates a missing Queue, validates an isolated DO, hands off the consumer, then deletes the legacy Worker', async () => {
     const fixture = await createFixture(baseConfig({ database_id: 'existing-id' }))
     const result = await run('bash', [deployScript, '--config', fixture.configPath], {
       cwd: projectRoot,
@@ -528,8 +537,8 @@ migrations_dir = "migrations"
       call[0] === 'delete' && call[1] === 'halopress-test-search')
     expect(probeDeploy).toBeGreaterThan(3)
     expect(probeDelete).toBeGreaterThan(probeDeploy)
-    expect(mainDeploy).toBeGreaterThan(probeDelete)
-    expect(legacyConsumerRemove).toBeGreaterThan(mainDeploy)
+    expect(legacyConsumerRemove).toBeGreaterThan(probeDelete)
+    expect(mainDeploy).toBeGreaterThan(legacyConsumerRemove)
     expect(legacyDelete).toBeGreaterThan(legacyConsumerRemove)
     expect(result.stdout).toContain('"topology": "durable-object"')
     expect(result.stdout).toContain('"cleanupVerified":true')
@@ -687,7 +696,7 @@ migrations_dir = "migrations"
     expect(result.stderr).toContain('mock delete failure')
   })
 
-  it('does not delete the legacy Worker when its Queue consumer cannot be detached', async () => {
+  it('does not deploy main or delete the legacy Worker when its Queue consumer cannot be detached', async () => {
     const fixture = await createFixture(baseConfig({ database_id: 'existing-id' }))
     const result = await run('bash', [deployScript, '--config', fixture.configPath], {
       cwd: projectRoot,
@@ -706,7 +715,8 @@ migrations_dir = "migrations"
       && call[1] === 'consumer'
       && call[2] === 'remove'
       && call[4] === 'halopress-test-search')
-    expect(consumerRemove).toBeGreaterThan(mainDeploy)
+    expect(consumerRemove).toBeGreaterThan(-1)
+    expect(mainDeploy).toBe(-1)
     expect(calls).not.toContainEqual([
       'delete', 'halopress-test-search', '--config', fixture.configPath, '--force'
     ])
@@ -742,6 +752,23 @@ migrations_dir = "migrations"
     expect(result.code).not.toBe(0)
     const calls = await readCalls(fixture.logPath)
     expect(calls).toContainEqual(['deploy', '--config', fixture.configPath])
+    expect(calls).toContainEqual([
+      'queues',
+      'consumer',
+      'add',
+      'halopress-test-search-index',
+      'halopress-test-search',
+      '--batch-size',
+      '1',
+      '--batch-timeout',
+      '5',
+      '--message-retries',
+      '5',
+      '--max-concurrency',
+      '2',
+      '--config',
+      fixture.configPath
+    ])
     expect(calls).not.toContainEqual([
       'delete', 'halopress-test-search', '--config', fixture.configPath, '--force'
     ])
