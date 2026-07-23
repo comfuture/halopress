@@ -50,10 +50,13 @@ export default defineEventHandler(async (event) => {
     getServerSearchAnalyzerAvailability(event)
   ])
   const indexAvailable = control?.status === 'available' && Number(fields?.count) > 0
+  const analyzerTransient = mode === 'server' && analyzer.status !== 'available'
   setHeader(
     event,
     'Cache-Control',
-    roleKey === 'anonymous'
+    analyzerTransient
+      ? 'no-store'
+      : roleKey === 'anonymous'
       ? 'public, max-age=30, stale-while-revalidate=60'
       : 'private, no-store'
   )

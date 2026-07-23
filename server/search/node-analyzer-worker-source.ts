@@ -169,5 +169,6 @@ initialize().catch((error) => {
     kind: 'initialization-error',
     error: error instanceof Error ? error.message : String(error)
   })
+  parentPort.close()
 })
 `
