@@ -200,7 +200,7 @@ NODE
 echo 'Applying all migrations to the isolated D1 database...'
 run_wrangler d1 migrations apply DB --remote --config "$CONFIG_PATH"
 
-node workers/search/scripts/prepare-assets.mjs >/dev/null
+pnpm --filter @halopress/search-worker exec tsx scripts/prepare-assets.mjs >/dev/null
 echo "Deploying isolated main Worker ${WORKER_NAME}..."
 set +e
 DEPLOY_OUTPUT="$(HALOPRESS_SKIP_WRANGLER_BUILD=1 run_wrangler deploy --config "$CONFIG_PATH" 2>&1)"

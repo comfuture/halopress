@@ -7,12 +7,24 @@ import { describe, expect, it } from 'vitest'
 const projectRoot = resolve(import.meta.dirname, '..')
 
 async function readProjectFiles() {
-  const [packageText, searchPackageText, lockfile, authPatch, nuxtConfig] = await Promise.all([
+  const [
+    packageText,
+    searchPackageText,
+    lockfile,
+    authPatch,
+    nuxtConfig,
+    deployScript,
+    durablePreflightScript,
+    durableValidationScript
+  ] = await Promise.all([
     readFile(resolve(projectRoot, 'package.json'), 'utf8'),
     readFile(resolve(projectRoot, 'workers/search/package.json'), 'utf8'),
     readFile(resolve(projectRoot, 'pnpm-lock.yaml'), 'utf8'),
     readFile(resolve(projectRoot, 'patches/next-auth@4.24.14.patch'), 'utf8'),
-    readFile(resolve(projectRoot, 'nuxt.config.ts'), 'utf8')
+    readFile(resolve(projectRoot, 'nuxt.config.ts'), 'utf8'),
+    readFile(resolve(projectRoot, 'scripts/deploy-cloudflare.sh'), 'utf8'),
+    readFile(resolve(projectRoot, 'scripts/preflight-cloudflare-durable-search.sh'), 'utf8'),
+    readFile(resolve(projectRoot, 'scripts/validate-cloudflare-durable-search.sh'), 'utf8')
   ])
 
   return {
@@ -20,13 +32,27 @@ async function readProjectFiles() {
     searchPackageJson: JSON.parse(searchPackageText),
     lockfile,
     authPatch,
-    nuxtConfig
+    nuxtConfig,
+    deployScript,
+    durablePreflightScript,
+    durableValidationScript
   }
 }
 
 describe('dependency security contracts', () => {
   it('runs analyzer asset preparation through a Node 22-compatible TypeScript loader', async () => {
-    const { searchPackageJson, lockfile } = await readProjectFiles()
+    const {
+      searchPackageJson,
+      lockfile,
+      deployScript,
+      durablePreflightScript,
+      durableValidationScript
+    } = await readProjectFiles()
+    const deploymentScripts = [
+      deployScript,
+      durablePreflightScript,
+      durableValidationScript
+    ]
 
     expect(searchPackageJson.scripts).toMatchObject({
       build: 'tsx scripts/prepare-assets.mjs',
@@ -36,6 +62,10 @@ describe('dependency security contracts', () => {
     expect(searchPackageJson.devDependencies.tsx).toBe('^4.23.1')
     expect(lockfile).toContain('workers/search:\n')
     expect(lockfile).toContain('      tsx:\n        specifier: ^4.23.1\n        version: 4.23.1')
+    for (const script of deploymentScripts) {
+      expect(script).toContain('pnpm --filter @halopress/search-worker exec tsx scripts/prepare-assets.mjs')
+      expect(script).not.toContain('node workers/search/scripts/prepare-assets.mjs')
+    }
   })
 
   it('keeps the patched Sidebase Auth.js bridge exact and removes the Next.js peer tree', async () => {

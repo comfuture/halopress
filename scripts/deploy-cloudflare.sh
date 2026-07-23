@@ -370,7 +370,7 @@ if [ "$DRY_RUN" -eq 0 ]; then
   fi
 fi
 
-node workers/search/scripts/prepare-assets.mjs
+pnpm --filter @halopress/search-worker exec tsx scripts/prepare-assets.mjs
 if [ "$DRY_RUN" -eq 0 ]; then
   echo 'Running deployed real-Garu Durable Object compatibility gate...'
   DURABLE_COMPATIBILITY_JSON="$(bash scripts/preflight-cloudflare-durable-search.sh "$MAIN_WORKER_NAME")"

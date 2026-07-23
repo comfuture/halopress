@@ -56,7 +56,7 @@ trap cleanup_probe EXIT
 trap 'exit 130' INT
 trap 'exit 143' HUP TERM
 
-node workers/search/scripts/prepare-assets.mjs >/dev/null
+pnpm --filter @halopress/search-worker exec tsx scripts/prepare-assets.mjs >/dev/null
 echo "Deploying isolated Durable Object compatibility Worker ${PROBE_NAME}..." >&2
 set +e
 DEPLOY_OUTPUT="$(run_wrangler deploy --config "$CONFIG_PATH" --name "$PROBE_NAME" 2>&1)"
