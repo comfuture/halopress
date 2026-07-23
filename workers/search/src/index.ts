@@ -105,7 +105,38 @@ export default {
           rawTerms: analyzed.rawTerms,
           morphTerms: analyzed.morphTerms
         })
-        return Response.json(await executeKeywordSearch(env.DB, tokenRequest), { headers })
+        return Response.json(await executeKeywordSearch(env.DB, tokenRequest, {
+          roleKey: 'anonymous',
+          admin: false
+        }), { headers })
+      } catch (error) {
+        return jsonError(error, headers)
+      }
+    }
+    if (url.pathname === '/v1/analyze' && request.method === 'POST') {
+      const headers = {
+        ...(cors ?? {}),
+        'Cache-Control': 'private, no-store',
+        'X-Content-Type-Options': 'nosniff'
+      }
+      try {
+        const contentLength = Number(request.headers.get('Content-Length') || 0)
+        if (contentLength > 16 * 1024) {
+          throw new KeywordSearchError('request_too_large', 'Search request is too large', 413)
+        }
+        const raw = parseKeywordRawRequest(await request.json())
+        let analyzed
+        try {
+          analyzed = (await tokenizer()).analyzeQuery(raw.query)
+        } catch {
+          throw new KeywordSearchError('analyzer_unavailable', 'Search analyzer is unavailable', 503, true)
+        }
+        return Response.json({
+          contractVersion: raw.contractVersion,
+          tokenizerGeneration: analyzed.tokenizerGeneration,
+          rawTerms: analyzed.rawTerms,
+          morphTerms: analyzed.morphTerms
+        }, { headers })
       } catch (error) {
         return jsonError(error, headers)
       }

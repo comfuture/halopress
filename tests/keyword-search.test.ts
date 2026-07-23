@@ -5,17 +5,29 @@ import { KOREAN_SEARCH_TOKENIZER_GENERATION } from '@halopress/korean-search-tok
 import {
   KeywordSearchError,
   buildKeywordMatchExpression,
-  executeKeywordSearch,
+  executeKeywordSearch as executeKeywordSearchWithAccess,
   parseKeywordTokenRequest
 } from '../shared/keyword-search'
 import { applyMigrations, SqliteD1 } from '../workers/search/tests/sqlite-d1'
 
 let db: SqliteD1
+const anonymousAccess = { roleKey: 'anonymous', admin: false }
+
+function executeKeywordSearch(
+  database: SqliteD1,
+  value: ReturnType<typeof request>,
+  access = anonymousAccess
+) {
+  return executeKeywordSearchWithAccess(database, value, access)
+}
 
 function seedSchema() {
   db.sqlite.prepare(`
     INSERT INTO user_role (role_key, title, level)
-    VALUES ('anonymous', 'Anonymous', 0)
+    VALUES
+      ('anonymous', 'Anonymous', 0),
+      ('editor', 'Editor', 10),
+      ('admin', 'Admin', 100)
   `).run()
   db.sqlite.prepare(`
     INSERT INTO schema (
@@ -221,6 +233,37 @@ describe('safe ranked keyword search', () => {
     expect((await executeKeywordSearch(db, request())).items).toEqual([])
   })
 
+  it('gates the global candidate set with the server-resolved role before ranking', async () => {
+    seedResult({
+      id: 'role-gated',
+      revision: 'revision-role-gated',
+      rawText: '학교에서',
+      morphText: '학교'
+    })
+    db.sqlite.prepare(`
+      UPDATE schema_role
+      SET can_read = 0
+      WHERE schema_key = 'article' AND role_key = 'anonymous'
+    `).run()
+    db.sqlite.prepare(`
+      INSERT INTO schema_role (
+        schema_key, role_key, can_read, can_write, can_admin
+      ) VALUES ('article', 'editor', 0, 1, 0)
+    `).run()
+
+    expect((await executeKeywordSearch(db, request())).items).toEqual([])
+    await expect(executeKeywordSearch(
+      db,
+      request(),
+      { roleKey: 'editor', admin: false }
+    )).resolves.toMatchObject({ items: [{ id: 'role-gated' }] })
+    await expect(executeKeywordSearch(
+      db,
+      request(),
+      { roleKey: 'admin', admin: true }
+    )).resolves.toMatchObject({ items: [{ id: 'role-gated' }] })
+  })
+
   it('paginates tied ranks deterministically and rejects cursors after an epoch change', async () => {
     for (const id of ['a', 'b', 'c']) {
       seedResult({
@@ -243,6 +286,11 @@ describe('safe ranked keyword search', () => {
       cursor: first.nextCursor
     }))
     expect(repeated.items.map(item => item.id)).toEqual(['b'])
+    await expect(executeKeywordSearch(
+      db,
+      request({ limit: 1, cursor: first.nextCursor }),
+      { roleKey: 'editor', admin: false }
+    )).rejects.toMatchObject({ code: 'stale_cursor', status: 409 })
 
     db.sqlite.prepare(`
       UPDATE full_text_control SET query_epoch = query_epoch + 1 WHERE key = 'singleton'

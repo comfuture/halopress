@@ -5,7 +5,7 @@ import { createKeywordSearchClient } from '../shared/keyword-search-client'
 const capabilities = {
   contractVersion: 1 as const,
   mode: 'server' as const,
-  endpoint: 'https://search.example/v1/search',
+  endpoint: '/api/keyword-search',
   browserFallback: true,
   tokenizerGeneration: 'generation-1',
   queryEpoch: 1,
@@ -97,12 +97,12 @@ describe('headless keyword search client', () => {
   })
 
   it('falls back to browser tokenization when server analysis is unavailable', async () => {
-    const endpoints: string[] = []
-    const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const endpoint = String(input)
-      endpoints.push(endpoint)
+    const modes: string[] = []
+    const fetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       if (!init?.method) return json(capabilities)
-      if (endpoint.startsWith('https://search.example')) {
+      const body = JSON.parse(String(init.body))
+      modes.push(body.mode)
+      if (body.mode === 'raw') {
         return json({
           error: {
             code: 'analyzer_unavailable',
@@ -126,7 +126,7 @@ describe('headless keyword search client', () => {
 
     await client.search({ query: '학교' })
 
-    expect(endpoints).toContain('/api/keyword-search')
+    expect(modes).toEqual(['raw', 'tokens'])
     expect(client.state).toMatchObject({
       status: 'ready',
       fallback: true,
