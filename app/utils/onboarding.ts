@@ -31,6 +31,12 @@ export function getOnboardingItems(status: OnboardingStatus): OnboardingItem[] {
       title: 'Publish new content',
       complete: status.content.complete,
       to: contentLink
+    },
+    {
+      key: 'site',
+      title: 'Enable Site',
+      complete: status.site.complete,
+      to: '/_desk/site/general#site-features'
     }
   ]
 

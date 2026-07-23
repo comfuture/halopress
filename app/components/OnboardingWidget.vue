@@ -7,7 +7,7 @@ import {
   type OnboardingStatus
 } from '../utils/onboarding'
 
-const dismissed = useCookie<boolean>('halopress_onboarding_dismissed_v1', {
+const dismissed = useCookie<boolean>('halopress_onboarding_dismissed_v2', {
   default: () => false,
   path: '/_desk',
   sameSite: 'lax'
