@@ -150,3 +150,25 @@ directives. Operators expecting hostile or high-volume traffic should attach a
 Cloudflare Rate Limiting rule to `/api/keyword-search` and the auxiliary
 `/v1/search` route. Rate limiting is deployment policy rather than hidden
 application state, so local and browser-only deployments retain the same API.
+
+## Public and headless clients
+
+`/search` is a code-owned public route and is always `noindex, follow` with a
+queryless canonical URL. The `q`, `schema`, `field`, and `operator` query
+parameters are shareable UI state; search results themselves are not included
+in the sitemap. `search` is also a reserved first path segment for new Schemas,
+Pages, and aliases.
+
+Upgrades do not rewrite existing persisted routes. If an older installation
+already has a canonical Page or Schema route rooted at `/search`, the code-owned
+search page takes precedence after this release. Move the existing document to
+a different canonical path and retain a non-conflicting alias before enabling
+public keyword search.
+
+Framework-independent clients can use
+`shared/keyword-search-client.ts`. It detects the advertised deployment mode,
+keeps tokenization lazy, validates the tokenizer generation, cancels obsolete
+requests, ignores late responses, retries stale cursors from the first page,
+supports filters and cursor pagination, and exposes unavailable, partial,
+fallback, and typed error states. The Nuxt composable returns those state fields
+synchronously and does not expose Promise methods.

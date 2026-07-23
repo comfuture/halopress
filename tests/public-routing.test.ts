@@ -45,6 +45,7 @@ describe('public route normalization', () => {
     '/assets/image',
     '/p/page-id',
     '/robots.txt',
+    '/search',
     '/sitemap.xml'
   ])('rejects the reserved public root %s', (path) => {
     expect(() => normalizePublicPath(path)).toThrow(PublicPathValidationError)

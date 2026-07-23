@@ -18,6 +18,7 @@ export const RESERVED_PUBLIC_PATH_SEGMENTS = new Set([
   'login',
   PUBLIC_PAGE_ROUTE_PREFIX,
   'robots.txt',
+  'search',
   'signup',
   'sitemap.xml'
 ])
