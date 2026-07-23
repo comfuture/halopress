@@ -249,6 +249,47 @@ describe('lazy search indexer', () => {
     }])
   })
 
+  it('keeps the active generation when a competing build owns activation', async () => {
+    const initial = seedPublishedJob()
+    await processFullTextJob({
+      env,
+      jobId: initial.jobId,
+      tokenizer: async () => fakeTokenizer()
+    })
+    const competing = seedPublishedJob({
+      revisionId: 'revision-2',
+      jobId: 'job-2',
+      indexGeneration: 'generation-2'
+    })
+    const tokenizer = fakeTokenizer()
+    const originalAnalyze = tokenizer.analyzeDocument
+    let ownershipChanged = false
+    tokenizer.analyzeDocument = (text) => {
+      if (!ownershipChanged) {
+        ownershipChanged = true
+        db.sqlite.prepare(`
+          UPDATE full_text_index_state
+          SET building_index_generation = 'competing-generation'
+          WHERE content_id = ? AND field_id = 'field-body'
+        `).run(competing.contentId)
+      }
+      return originalAnalyze(text)
+    }
+
+    await expect(processFullTextJob({
+      env,
+      jobId: competing.jobId,
+      tokenizer: async () => tokenizer
+    })).resolves.toMatchObject({ outcome: 'retry' })
+    expect(db.sqlite.prepare(`
+      SELECT DISTINCT index_generation, published_revision_id
+      FROM full_text_fts WHERE content_id = ?
+    `).all(competing.contentId)).toEqual([{
+      index_generation: initial.indexGeneration,
+      published_revision_id: initial.revisionId
+    }])
+  })
+
   it('records retryable failure state and redispatches expired jobs', async () => {
     const seeded = seedPublishedJob()
     const result = await processFullTextJob({
@@ -280,13 +321,19 @@ describe('lazy search indexer', () => {
       tokenizer: async () => fakeTokenizer()
     })
     db.sqlite.prepare(`
+      UPDATE content
+      SET status = 'draft', published_revision_id = NULL
+      WHERE id = ?
+    `).run(seeded.contentId)
+    db.sqlite.prepare(`
       INSERT INTO full_text_job (
         id, identity_key, operation, document_kind, document_id,
-        schema_key, field_id, tokenizer_generation, index_generation,
+        schema_key, field_id, target_revision_id,
+        tokenizer_generation, index_generation,
         status, checkpoint, attempt_count, available_at, created_at, updated_at
       ) VALUES ('remove-1', 'remove:content-1:2', 'remove', 'content', ?,
-        'article', '*', ?, 'remove-generation', 'pending', 0, 0, 0, 0, 0)
-    `).run(seeded.contentId, KOREAN_SEARCH_TOKENIZER_GENERATION)
+        'article', '*', ?, ?, 'remove-generation', 'pending', 0, 0, 0, 0, 0)
+    `).run(seeded.contentId, seeded.revisionId, KOREAN_SEARCH_TOKENIZER_GENERATION)
 
     await expect(processFullTextJob({
       env,
@@ -301,5 +348,52 @@ describe('lazy search indexer', () => {
       jobId: 'remove-1',
       tokenizer: async () => fakeTokenizer()
     })).resolves.toMatchObject({ outcome: 'not-claimed' })
+  })
+
+  it('marks a delayed removal stale after the content is republished', async () => {
+    const initial = seedPublishedJob()
+    await processFullTextJob({
+      env,
+      jobId: initial.jobId,
+      tokenizer: async () => fakeTokenizer()
+    })
+    db.sqlite.prepare(`
+      INSERT INTO full_text_job (
+        id, identity_key, operation, document_kind, document_id,
+        schema_key, field_id, target_revision_id,
+        tokenizer_generation, index_generation,
+        status, checkpoint, attempt_count, available_at, created_at, updated_at
+      ) VALUES ('remove-delayed', 'remove:content-1:2', 'remove', 'content', ?,
+        'article', '*', ?, ?, 'remove-generation', 'pending', 0, 0, 0, 0, 0)
+    `).run(initial.contentId, initial.revisionId, KOREAN_SEARCH_TOKENIZER_GENERATION)
+    const republished = seedPublishedJob({
+      revisionId: 'revision-2',
+      jobId: 'job-2',
+      indexGeneration: 'generation-2'
+    })
+    await processFullTextJob({
+      env,
+      jobId: republished.jobId,
+      tokenizer: async () => fakeTokenizer()
+    })
+
+    await expect(processFullTextJob({
+      env,
+      jobId: 'remove-delayed',
+      tokenizer: async () => fakeTokenizer()
+    })).resolves.toMatchObject({ outcome: 'stale' })
+    expect(db.sqlite.prepare(`
+      SELECT DISTINCT index_generation, published_revision_id
+      FROM full_text_fts WHERE content_id = ?
+    `).all(republished.contentId)).toEqual([{
+      index_generation: republished.indexGeneration,
+      published_revision_id: republished.revisionId
+    }])
+    expect(db.sqlite.prepare(`
+      SELECT status, last_error FROM full_text_job WHERE id = 'remove-delayed'
+    `).get()).toEqual({
+      status: 'stale',
+      last_error: 'Content was republished before index removal'
+    })
   })
 })

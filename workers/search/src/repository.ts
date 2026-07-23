@@ -218,9 +218,10 @@ export async function activateIndexGeneration(
 ) {
   const now = epochSeconds()
   await db.batch([
-    // If publication or field eligibility changed after the last precheck,
-    // this attempts to duplicate the singleton control key and aborts the
-    // entire D1 batch before any active FTS rows are replaced.
+    // If publication, field eligibility, or generation ownership changed
+    // after the last precheck, this attempts to duplicate the singleton
+    // control key and aborts the entire D1 batch before any active FTS rows
+    // are replaced.
     db.prepare(`
       INSERT INTO full_text_control (
         key, tokenizer_generation, query_epoch, status, updated_at
@@ -237,7 +238,25 @@ export async function activateIndexGeneration(
           AND c.status = 'published'
           AND c.published_revision_id = ?
       )
-    `).bind(job.tokenizer_generation, now, job.field_id, job.document_id, job.target_revision_id),
+      OR NOT EXISTS (
+        SELECT 1
+        FROM full_text_index_state state
+        WHERE state.content_id = ?
+          AND state.field_id = ?
+          AND state.building_index_generation = ?
+          AND state.published_revision_id = ?
+      )
+    `).bind(
+      job.tokenizer_generation,
+      now,
+      job.field_id,
+      job.document_id,
+      job.target_revision_id,
+      job.document_id,
+      job.field_id,
+      job.index_generation,
+      job.target_revision_id
+    ),
     db.prepare(`
       DELETE FROM full_text_fts WHERE content_id = ? AND field_id = ?
     `).bind(job.document_id, job.field_id),
@@ -306,21 +325,64 @@ export async function activateIndexGeneration(
 export async function removeContentIndex(db: D1Database, job: FullTextJobRow) {
   const now = epochSeconds()
   await db.batch([
-    db.prepare(`DELETE FROM full_text_fts WHERE content_id = ?`).bind(job.document_id),
-    db.prepare(`DELETE FROM full_text_chunk WHERE content_id = ?`).bind(job.document_id),
-    db.prepare(`DELETE FROM full_text_index_state WHERE content_id = ?`).bind(job.document_id),
+    db.prepare(`
+      DELETE FROM full_text_fts
+      WHERE content_id = ?
+        AND NOT EXISTS (
+          SELECT 1 FROM content current
+          WHERE current.id = ? AND current.status = 'published'
+        )
+    `).bind(job.document_id, job.document_id),
+    db.prepare(`
+      DELETE FROM full_text_chunk
+      WHERE content_id = ?
+        AND NOT EXISTS (
+          SELECT 1 FROM content current
+          WHERE current.id = ? AND current.status = 'published'
+        )
+    `).bind(job.document_id, job.document_id),
+    db.prepare(`
+      DELETE FROM full_text_index_state
+      WHERE content_id = ?
+        AND NOT EXISTS (
+          SELECT 1 FROM content current
+          WHERE current.id = ? AND current.status = 'published'
+        )
+    `).bind(job.document_id, job.document_id),
     db.prepare(`
       UPDATE full_text_job
-      SET status = 'ready', lease_expires_at = NULL, last_error = NULL,
+      SET status = CASE
+            WHEN EXISTS (
+              SELECT 1 FROM content current
+              WHERE current.id = ? AND current.status = 'published'
+            ) THEN 'stale'
+            ELSE 'ready'
+          END,
+          lease_expires_at = NULL,
+          last_error = CASE
+            WHEN EXISTS (
+              SELECT 1 FROM content current
+              WHERE current.id = ? AND current.status = 'published'
+            ) THEN 'Content was republished before index removal'
+            ELSE NULL
+          END,
           updated_at = ?, completed_at = ?
       WHERE id = ? AND status = 'processing'
-    `).bind(now, now, job.id),
+    `).bind(job.document_id, job.document_id, now, now, job.id),
     db.prepare(`
       UPDATE full_text_control
       SET query_epoch = query_epoch + 1, updated_at = ?
       WHERE key = 'singleton'
-    `).bind(now)
+        AND NOT EXISTS (
+          SELECT 1 FROM content current
+          WHERE current.id = ? AND current.status = 'published'
+        )
+    `).bind(now, job.document_id)
   ])
+  const completed = await db.prepare(`
+    SELECT status FROM full_text_job WHERE id = ?
+  `).bind(job.id).first<{ status: string }>()
+  return completed?.status === 'ready' ? 'removed' as const : 'stale' as const
 }
 
 export async function markJobStale(db: D1Database, job: FullTextJobRow, reason: string) {
