@@ -12,6 +12,14 @@ export function extractSearchPlainText(value: unknown, maxBytes = MAX_PLAIN_TEXT
   const parts: string[] = []
   let bytes = 0
   let truncated = false
+  const legacyHtmlText = (text: string) => text
+    .replace(/<(script|style|noscript)\b[^>]*>[\s\S]*?<\/\1\s*>/giu, ' ')
+    .replace(/<[^>]*>/gu, ' ')
+    .replace(/&(?:nbsp|#160);/giu, ' ')
+    .replace(/&(?:amp|#38);/giu, '&')
+    .replace(/&(?:lt|#60);/giu, '<')
+    .replace(/&(?:gt|#62);/giu, '>')
+    .replace(/&(?:quot|#34);/giu, '"')
   const append = (text: string) => {
     const normalized = text.normalize('NFC').replace(/\s+/gu, ' ').trim()
     if (!normalized || truncated) return
@@ -37,7 +45,7 @@ export function extractSearchPlainText(value: unknown, maxBytes = MAX_PLAIN_TEXT
   const visit = (node: unknown, depth: number) => {
     if (truncated || depth > 64 || node == null) return
     if (typeof node === 'string') {
-      append(node)
+      append(legacyHtmlText(node))
       return
     }
     if (Array.isArray(node)) {

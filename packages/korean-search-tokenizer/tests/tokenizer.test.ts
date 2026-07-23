@@ -86,5 +86,9 @@ describe('Korean search tokenizer contract', () => {
       ]
     })
     expect(result).toEqual({ text: '안녕하세요', truncated: false, bytes: 15 })
+    expect(extractSearchPlainText('<p>Hello <strong>학교</strong></p><script>secret()</script>')).toMatchObject({
+      text: 'Hello 학교',
+      truncated: false
+    })
   })
 })

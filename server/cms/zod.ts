@@ -16,7 +16,8 @@ const uiConfig = z.object({
 const searchConfig = z.object({
   mode: z.enum(['off', 'exact', 'range', 'exact_set']).optional(),
   filterable: z.boolean().optional(),
-  sortable: z.boolean().optional()
+  sortable: z.boolean().optional(),
+  fullText: z.boolean().optional()
 }).strict()
 
 const listingConfig = z.object({
@@ -116,6 +117,13 @@ export const fieldNodeSchema = z.object({
   }).strict().optional(),
   system: z.boolean().optional()
 }).strict().superRefine((field, ctx) => {
+  if (field.search?.fullText && !['string', 'text', 'richtext'].includes(field.kind)) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['search', 'fullText'],
+      message: 'Full-text search requires string, text, or richtext kind'
+    })
+  }
   if (field.assetList && field.kind !== 'asset_list') {
     ctx.addIssue({ code: 'custom', path: ['assetList'], message: 'Asset list constraints require asset_list kind' })
   }

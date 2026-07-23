@@ -680,6 +680,6 @@ describe('schema lifecycle', () => {
     expect(db.transaction).not.toHaveBeenCalled()
     expect(db.batch).toHaveBeenCalledOnce()
     expect(db.batch).toHaveBeenCalledWith(statements)
-    expect(statements).toHaveLength(15)
+    expect(statements).toHaveLength(19)
   })
 })

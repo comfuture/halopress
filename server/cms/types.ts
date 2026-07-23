@@ -13,6 +13,7 @@ export type SearchConfig = {
   mode?: 'off' | 'exact' | 'range' | 'exact_set'
   filterable?: boolean
   sortable?: boolean
+  fullText?: boolean
 }
 
 export type ListingConfig = {

@@ -16,6 +16,8 @@ import {
   content,
   contentListing,
   documentAssetRef,
+  fullTextControl,
+  fullTextJob,
   page,
   publicationRevision,
   schema,
@@ -32,7 +34,13 @@ const registry: SchemaRegistry = {
   title: 'Article',
   listing: { titleFieldKey: 'title', imageFieldKey: 'cover' },
   fields: [
-    { fieldId: 'article-title', key: 'title', kind: 'string', title: 'Title' },
+    {
+      fieldId: 'article-title',
+      key: 'title',
+      kind: 'string',
+      title: 'Title',
+      search: { mode: 'off', fullText: true }
+    },
     { fieldId: 'article-cover', key: 'cover', kind: 'asset', title: 'Cover' }
   ],
   relations: []
@@ -191,6 +199,36 @@ describe('publication transitions', () => {
         eq(publicationRevision.documentKind, 'content'),
         eq(publicationRevision.documentId, 'article-1')
       ))).toHaveLength(2)
+      expect(await db.select({
+        operation: fullTextJob.operation,
+        fieldId: fullTextJob.fieldId,
+        targetRevisionId: fullTextJob.targetRevisionId,
+        status: fullTextJob.status
+      }).from(fullTextJob).where(eq(fullTextJob.documentId, 'article-1'))
+        .orderBy(asc(fullTextJob.createdAt))).toEqual([
+        {
+          operation: 'index',
+          fieldId: 'article-title',
+          targetRevisionId: firstRevisionId,
+          status: 'pending'
+        },
+        {
+          operation: 'index',
+          fieldId: 'article-title',
+          targetRevisionId: revisions.find((revision: any) => revision.id !== firstRevisionId)!.id,
+          status: 'pending'
+        },
+        {
+          operation: 'remove',
+          fieldId: '*',
+          targetRevisionId: revisions.find((revision: any) => revision.id !== firstRevisionId)!.id,
+          status: 'pending'
+        }
+      ])
+      expect(await db.select({
+        queryEpoch: fullTextControl.queryEpoch
+      }).from(fullTextControl).where(eq(fullTextControl.key, 'singleton')).get())
+        .toEqual({ queryEpoch: 4 })
     } finally {
       fixture.close()
     }

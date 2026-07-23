@@ -37,6 +37,7 @@ type FieldNode = {
     mode?: 'off' | 'exact' | 'range' | 'exact_set'
     filterable?: boolean
     sortable?: boolean
+    fullText?: boolean
   }
   rel?: {
     kind: 'ref' | 'ref_list' | 'poly_ref' | 'asset_ref'
@@ -166,7 +167,7 @@ const SYSTEM_FIELDS: FieldNode[] = [
     kind: 'datetime',
     title: 'Created at',
     required: false,
-    search: { mode: 'off', filterable: false, sortable: false },
+    search: { mode: 'off', filterable: false, sortable: false, fullText: false },
     system: true
   },
   {
@@ -175,7 +176,7 @@ const SYSTEM_FIELDS: FieldNode[] = [
     kind: 'datetime',
     title: 'Updated at',
     required: false,
-    search: { mode: 'off', filterable: false, sortable: false },
+    search: { mode: 'off', filterable: false, sortable: false, fullText: false },
     system: true
   }
 ]
@@ -189,7 +190,7 @@ function createDefaultTitleField(): FieldNode {
     kind: 'string',
     title: 'Title',
     required: false,
-    search: { mode: 'off', filterable: false, sortable: false },
+    search: { mode: 'off', filterable: false, sortable: false, fullText: false },
     system: false
   }
 }
@@ -422,7 +423,7 @@ const fieldDraft = reactive<any>({
   description: '',
   required: false,
   enumValues: [] as any[],
-  search: { mode: 'off', filterable: false, sortable: false },
+  search: { mode: 'off', filterable: false, sortable: false, fullText: false },
   relTarget: 'system:User',
   relCardinality: 'one',
   minItems: 0,
@@ -438,7 +439,7 @@ const editDraft = reactive<any>({
   description: '',
   required: false,
   enumValues: [] as any[],
-  search: { mode: 'off', filterable: false, sortable: false },
+  search: { mode: 'off', filterable: false, sortable: false, fullText: false },
   relTarget: 'system:User',
   relCardinality: 'one',
   minItems: 0,
@@ -579,6 +580,7 @@ const searchModeOptionsByKind: Record<string, Array<{ label: string; value: stri
 
 const filterableKinds = new Set(['string', 'text', 'url', 'enum', 'boolean', 'number', 'integer', 'date', 'datetime'])
 const sortableKinds = new Set(['string', 'url', 'enum', 'boolean', 'number', 'integer', 'date', 'datetime'])
+const fullTextKinds = new Set(['string', 'text', 'richtext'])
 
 function fieldOptionsByKind(kinds: FieldKind[]) {
   return state.fields
@@ -626,11 +628,12 @@ function defaultSearchMode(kind: string) {
 }
 
 function normalizeSearchDraft(draft: any) {
-  if (!draft.search) draft.search = { mode: 'off', filterable: false, sortable: false }
+  if (!draft.search) draft.search = { mode: 'off', filterable: false, sortable: false, fullText: false }
   const allowed = getSearchModeOptions(draft.kind).map(o => o.value)
   if (!allowed.includes(draft.search.mode)) draft.search.mode = 'off'
   if (!filterableKinds.has(draft.kind)) draft.search.filterable = false
   if (!sortableKinds.has(draft.kind)) draft.search.sortable = false
+  if (!fullTextKinds.has(draft.kind)) draft.search.fullText = false
   if (draft.search.mode === 'off') {
     draft.search.filterable = false
     draft.search.sortable = false
@@ -696,7 +699,7 @@ function openNewField() {
     description: '',
     required: false,
     enumValues: [],
-    search: { mode: 'off', filterable: false, sortable: false },
+    search: { mode: 'off', filterable: false, sortable: false, fullText: false },
     relTarget: 'system:User',
     relCardinality: 'one',
     minItems: 0,
@@ -718,7 +721,7 @@ function startEditField(index: number) {
     description: cloned.description ?? '',
     required: !!cloned.required,
     enumValues: cloned.enumValues ?? [],
-    search: cloned.search ?? { mode: 'off', filterable: false, sortable: false },
+    search: cloned.search ?? { mode: 'off', filterable: false, sortable: false, fullText: false },
     relTarget: cloned.rel?.target ?? 'system:User',
     relCardinality: cloned.rel?.cardinality ?? 'one',
     minItems: cloned.assetList?.minItems ?? 0,
@@ -790,7 +793,7 @@ function normalizeFieldDraft(draft: any) {
 
   if (next.search) {
     normalizeSearchDraft(next)
-    if (next.search.mode === 'off' && !next.search.filterable && !next.search.sortable) {
+    if (next.search.mode === 'off' && !next.search.filterable && !next.search.sortable && !next.search.fullText) {
       delete next.search
     }
   }
@@ -1304,7 +1307,7 @@ async function confirmPublish() {
               <legend class="mb-4 text-sm font-medium text-highlighted">
                 Basic information
               </legend>
-              <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <UFormField name="key" label="Key" help="JSON key (a-zA-Z0-9_)" required>
                   <UInput
                     v-model="fieldDraft.key"
@@ -1351,6 +1354,12 @@ async function confirmPublish() {
                   <USwitch
                     v-model="fieldDraft.search.sortable"
                     :disabled="!sortableKinds.has(fieldDraft.kind) || fieldDraft.search.mode === 'off'"
+                  />
+                </UFormField>
+                <UFormField label="Full-text" help="Lazy Korean keyword indexing for published content.">
+                  <USwitch
+                    v-model="fieldDraft.search.fullText"
+                    :disabled="!fullTextKinds.has(fieldDraft.kind)"
                   />
                 </UFormField>
               </div>
@@ -1460,7 +1469,7 @@ async function confirmPublish() {
               <legend class="mb-4 text-sm font-medium text-highlighted">
                 Basic information
               </legend>
-              <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <UFormField name="key" label="Key" help="JSON key (a-zA-Z0-9_)" required>
                   <UInput
                     v-model="editDraft.key"
@@ -1508,6 +1517,12 @@ async function confirmPublish() {
                   <USwitch
                     v-model="editDraft.search.sortable"
                     :disabled="!sortableKinds.has(editDraft.kind) || editDraft.search.mode === 'off'"
+                  />
+                </UFormField>
+                <UFormField label="Full-text" help="Lazy Korean keyword indexing for published content.">
+                  <USwitch
+                    v-model="editDraft.search.fullText"
+                    :disabled="!fullTextKinds.has(editDraft.kind)"
                   />
                 </UFormField>
               </div>

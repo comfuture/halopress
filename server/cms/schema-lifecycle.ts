@@ -10,6 +10,10 @@ import {
   contentSearchData,
   documentAssetRef,
   documentRevision,
+  fullTextChunk,
+  fullTextFts,
+  fullTextIndexState,
+  fullTextJob,
   layoutReference,
   publicationRevision,
   publicRoute,
@@ -83,7 +87,11 @@ export async function getSchemaDependencyImpact(db: Db, schemaKey: string) {
     permissions,
     publicationRevisions,
     documentRevisions,
-    assetReferences
+    assetReferences,
+    fullTextJobs,
+    fullTextIndexStates,
+    fullTextChunks,
+    fullTextRows
   ] = await Promise.all([
     countWhere(db, schemaTable, eq(schemaTable.schemaKey, schemaKey)),
     countWhere(db, schemaDraft, eq(schemaDraft.schemaKey, schemaKey)),
@@ -119,7 +127,11 @@ export async function getSchemaDependencyImpact(db: Db, schemaKey: string) {
     countWhere(db, documentAssetRef, and(
       eq(documentAssetRef.documentKind, 'content'),
       sql`${documentAssetRef.documentId} in (${ownedContent})`
-    ))
+    )),
+    countWhere(db, fullTextJob, eq(fullTextJob.schemaKey, schemaKey)),
+    countWhere(db, fullTextIndexState, eq(fullTextIndexState.schemaKey, schemaKey)),
+    countWhere(db, fullTextChunk, eq(fullTextChunk.schemaKey, schemaKey)),
+    countWhere(db, fullTextFts, eq(fullTextFts.schemaKey, schemaKey))
   ])
 
   const status = (lifecycle?.status ?? 'never-published') as SchemaLifecycleStatus
@@ -153,7 +165,11 @@ export async function getSchemaDependencyImpact(db: Db, schemaKey: string) {
       permissions,
       publicationRevisions,
       documentRevisions,
-      assetReferences
+      assetReferences,
+      fullTextJobs,
+      fullTextIndexStates,
+      fullTextChunks,
+      fullTextRows
     },
     blockers,
     canDelete: blockers.length === 0,
@@ -266,6 +282,14 @@ export async function deleteSchemaResidue(
       .where(guardedWhere(eq(publicRoute.schemaKey, schemaKey), guard)), statements)
     await executeDbStatement(tx.delete(contentSearchData)
       .where(guardedWhere(sql`${contentSearchData.contentId} in (${ownedContent})`, guard)), statements)
+    await executeDbStatement(tx.delete(fullTextFts)
+      .where(guardedWhere(eq(fullTextFts.schemaKey, schemaKey), guard)), statements)
+    await executeDbStatement(tx.delete(fullTextChunk)
+      .where(guardedWhere(eq(fullTextChunk.schemaKey, schemaKey), guard)), statements)
+    await executeDbStatement(tx.delete(fullTextIndexState)
+      .where(guardedWhere(eq(fullTextIndexState.schemaKey, schemaKey), guard)), statements)
+    await executeDbStatement(tx.delete(fullTextJob)
+      .where(guardedWhere(eq(fullTextJob.schemaKey, schemaKey), guard)), statements)
     await executeDbStatement(tx.delete(contentRef)
       .where(guardedWhere(or(
         sql`${contentRef.contentId} in (${ownedContent})`,

@@ -16,6 +16,9 @@ import {
 import { notFound } from '../utils/http'
 import { revisionConflict } from './document-revisions'
 import { publishSchemaCollectionRoute } from './public-routes'
+import type { SchemaRegistry } from './types'
+import { syncSearchConfig } from './search-config'
+import { bumpFullTextQueryEpoch, enqueueSchemaFullTextSync } from './full-text-jobs'
 
 function errorMessages(error: unknown) {
   const messages: string[] = []
@@ -74,7 +77,7 @@ export async function commitSchemaPublication(args: {
   ast: unknown
   jsonSchema: unknown
   uiSchema: unknown
-  registry: unknown
+  registry: SchemaRegistry
   note: string | null
   actorId: string | null
   layoutId: string | null
@@ -119,6 +122,21 @@ export async function commitSchemaPublication(args: {
         canWrite: false,
         canAdmin: false
       }).onConflictDoNothing(), statements)
+
+      await syncSearchConfig({
+        db: tx,
+        schemaKey: args.schemaKey,
+        registry: args.registry,
+        statements
+      })
+      await enqueueSchemaFullTextSync({
+        db: tx,
+        statements,
+        schemaKey: args.schemaKey,
+        schemaVersion: args.version,
+        now: args.now
+      })
+      await bumpFullTextQueryEpoch({ db: tx, statements, now: args.now })
 
       await publishSchemaCollectionRoute({
         db: tx,
