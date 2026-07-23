@@ -131,8 +131,9 @@ describe('Site Theme app and mode boundaries', () => {
       readFile(resolve(root, 'app/pages/_preview/pages/[id].vue'), 'utf8'),
       readFile(resolve(root, 'app/pages/_preview/content/[schemaKey]/[id].vue'), 'utf8')
     ])
-    expect(appearance).toContain('navigateTo(\'/_desk/site/themes\'')
-    expect(appearance).toContain('redirectCode: 301')
+    expect(appearance).toContain('? \'/_desk/site/themes\'')
+    expect(appearance).toContain(': \'/_desk/site/general#built-in-appearance\'')
+    expect(appearance).toContain('redirectCode: 302')
     expect(appearance).not.toContain('savePatch')
     expect(app).not.toContain('useSitePresentation()')
     expect(app).not.toContain('useSiteTheme()')

@@ -91,14 +91,17 @@ describe('Settings navigation and ownership', () => {
     ].map(async id => [id, await source(`app/pages/_desk/settings/${id}.vue`)])))
 
     expect(routes.site).toContain('\'/_desk/site/general\'')
-    expect(routes.appearance).toContain('\'/_desk/site/themes\'')
+    expect(routes.appearance).toContain('await useFetch<SiteModeAdminResponse>(\'/api/settings/site-mode\'')
+    expect(routes.appearance).toContain('? \'/_desk/site/themes\'')
+    expect(routes.appearance).toContain(': \'/_desk/site/general#built-in-appearance\'')
+    expect(routes.appearance).toContain('redirectCode: 302')
     expect(routes.navigation).toContain('\'/_desk/site/menus\'')
     expect(routes.footer).toContain('\'/_desk/site/general#built-in-footer\'')
     expect(routes.authentication).toContain('\'/_desk/settings/access#authentication\'')
     expect(routes.membership).toContain('path: \'/_desk/settings/access\'')
     expect(routes.membership).toContain('query: route.query')
     expect(routes.membership).toContain('hash: \'#membership\'')
-    for (const redirect of Object.values(routes)) {
+    for (const redirect of Object.values(routes).filter(redirect => redirect !== routes.appearance)) {
       expect(redirect).toContain('redirectCode: 301')
     }
   })
