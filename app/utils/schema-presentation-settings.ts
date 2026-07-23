@@ -36,6 +36,17 @@ export function schemaPresentationForEditor(
   }
 }
 
+export function schemaPresentationFromEditor(
+  value: SchemaPresentation,
+  stored: StoredSchemaPresentation | null | undefined
+): StoredSchemaPresentation {
+  if (stored && stored.slots === undefined && Object.keys(value.slots).length === 0) {
+    const { slots: _syntheticSlots, ...withoutSyntheticSlots } = value
+    return withoutSyntheticSlots
+  }
+  return value
+}
+
 const SLOT_KINDS = {
   title: ['string', 'text'],
   description: ['string', 'text', 'richtext'],
