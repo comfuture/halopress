@@ -137,6 +137,11 @@ if (args[0] === 'queues' && args[1] === 'create') {
 if (args[0] === 'deploy') {
   const configIndex = args.indexOf('--config')
   const isSearchDeploy = configIndex >= 0 && args[configIndex + 1] === process.env.MOCK_SEARCH_CONFIG
+  const nameIndex = args.indexOf('--name')
+  if (isSearchDeploy && !args[nameIndex + 1]) {
+    console.error('search Worker name was not pinned')
+    process.exit(1)
+  }
   if (isSearchDeploy && process.env.MOCK_SEARCH_DEPLOY_FAIL === '1') {
     console.error('mock search deploy failure')
     process.exit(1)
@@ -402,9 +407,109 @@ migrations_dir = "migrations"
     expect(calls.slice(2)).toEqual([
       ['queues', 'info', 'halopress-test-search-index', '--config', fixture.searchConfigPath],
       ['queues', 'create', 'halopress-test-search-index', '--config', fixture.searchConfigPath],
-      ['deploy', '--config', fixture.searchConfigPath],
+      ['deploy', '--config', fixture.searchConfigPath, '--name', 'halopress-test-search'],
       ['deploy', '--config', fixture.configPath]
     ])
+  })
+
+  it('scopes automatic search resources to the configured Worker name', async () => {
+    const fixture = await createFixture(baseConfig({ database_id: 'existing-id' }))
+    const result = await run('bash', [deployScript, '--config', fixture.configPath], {
+      cwd: projectRoot,
+      env: {
+        ...fixture.env,
+        CLOUDFLARE_WORKER_NAME: 'untrusted-build-override'
+      }
+    })
+
+    expect(result).toMatchObject({ code: 0 })
+    const calls = await readCalls(fixture.logPath)
+    expect(calls.slice(-3)).toEqual([
+      ['queues', 'info', 'halopress-test-search-index', '--config', fixture.searchConfigPath],
+      [
+        'deploy',
+        '--config',
+        fixture.searchConfigPath,
+        '--name',
+        'halopress-test-search'
+      ],
+      ['deploy', '--config', fixture.configPath]
+    ])
+
+    const mainConfig = JSON.parse(await readFile(fixture.configPath, 'utf8'))
+    const searchConfig = JSON.parse(await readFile(fixture.searchConfigPath, 'utf8'))
+    expect(mainConfig.name).toBe('halopress-test')
+    expect(mainConfig.queues.producers).toContainEqual({
+      binding: 'SEARCH_INDEX_QUEUE',
+      queue: 'halopress-test-search-index'
+    })
+    expect(mainConfig.services).toContainEqual({
+      binding: 'SEARCH_WORKER',
+      service: 'halopress-test-search'
+    })
+    expect(searchConfig.name).toBe('halopress-test-search')
+    expect(searchConfig.queues.producers[0].queue).toBe('halopress-test-search-index')
+    expect(searchConfig.queues.consumers[0].queue).toBe('halopress-test-search-index')
+  })
+
+  it('respects explicit search resource overrides independently', async () => {
+    const fixture = await createFixture(baseConfig({ database_id: 'existing-id' }))
+    const result = await run('bash', [
+      deployScript,
+      '--config', fixture.configPath,
+      '--name', 'newsroom-main'
+    ], {
+      cwd: projectRoot,
+      env: {
+        ...fixture.env,
+        HALOPRESS_SEARCH_WORKER_NAME: 'shared-search-service',
+        HALOPRESS_SEARCH_QUEUE_NAME: 'newsroom-index-jobs'
+      }
+    })
+
+    expect(result).toMatchObject({ code: 0 })
+    const calls = await readCalls(fixture.logPath)
+    expect(calls.slice(-3)).toEqual([
+      ['queues', 'info', 'newsroom-index-jobs', '--config', fixture.searchConfigPath],
+      [
+        'deploy',
+        '--config',
+        fixture.searchConfigPath,
+        '--name',
+        'shared-search-service'
+      ],
+      ['deploy', '--config', fixture.configPath, '--name', 'newsroom-main']
+    ])
+
+    const mainConfig = JSON.parse(await readFile(fixture.configPath, 'utf8'))
+    const searchConfig = JSON.parse(await readFile(fixture.searchConfigPath, 'utf8'))
+    expect(mainConfig.name).toBe('newsroom-main')
+    expect(mainConfig.queues.producers[0].queue).toBe('newsroom-index-jobs')
+    expect(mainConfig.services[0].service).toBe('shared-search-service')
+    expect(searchConfig.name).toBe('shared-search-service')
+    expect(searchConfig.queues.producers[0].queue).toBe('newsroom-index-jobs')
+    expect(searchConfig.queues.consumers[0].queue).toBe('newsroom-index-jobs')
+  })
+
+  it('keeps derived search resource names within Cloudflare limits', async () => {
+    const fixture = await createFixture(baseConfig({ database_id: 'existing-id' }))
+    const mainName = 'publisher'.repeat(7)
+    const result = await run('bash', [
+      deployScript,
+      '--config', fixture.configPath,
+      '--name', mainName
+    ], {
+      cwd: projectRoot,
+      env: fixture.env
+    })
+
+    expect(result).toMatchObject({ code: 0 })
+    const searchConfig = JSON.parse(await readFile(fixture.searchConfigPath, 'utf8'))
+    const queueName = searchConfig.queues.producers[0].queue as string
+    expect(searchConfig.name).toHaveLength(63)
+    expect(searchConfig.name).toMatch(/-[a-f0-9]{8}-search$/)
+    expect(queueName).toHaveLength(63)
+    expect(queueName).toMatch(/-[a-f0-9]{8}-search-index$/)
   })
 
   it('does not deploy the main Worker when the search Worker deployment fails', async () => {
@@ -416,7 +521,9 @@ migrations_dir = "migrations"
 
     expect(result.code).not.toBe(0)
     const calls = await readCalls(fixture.logPath)
-    expect(calls.at(-1)).toEqual(['deploy', '--config', fixture.searchConfigPath])
+    expect(calls.at(-1)).toEqual([
+      'deploy', '--config', fixture.searchConfigPath, '--name', 'halopress-test-search'
+    ])
     expect(calls).not.toContainEqual(['deploy', '--config', fixture.configPath])
   })
 
@@ -432,7 +539,7 @@ migrations_dir = "migrations"
       ['secret', 'list', '--format', 'json', '--config', fixture.configPath],
       ['d1', 'migrations', 'apply', 'DB', '--remote', '--config', fixture.configPath],
       ['queues', 'info', 'halopress-test-search-index', '--config', fixture.searchConfigPath],
-      ['deploy', '--config', fixture.searchConfigPath],
+      ['deploy', '--config', fixture.searchConfigPath, '--name', 'halopress-test-search'],
       ['deploy', '--config', fixture.configPath]
     ])
     await expect(readFile(fixture.secretMetaPath)).rejects.toThrow()
@@ -457,7 +564,9 @@ migrations_dir = "migrations"
     expect(calls[2]).toEqual([
       'queues', 'info', 'halopress-test-search-index', '--config', fixture.searchConfigPath
     ])
-    expect(calls[3]).toEqual(['deploy', '--config', fixture.searchConfigPath])
+    expect(calls[3]).toEqual([
+      'deploy', '--config', fixture.searchConfigPath, '--name', 'halopress-test-search'
+    ])
     expect(calls[4]?.slice(0, 3)).toEqual(['deploy', '--config', fixture.configPath])
     expect(calls[4]?.filter(argument => argument === '--secrets-file')).toHaveLength(1)
 
@@ -562,18 +671,101 @@ migrations_dir = "migrations"
 
   it('keeps dry-run free of remote provisioning and migration changes', async () => {
     const fixture = await createFixture(baseConfig({}))
+    const originalMainConfig = await readFile(fixture.configPath, 'utf8')
+    const originalSearchConfig = await readFile(fixture.searchConfigPath, 'utf8')
     const result = await run('bash', [deployScript, '--config', fixture.configPath, '--dry-run'], {
       cwd: projectRoot,
-      env: fixture.env
+      env: {
+        ...fixture.env,
+        HALOPRESS_SEARCH_WORKER_NAME: 'temporary-dry-run-search',
+        HALOPRESS_SEARCH_QUEUE_NAME: 'temporary-dry-run-queue'
+      }
     })
 
     expect(result).toMatchObject({ code: 0 })
     expect(result.stdout).toContain('[dry-run]')
     expect(await readCalls(fixture.logPath)).toEqual([
-      ['deploy', '--config', fixture.searchConfigPath, '--dry-run'],
+      ['deploy', '--config', fixture.searchConfigPath, '--name', 'temporary-dry-run-search', '--dry-run'],
       ['deploy', '--config', fixture.configPath, '--dry-run']
     ])
-    expect(JSON.parse(await readFile(fixture.configPath, 'utf8')).d1_databases[0].database_id).toBeUndefined()
+    expect(await readFile(fixture.configPath, 'utf8')).toBe(originalMainConfig)
+    expect(await readFile(fixture.searchConfigPath, 'utf8')).toBe(originalSearchConfig)
+  })
+
+  it('restores both Wrangler files when a dry-run deployment fails', async () => {
+    const fixture = await createFixture(baseConfig({}))
+    const originalMainConfig = await readFile(fixture.configPath, 'utf8')
+    const originalSearchConfig = await readFile(fixture.searchConfigPath, 'utf8')
+    const result = await run('bash', [
+      deployScript,
+      '--config', fixture.configPath,
+      '--name', 'temporary-preview',
+      '--dry-run'
+    ], {
+      cwd: projectRoot,
+      env: {
+        ...fixture.env,
+        MOCK_SEARCH_DEPLOY_FAIL: '1'
+      }
+    })
+
+    expect(result.code).not.toBe(0)
+    expect(await readFile(fixture.configPath, 'utf8')).toBe(originalMainConfig)
+    expect(await readFile(fixture.searchConfigPath, 'utf8')).toBe(originalSearchConfig)
+  })
+
+  it('derives an environment-scoped topology without a name override', async () => {
+    const fixture = await createFixture({
+      name: 'halopress-test',
+      main: 'worker.mjs',
+      compatibility_date: '2026-05-18',
+      env: {
+        staging: {
+          d1_databases: [{
+            binding: 'DB',
+            database_name: 'halopress-staging',
+            migrations_dir: 'migrations',
+            database_id: 'staging-id'
+          }]
+        }
+      }
+    })
+    const result = await run('bash', [
+      deployScript,
+      '--config', fixture.configPath,
+      '--env', 'staging'
+    ], {
+      cwd: projectRoot,
+      env: fixture.env
+    })
+
+    expect(result).toMatchObject({ code: 0 })
+    const common = ['--config', fixture.configPath, '--env', 'staging']
+    expect(await readCalls(fixture.logPath)).toEqual([
+      ['secret', 'list', '--format', 'json', ...common],
+      ['d1', 'migrations', 'apply', 'DB', '--remote', ...common],
+      [
+        'queues',
+        'info',
+        'halopress-test-staging-search-index',
+        '--config',
+        fixture.searchConfigPath
+      ],
+      [
+        'deploy',
+        '--config',
+        fixture.searchConfigPath,
+        '--name',
+        'halopress-test-staging-search'
+      ],
+      ['deploy', ...common]
+    ])
+    const patched = JSON.parse(await readFile(fixture.configPath, 'utf8'))
+    expect(patched.env.staging.name).toBe('halopress-test-staging')
+    expect(patched.env.staging.queues.producers[0].queue)
+      .toBe('halopress-test-staging-search-index')
+    expect(patched.env.staging.services[0].service)
+      .toBe('halopress-test-staging-search')
   })
 
   it('uses environment bindings and forwards config/env/name to the applicable commands', async () => {
@@ -610,12 +802,26 @@ migrations_dir = "migrations"
       ['secret', 'list', '--format', 'json', ...common, '--name', 'halopress-staging-worker'],
       ['d1', 'list', '--json', ...common],
       ['d1', 'migrations', 'apply', 'DB', '--remote', ...common],
-      ['queues', 'info', 'halopress-test-search-index', '--config', fixture.searchConfigPath],
-      ['deploy', '--config', fixture.searchConfigPath],
+      ['queues', 'info', 'halopress-staging-worker-search-index', '--config', fixture.searchConfigPath],
+      [
+        'deploy',
+        '--config',
+        fixture.searchConfigPath,
+        '--name',
+        'halopress-staging-worker-search'
+      ],
       ['deploy', ...common, '--name', 'halopress-staging-worker']
     ])
     const patched = JSON.parse(await readFile(fixture.configPath, 'utf8'))
     expect(patched.env.staging.d1_databases[0].database_id).toBe('staging-id')
+    expect(patched.env.staging.queues.producers).toContainEqual({
+      binding: 'SEARCH_INDEX_QUEUE',
+      queue: 'halopress-staging-worker-search-index'
+    })
+    expect(patched.env.staging.services).toContainEqual({
+      binding: 'SEARCH_WORKER',
+      service: 'halopress-staging-worker-search'
+    })
   })
 
   it('exposes the custom deploy wrapper for Deploy Button detection', async () => {

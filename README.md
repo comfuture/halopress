@@ -213,9 +213,11 @@ HaloPress runs as a Cloudflare Worker with:
 - Worker entry: `.output/server/index.mjs`
 - Automatically managed Worker secret: `NUXT_AUTH_SECRET`
 
-Korean full-text indexing and raw-query tokenization run in the separately
-deployed `halopress-search` Worker. It shares D1 with the main Worker but does not
-receive the main authentication secret. See the
+Korean full-text indexing and raw-query tokenization run in a separately
+deployed search Worker. Its name and Queue default to `<main-worker>-search` and
+`<main-worker>-search-index`, so separate HaloPress deployments in one account do
+not collide. It shares D1 with the main Worker but does not receive the main
+authentication secret. See the
 [full-text search operations guide](docs/full-text-search.md) for topology,
 recovery, quotas, and D1 smoke tests.
 
@@ -259,11 +261,13 @@ Builds. When deployment completes, open the generated `/_install` URL. Start wit
 email/password enabled and create the password administrator first; Google OAuth
 can be added afterward.
 
-The defaults are `halopress` for D1, `halopress-content-assets` for R2,
-`halopress-search` for the auxiliary Worker, and `halopress-search-index` for its
-Queue. Give every resource a site-specific name when one account will host
-multiple HaloPress installations. Keep the main service binding and both Queue
-bindings aligned with the auxiliary configuration.
+The defaults are `halopress` for D1 and `halopress-content-assets` for R2. The
+deployment wrapper derives the auxiliary Worker and Queue names from the effective
+main Worker name selected in the generated Wrangler configuration, by `--name`,
+or by `--env`. Long derived names are shortened deterministically to Cloudflare's
+63-character resource-name limit. Give D1 and R2 site-specific names when one
+account will host multiple HaloPress installations; the wrapper keeps the search
+service and Queue bindings aligned automatically.
 
 ### Deploy from a terminal
 
@@ -296,6 +300,13 @@ D1 preparation and Worker deployment:
 pnpm deploy:cf -- --env staging --config wrangler.staging.jsonc
 ```
 
+An explicit `--name` is authoritative for the main Worker. To pin legacy or
+shared search resource names instead of deriving them, set
+`HALOPRESS_SEARCH_WORKER_NAME` and/or `HALOPRESS_SEARCH_QUEUE_NAME`. Ordinary
+build environment variables do not override the main Worker identity; automatic
+Workers Builds and one-click deployments use the `name` written into their
+Wrangler configuration.
+
 Custom Wrangler configuration files passed to `deploy:cf` must use JSON or JSONC.
 TOML cannot be safely normalized by the deployment preparation step; convert an
 older `wrangler.toml` to `wrangler.jsonc` before deploying.
@@ -308,6 +319,9 @@ migrations:
 ```bash
 pnpm deploy:cf -- --dry-run
 ```
+
+Dry-run topology changes are temporary: both Wrangler files are restored
+byte-for-byte when the command exits, including after a failed dry-run.
 
 Run the preparation step independently for diagnostics:
 

@@ -52,10 +52,13 @@ For a custom main Wrangler file, place the auxiliary file at
 export HALOPRESS_SEARCH_WRANGLER_CONFIG=/absolute/path/to/search.wrangler.jsonc
 ```
 
-For multiple HaloPress sites in one Cloudflare account, give the main Worker,
-search Worker, Queue, D1 database, and R2 bucket site-specific names. Keep the
-main `SEARCH_WORKER.service` equal to the auxiliary Worker name and use the same
-Queue name in both Wrangler files.
+For multiple HaloPress sites in one Cloudflare account, give the main Worker, D1
+database, and R2 bucket site-specific names. The wrapper derives
+`<main-worker>-search` and `<main-worker>-search-index`, updates the main service
+and Queue producer, and updates both auxiliary Queue bindings before deployment.
+`--name` and `--env` participate in the effective main Worker name. Set
+`HALOPRESS_SEARCH_WORKER_NAME` or `HALOPRESS_SEARCH_QUEUE_NAME` only when an
+explicit search resource name must be preserved.
 
 ## Recovery
 
