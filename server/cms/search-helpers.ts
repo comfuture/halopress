@@ -6,6 +6,13 @@ import HorizontalRule from '@tiptap/extension-horizontal-rule'
 import Image from '@tiptap/extension-image'
 import Mention from '@tiptap/extension-mention'
 import { generateHTML } from '@tiptap/html/server'
+import {
+  FILTERABLE_FIELD_KINDS,
+  FULL_TEXT_FIELD_KINDS,
+  normalizeSearchModeForFieldKind,
+  SEARCH_MODES_BY_FIELD_KIND,
+  SORTABLE_FIELD_KINDS
+} from '../../shared/search-field-capabilities'
 
 type SearchMode = NonNullable<SearchConfig['mode']>
 
@@ -18,50 +25,10 @@ export type NormalizedSearchConfig = {
   fullText: boolean
 }
 
-export const SEARCH_MODES_BY_KIND: Record<FieldKind, SearchMode[]> = {
-  string: ['off', 'exact', 'exact_set'],
-  text: ['off', 'exact', 'exact_set'],
-  richtext: ['off'],
-  url: ['off', 'exact', 'exact_set'],
-  enum: ['off', 'exact', 'exact_set'],
-  boolean: ['off', 'exact', 'exact_set'],
-  number: ['off', 'exact', 'range'],
-  integer: ['off', 'exact', 'range'],
-  date: ['off', 'exact', 'range'],
-  datetime: ['off', 'exact', 'range'],
-  reference: ['off'],
-  asset: ['off'],
-  asset_list: ['off']
-}
-
-export const FILTERABLE_KINDS = new Set<FieldKind>([
-  'string',
-  'text',
-  'url',
-  'enum',
-  'boolean',
-  'number',
-  'integer',
-  'date',
-  'datetime'
-])
-
-export const SORTABLE_KINDS = new Set<FieldKind>([
-  'string',
-  'url',
-  'enum',
-  'boolean',
-  'number',
-  'integer',
-  'date',
-  'datetime'
-])
-
-export const FULL_TEXT_KINDS = new Set<FieldKind>([
-  'string',
-  'text',
-  'richtext'
-])
+export const SEARCH_MODES_BY_KIND = SEARCH_MODES_BY_FIELD_KIND as Record<FieldKind, SearchMode[]>
+export const FILTERABLE_KINDS = FILTERABLE_FIELD_KINDS as Set<FieldKind>
+export const SORTABLE_KINDS = SORTABLE_FIELD_KINDS as Set<FieldKind>
+export const FULL_TEXT_KINDS = FULL_TEXT_FIELD_KINDS as Set<FieldKind>
 
 const ServerImageUpload = Node.create({
   name: 'imageUpload',
@@ -98,9 +65,7 @@ export function searchDataTypeForKind(kind: FieldKind): SearchDataType | null {
 }
 
 export function normalizeSearchMode(kind: FieldKind, mode?: SearchMode): SearchMode {
-  const allowed = SEARCH_MODES_BY_KIND[kind] ?? ['off']
-  if (mode && allowed.includes(mode)) return mode
-  return 'off'
+  return normalizeSearchModeForFieldKind(kind, mode)
 }
 
 export function normalizeSearchConfig(field: SchemaRegistry['fields'][number]): NormalizedSearchConfig {

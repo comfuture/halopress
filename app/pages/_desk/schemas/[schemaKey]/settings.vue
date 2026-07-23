@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { BreadcrumbItem, NavigationMenuItem } from '@nuxt/ui'
-import { z } from 'zod'
+import type { SchemaPresentation } from '~/utils/schema-presentation-settings'
+import type { SchemaSearchField } from '~/utils/schema-search-configuration'
 
 definePageMeta({
   layout: 'desk'
@@ -19,32 +20,13 @@ type RolePermission = {
   locked?: boolean
 }
 
-type LifecycleImpact = {
-  schemaKey: string
-  status: 'active' | 'inactive' | 'never-published'
-  activeVersion: number | null
-  deactivatedAt: string | null
-  deactivatedBy: string | null
-  reactivatedAt: string | null
-  reactivatedBy: string | null
-  counts: {
-    contentTotal: number
-    contentByStatus: Record<string, number>
-    versions: number
-    drafts: number
-    inboundReferences: number
-    outboundReferences: number
-    listings: number
-    searchConfig: number
-    searchProjections: number
-    permissions: number
-    publicationRevisions: number
-    documentRevisions: number
-    assetReferences: number
-  }
-  blockers: string[]
-  canDelete: boolean
-  canPurge: boolean
+const DEFAULT_PRESENTATION: SchemaPresentation = {
+  contractVersion: 1,
+  preset: 'generic',
+  collectionTemplate: 'list',
+  detailTemplate: 'document',
+  structuredDataType: 'WebPage',
+  slots: {}
 }
 
 const route = useRoute()
@@ -72,158 +54,101 @@ const toolbarItems = computed<NavigationMenuItem[]>(() => ([
 
 const breadcrumbItems = computed<BreadcrumbItem[]>(() => ([
   { label: 'Schemas', to: '/_desk/schemas' },
-  { label: schemaKey.value }
+  { label: schemaKey.value },
+  { label: 'Settings' }
 ]))
 
-const fetchUrl = computed(() => `/api/schema/${schemaKey.value}/roles`)
-const { data, pending, refresh } = await useFetch<{ items: RolePermission[] }>(fetchUrl, {
+const {
+  ast,
+  published,
+  pending: draftPending,
+  status: draftStatus,
+  error: draftError,
+  saving: draftSaving,
+  isDirty: draftDirty,
+  differsFromPublished,
+  conflict,
+  save: saveDraftSettings,
+  reloadLatest
+} = await useSchemaSettingsDraft(schemaKey, () => !isNew.value)
+
+useUnsavedNavigationGuard(draftDirty, 'You have unsaved Schema Settings changes. Leave and discard them?')
+
+const fields = computed<SchemaSearchField[]>({
+  get: () => (ast.value?.fields ?? []) as SchemaSearchField[],
+  set: value => {
+    if (ast.value) ast.value.fields = value
+  }
+})
+
+const presentation = computed<SchemaPresentation>({
+  get: () => (ast.value?.presentation ?? DEFAULT_PRESENTATION) as SchemaPresentation,
+  set: value => {
+    if (ast.value) ast.value.presentation = value
+  }
+})
+
+async function saveSettings() {
+  try {
+    if (await saveDraftSettings()) {
+      toast.add({
+        title: 'Schema Settings saved',
+        description: 'The changes are in the Schema draft and remain unpublished.'
+      })
+    }
+  } catch (error: any) {
+    toast.add({
+      title: 'Failed to save Schema Settings',
+      description: error?.statusMessage || 'Error',
+      color: 'error'
+    })
+  }
+}
+
+async function confirmReloadLatest() {
+  if (draftDirty.value) {
+    const accepted = await confirm({
+      title: 'Reload the latest Schema draft?',
+      body: 'Your local presentation and search selections will be discarded.',
+      confirmLabel: 'Reload latest',
+      confirmColor: 'warning'
+    })
+    if (!accepted) return
+  }
+  await reloadLatest()
+}
+
+const rolesUrl = computed(() => `/api/schema/${schemaKey.value}/roles`)
+const { data: roleData, pending: rolesPending, refresh: refreshRoles } = await useFetch<{ items: RolePermission[] }>(rolesUrl, {
   server: true,
-  immediate: schemaKey.value !== 'new'
+  immediate: !isNew.value
 })
 
 const roles = ref<RolePermission[]>([])
-
-watch(data, (value) => {
+watch(roleData, value => {
   roles.value = value?.items ?? []
 }, { immediate: true })
 
-watch(schemaKey, async (value, prev) => {
-  if (value === prev) return
+watch(schemaKey, async (value, previous) => {
+  if (value === previous) return
   if (!value || value === 'new') {
     roles.value = []
     return
   }
-  await refresh()
+  await refreshRoles()
 })
 
-const saving = reactive<Record<string, boolean>>({})
+const permissionSaving = reactive<Record<string, boolean>>({})
 
-const lifecycleUrl = computed(() => `/api/schema/${schemaKey.value}/lifecycle`)
-const { data: lifecycle, pending: lifecyclePending, refresh: refreshLifecycle } = await useFetch<LifecycleImpact>(lifecycleUrl, {
-  server: true,
-  immediate: schemaKey.value !== 'new'
-})
-const lifecycleAction = ref<'deactivate' | 'reactivate' | 'delete' | 'purge' | null>(null)
-const purgeOpen = ref(false)
-const purgeState = reactive({ confirmation: '' })
-const purgeFormSchema = computed(() => z.object({
-  confirmation: z.string().refine(value => value === schemaKey.value, `Type ${schemaKey.value} to confirm.`)
-}))
-
-const lifecycleStatusLabel = computed(() => {
-  if (lifecycle.value?.status === 'active') return 'Active'
-  if (lifecycle.value?.status === 'inactive') return 'Inactive'
-  return 'Never published'
-})
-
-const lifecycleStatusColor = computed(() => {
-  if (lifecycle.value?.status === 'active') return 'success' as const
-  if (lifecycle.value?.status === 'inactive') return 'warning' as const
-  return 'neutral' as const
-})
-
-const impactItems = computed(() => {
-  const counts = lifecycle.value?.counts
-  if (!counts) return []
-  return [
-    { label: 'Content', value: counts.contentTotal },
-    { label: 'Versions', value: counts.versions },
-    { label: 'Drafts', value: counts.drafts },
-    { label: 'Inbound refs', value: counts.inboundReferences },
-    { label: 'Outbound refs', value: counts.outboundReferences },
-    { label: 'Listings', value: counts.listings },
-    { label: 'Search rows', value: counts.searchProjections },
-    { label: 'Permissions', value: counts.permissions },
-    { label: 'Publication history', value: counts.publicationRevisions },
-    { label: 'Revision history', value: counts.documentRevisions },
-    { label: 'Asset refs', value: counts.assetReferences }
-  ]
-})
-
-async function refreshLifecycleSurfaces() {
-  await Promise.all([refreshLifecycle(), refreshNuxtData()])
-}
-
-async function transitionLifecycle(action: 'deactivate' | 'reactivate') {
-  if (lifecycleAction.value) return
-  const deactivating = action === 'deactivate'
-  const accepted = await confirm({
-    title: deactivating ? 'Deactivate schema?' : 'Reactivate schema?',
-    body: deactivating
-      ? 'Content and history will be preserved, but creation and delivery will stop until reactivation.'
-      : 'The schema will return to Desk content navigation and delivery immediately.',
-    confirmLabel: deactivating ? 'Deactivate' : 'Reactivate',
-    confirmColor: deactivating ? 'warning' : 'primary'
-  })
-  if (!accepted) return
-
-  lifecycleAction.value = action
-  try {
-    await $fetch(`/api/schema/${schemaKey.value}/${action}`, { method: 'POST' })
-    await refreshLifecycleSurfaces()
-    toast.add({
-      title: deactivating ? 'Schema deactivated' : 'Schema reactivated',
-      description: deactivating ? 'Content creation and delivery are now blocked.' : 'Content creation and delivery are available again.'
-    })
-  } catch (err: any) {
-    toast.add({ title: `Failed to ${action} schema`, description: err?.statusMessage || 'Error', color: 'error' })
-  } finally {
-    lifecycleAction.value = null
-  }
-}
-
-async function deleteSchema() {
-  if (!lifecycle.value?.canDelete || lifecycleAction.value) return
-  const accepted = await confirm({
-    title: 'Delete empty schema?',
-    body: 'The empty schema, its versions, draft, permissions, search configuration, and revision metadata will be deleted permanently.',
-    confirmLabel: 'Delete schema',
-    confirmColor: 'error'
-  })
-  if (!accepted) return
-
-  lifecycleAction.value = 'delete'
-  try {
-    await $fetch(`/api/schema/${schemaKey.value}`, { method: 'DELETE' })
-    toast.add({ title: 'Schema deleted' })
-    await navigateTo('/_desk/schemas')
-  } catch (err: any) {
-    toast.add({ title: 'Failed to delete schema', description: err?.data?.impact?.blockers?.join(' ') || err?.statusMessage || 'Error', color: 'error' })
-    await refreshLifecycle()
-  } finally {
-    lifecycleAction.value = null
-  }
-}
-
-function openPurge() {
-  purgeState.confirmation = ''
-  purgeOpen.value = true
-}
-
-async function runPurge() {
-  if (lifecycleAction.value) return
-  lifecycleAction.value = 'purge'
-  try {
-    await $fetch(`/api/schema/${schemaKey.value}/purge`, {
-      method: 'POST',
-      body: { confirmation: purgeState.confirmation }
-    })
-    purgeOpen.value = false
-    toast.add({ title: 'Schema purged' })
-    await navigateTo('/_desk/schemas')
-  } catch (err: any) {
-    toast.add({ title: 'Failed to purge schema', description: err?.statusMessage || 'Error', color: 'error' })
-  } finally {
-    lifecycleAction.value = null
-  }
-}
-
-async function updatePermission(role: RolePermission, key: 'canRead' | 'canWrite' | 'canPublish' | 'canArchive' | 'canDelete' | 'canAdmin', value: boolean) {
-  if (role.locked) return
-  if (saving[role.roleKey]) return
+async function updatePermission(
+  role: RolePermission,
+  key: 'canRead' | 'canWrite' | 'canPublish' | 'canArchive' | 'canDelete' | 'canAdmin',
+  value: boolean
+) {
+  if (role.locked || permissionSaving[role.roleKey]) return
   const previous = role[key]
   role[key] = value
-  saving[role.roleKey] = true
+  permissionSaving[role.roleKey] = true
   try {
     await $fetch(`/api/schema/${schemaKey.value}/roles`, {
       method: 'PATCH',
@@ -237,13 +162,26 @@ async function updatePermission(role: RolePermission, key: 'canRead' | 'canWrite
         canAdmin: role.canAdmin
       }
     })
-  } catch (err: any) {
+  } catch (error: any) {
     role[key] = previous
-    toast.add({ title: 'Failed to update permission', description: err?.statusMessage || 'Error', color: 'error' })
+    toast.add({
+      title: 'Failed to update permission',
+      description: error?.statusMessage || 'Error',
+      color: 'error'
+    })
   } finally {
-    saving[role.roleKey] = false
+    permissionSaving[role.roleKey] = false
   }
 }
+
+const permissionColumns = [
+  ['canRead', 'Read'],
+  ['canWrite', 'Write'],
+  ['canPublish', 'Publish'],
+  ['canArchive', 'Archive'],
+  ['canDelete', 'Delete'],
+  ['canAdmin', 'Admin']
+] as const
 </script>
 
 <template>
@@ -251,10 +189,23 @@ async function updatePermission(role: RolePermission, key: 'canRead' | 'canWrite
     <template #header>
       <DeskNavbar :title="`Schema: ${schemaKey}`">
         <template #title>
-          <div class="flex flex-col min-w-0">
+          <div class="flex min-w-0 flex-col">
             <UBreadcrumb :items="breadcrumbItems" />
-            <span class="text-xs text-muted truncate">Choose who can view, edit, and manage this content type.</span>
+            <span class="truncate text-xs text-muted">Configure public presentation, search behavior, and role access for this content type.</span>
           </div>
+        </template>
+
+        <template #actions>
+          <UButton
+            v-if="!isNew"
+            icon="i-lucide-save"
+            :loading="draftSaving"
+            :disabled="!draftDirty || draftSaving || draftStatus !== 'success'"
+            aria-label="Save Schema Settings draft"
+            @click="saveSettings"
+          >
+            <span class="hidden sm:inline">Save draft Settings</span>
+          </UButton>
         </template>
       </DeskNavbar>
 
@@ -266,7 +217,7 @@ async function updatePermission(role: RolePermission, key: 'canRead' | 'canWrite
               highlight
               highlight-color="primary"
               variant="link"
-              class="w-full data-[orientation=horizontal]:border-b border-default"
+              class="w-full border-default data-[orientation=horizontal]:border-b"
             />
           </div>
         </template>
@@ -274,253 +225,126 @@ async function updatePermission(role: RolePermission, key: 'canRead' | 'canWrite
     </template>
 
     <template #body>
-      <div class="space-y-6">
+      <div class="space-y-8">
         <UAlert
           v-if="isNew"
-          title="Create the schema first"
-          description="Save the schema draft before managing permissions."
+          title="Create the Schema first"
+          description="Save the initial Schema draft before opening its Settings."
           icon="i-lucide-alert-circle"
           variant="subtle"
         />
 
-        <fieldset v-else class="min-w-0 space-y-4">
-          <legend class="text-sm font-semibold text-highlighted">
-            Permissions
-          </legend>
-          <p class="text-xs text-muted">
-            Keep editing, publishing, archiving, deleting, and schema administration separate for each role.
-          </p>
+        <template v-else>
+          <UAlert
+            v-if="conflict"
+            title="A newer Schema draft is available"
+            description="Your local presentation and search selections are preserved. Review them before deciding whether to reload the newer draft."
+            icon="i-lucide-git-compare-arrows"
+            color="warning"
+            variant="subtle"
+          >
+            <template #actions>
+              <UButton color="warning" variant="soft" @click="confirmReloadLatest">Reload latest</UButton>
+              <UButton :to="`/_desk/schemas/${schemaKey}`" color="neutral" variant="outline">Open Schema editor</UButton>
+            </template>
+          </UAlert>
 
-          <div v-if="pending" class="space-y-2">
-            <USkeleton class="h-10 w-full" />
-            <USkeleton class="h-10 w-full" />
-            <USkeleton class="h-10 w-full" />
+          <UAlert
+            v-if="draftError"
+            title="Schema draft unavailable"
+            :description="draftError.statusMessage || 'The Schema draft could not be loaded.'"
+            icon="i-lucide-cloud-off"
+            color="error"
+            variant="subtle"
+          >
+            <template #actions>
+              <UButton color="error" variant="soft" @click="confirmReloadLatest">Retry</UButton>
+            </template>
+          </UAlert>
+
+          <div v-if="draftPending" class="space-y-3" aria-label="Loading Schema Settings">
+            <USkeleton class="h-36 w-full" />
+            <USkeleton class="h-64 w-full" />
+            <USkeleton class="h-48 w-full" />
           </div>
 
-          <div v-else class="overflow-x-auto rounded-lg border border-default">
-            <div class="min-w-[52rem]">
-            <div class="grid grid-cols-[minmax(10rem,1fr)_repeat(6,72px)] items-center gap-2 px-4 py-2 text-xs uppercase tracking-wide text-muted border-b">
-              <span>Role</span>
-              <span class="text-center">Read</span>
-              <span class="text-center">Write</span>
-              <span class="text-center">Publish</span>
-              <span class="text-center">Archive</span>
-              <span class="text-center">Delete</span>
-              <span class="text-center">Admin</span>
-            </div>
-            <div
-              v-for="role in roles"
-              :key="role.roleKey"
-              class="grid grid-cols-[minmax(10rem,1fr)_repeat(6,72px)] items-center gap-2 px-4 py-3 border-b last:border-b-0"
+          <template v-else-if="ast">
+            <UAlert
+              :title="draftDirty ? 'Unsaved Schema draft changes' : differsFromPublished ? 'Saved draft differs from published' : 'Settings match the published Schema'"
+              :description="draftDirty
+                ? 'Save these Settings to create the next immutable Schema draft revision.'
+                : differsFromPublished
+                  ? 'Public routes and active search keep the published configuration until you publish from the Schema editor.'
+                  : 'Any new Settings change will remain draft-only until explicit publication.'"
+              :icon="draftDirty || differsFromPublished ? 'i-lucide-file-pen-line' : 'i-lucide-circle-check'"
+              :color="draftDirty || differsFromPublished ? 'warning' : 'success'"
+              variant="subtle"
             >
-              <div class="min-w-0">
-                <div class="text-sm font-medium truncate">{{ role.title || role.roleKey }}</div>
-                <div class="text-xs text-muted font-mono truncate">{{ role.roleKey }}</div>
-              </div>
-              <div class="flex justify-center">
-                <USwitch
-                  :model-value="role.canRead"
-                  :loading="saving[role.roleKey]"
-                  :disabled="saving[role.roleKey] || role.locked"
-                  :aria-label="`Read permission for ${role.title || role.roleKey}`"
-                  @update:model-value="value => updatePermission(role, 'canRead', value)"
-                />
-              </div>
-              <div class="flex justify-center">
-                <USwitch
-                  :model-value="role.canWrite"
-                  :loading="saving[role.roleKey]"
-                  :disabled="saving[role.roleKey] || role.locked"
-                  :aria-label="`Write permission for ${role.title || role.roleKey}`"
-                  @update:model-value="value => updatePermission(role, 'canWrite', value)"
-                />
-              </div>
-              <div class="flex justify-center">
-                <USwitch
-                  :model-value="role.canPublish"
-                  :loading="saving[role.roleKey]"
-                  :disabled="saving[role.roleKey] || role.locked"
-                  :aria-label="`Publish permission for ${role.title || role.roleKey}`"
-                  @update:model-value="value => updatePermission(role, 'canPublish', value)"
-                />
-              </div>
-              <div class="flex justify-center">
-                <USwitch
-                  :model-value="role.canArchive"
-                  :loading="saving[role.roleKey]"
-                  :disabled="saving[role.roleKey] || role.locked"
-                  :aria-label="`Archive permission for ${role.title || role.roleKey}`"
-                  @update:model-value="value => updatePermission(role, 'canArchive', value)"
-                />
-              </div>
-              <div class="flex justify-center">
-                <USwitch
-                  :model-value="role.canDelete"
-                  :loading="saving[role.roleKey]"
-                  :disabled="saving[role.roleKey] || role.locked"
-                  :aria-label="`Delete permission for ${role.title || role.roleKey}`"
-                  @update:model-value="value => updatePermission(role, 'canDelete', value)"
-                />
-              </div>
-              <div class="flex justify-center">
-                <USwitch
-                  :model-value="role.canAdmin"
-                  :loading="saving[role.roleKey]"
-                  :disabled="saving[role.roleKey] || role.locked"
-                  :aria-label="`Admin permission for ${role.title || role.roleKey}`"
-                  @update:model-value="value => updatePermission(role, 'canAdmin', value)"
-                />
-              </div>
-            </div>
-            </div>
-          </div>
-        </fieldset>
+              <template #actions>
+                <UButton :to="`/_desk/schemas/${schemaKey}`" color="neutral" variant="outline">
+                  Open Schema editor to publish
+                </UButton>
+              </template>
+            </UAlert>
 
-        <fieldset v-if="!isNew" class="rounded-lg border border-default p-4 sm:p-6">
-          <legend class="px-1 text-sm font-semibold text-highlighted">Schema lifecycle</legend>
-          <div class="flex flex-wrap items-start justify-between gap-3">
-            <p class="text-sm text-muted">Retire, restore, or permanently remove this content model with dependency checks.</p>
-            <UBadge
-              :label="lifecycleStatusLabel"
-              :color="lifecycleStatusColor"
-              variant="soft"
+            <CmsSchemaPresentationEditor
+              v-model="presentation"
+              :fields="fields"
+              :schema-key="schemaKey"
+              :published-presentation="published?.ast?.presentation ?? null"
+              :published-version="published?.version ?? null"
+              :draft-differs-from-published="differsFromPublished"
             />
-          </div>
 
-          <div class="mt-5">
-            <div v-if="lifecyclePending" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <USkeleton v-for="index in 4" :key="index" class="h-16" />
+            <USeparator />
+
+            <CmsSchemaSearchConfigurationEditor v-model="fields" />
+          </template>
+
+          <USeparator />
+
+          <fieldset class="min-w-0 space-y-4">
+            <legend class="text-sm font-semibold text-highlighted">Permissions</legend>
+            <p class="text-xs text-muted">
+              Permissions apply immediately and are not included in the Schema draft save state above.
+            </p>
+
+            <div v-if="rolesPending" class="space-y-2" aria-label="Loading Schema permissions">
+              <USkeleton class="h-10 w-full" />
+              <USkeleton class="h-10 w-full" />
+              <USkeleton class="h-10 w-full" />
             </div>
 
-            <div v-else-if="lifecycle" class="space-y-5">
-              <UAlert
-                v-if="lifecycle.status === 'inactive'"
-                title="Creation and delivery are blocked"
-                description="Content, versions, permissions, and revision history remain preserved until reactivation or purge."
-                icon="i-lucide-circle-pause"
-                color="warning"
-                variant="subtle"
-              />
-
-              <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                <div v-for="item in impactItems" :key="item.label" class="rounded-lg border border-default p-3">
-                  <div class="text-xs text-muted">{{ item.label }}</div>
-                  <div class="mt-1 text-lg font-semibold text-highlighted">{{ item.value }}</div>
+            <div v-else class="overflow-x-auto rounded-lg border border-default">
+              <div class="min-w-[52rem]">
+                <div class="grid grid-cols-[minmax(10rem,1fr)_repeat(6,72px)] items-center gap-2 border-b px-4 py-2 text-xs uppercase tracking-wide text-muted">
+                  <span>Role</span>
+                  <span v-for="[, label] in permissionColumns" :key="label" class="text-center">{{ label }}</span>
+                </div>
+                <div
+                  v-for="role in roles"
+                  :key="role.roleKey"
+                  class="grid grid-cols-[minmax(10rem,1fr)_repeat(6,72px)] items-center gap-2 border-b px-4 py-3 last:border-b-0"
+                >
+                  <div class="min-w-0">
+                    <div class="truncate text-sm font-medium">{{ role.title || role.roleKey }}</div>
+                    <div class="truncate font-mono text-xs text-muted">{{ role.roleKey }}</div>
+                  </div>
+                  <div v-for="[key, label] in permissionColumns" :key="key" class="flex justify-center">
+                    <USwitch
+                      :model-value="role[key]"
+                      :loading="permissionSaving[role.roleKey]"
+                      :disabled="permissionSaving[role.roleKey] || role.locked"
+                      :aria-label="`${label} permission for ${role.title || role.roleKey}`"
+                      @update:model-value="value => updatePermission(role, key, value)"
+                    />
+                  </div>
                 </div>
               </div>
-
-              <div v-if="Object.keys(lifecycle.counts.contentByStatus).length" class="flex flex-wrap items-center gap-2">
-                <span class="text-xs text-muted">Content by status</span>
-                <UBadge
-                  v-for="(count, statusKey) in lifecycle.counts.contentByStatus"
-                  :key="statusKey"
-                  color="neutral"
-                  variant="soft"
-                  :label="`${statusKey}: ${count}`"
-                />
-              </div>
-
-              <UAlert
-                v-if="lifecycle.blockers.length"
-                title="Empty-schema deletion is currently blocked"
-                :description="lifecycle.blockers.join(' ')"
-                icon="i-lucide-shield-alert"
-                color="warning"
-                variant="subtle"
-              />
             </div>
-          </div>
-
-          <div class="mt-6 flex flex-wrap justify-end gap-2 border-t border-default pt-4">
-            <UButton
-              v-if="lifecycle?.status === 'active'"
-              color="warning"
-              variant="soft"
-              icon="i-lucide-circle-pause"
-              :loading="lifecycleAction === 'deactivate'"
-              :disabled="!!lifecycleAction"
-              @click="transitionLifecycle('deactivate')"
-            >
-              Deactivate
-            </UButton>
-            <UButton
-              v-else-if="lifecycle?.status === 'inactive'"
-              color="primary"
-              icon="i-lucide-refresh-cw"
-              :loading="lifecycleAction === 'reactivate'"
-              :disabled="!!lifecycleAction"
-              @click="transitionLifecycle('reactivate')"
-            >
-              Reactivate
-            </UButton>
-            <UButton
-              color="error"
-              variant="outline"
-              icon="i-lucide-trash-2"
-              :loading="lifecycleAction === 'delete'"
-              :disabled="!lifecycle?.canDelete || !!lifecycleAction"
-              @click="deleteSchema"
-            >
-              Delete empty schema
-            </UButton>
-            <UButton
-              color="error"
-              icon="i-lucide-bomb"
-              :disabled="!lifecycle?.canPurge || !!lifecycleAction"
-              @click="openPurge"
-            >
-              Purge schema and content
-            </UButton>
-          </div>
-        </fieldset>
+          </fieldset>
+        </template>
       </div>
-
-      <UModal
-        v-model:open="purgeOpen"
-        title="Purge schema and content"
-        description="This permanently removes the schema, all owned content, projections, references, permissions, drafts, and revision history. Assets are retained."
-        :dismissible="lifecycleAction !== 'purge'"
-      >
-        <template #body>
-          <UForm id="schema-purge-form" :schema="purgeFormSchema" :state="purgeState" @submit="runPurge">
-            <UAlert
-              title="This action cannot be undone"
-              :description="`Type ${schemaKey} exactly to confirm the destructive purge.`"
-              icon="i-lucide-triangle-alert"
-              color="error"
-              variant="subtle"
-              class="mb-4"
-            />
-            <UFormField name="confirmation" :label="`Schema key: ${schemaKey}`" required>
-              <UInput
-                v-model="purgeState.confirmation"
-                class="w-full"
-                :placeholder="schemaKey"
-                autocomplete="off"
-                :disabled="lifecycleAction === 'purge'"
-                autofocus
-              />
-            </UFormField>
-          </UForm>
-        </template>
-
-        <template #footer="{ close }">
-          <div class="flex w-full justify-end gap-2">
-            <UButton color="neutral" variant="outline" :disabled="lifecycleAction === 'purge'" @click="close()">
-              Cancel
-            </UButton>
-            <UButton
-              type="submit"
-              form="schema-purge-form"
-              color="error"
-              icon="i-lucide-bomb"
-              :loading="lifecycleAction === 'purge'"
-            >
-              Purge permanently
-            </UButton>
-          </div>
-        </template>
-      </UModal>
     </template>
   </UDashboardPanel>
 </template>

@@ -5,6 +5,13 @@ import type { SortableEvent } from 'sortablejs'
 import { useSortable } from '@vueuse/integrations/useSortable'
 import type { BreadcrumbItem, NavigationMenuItem } from '@nuxt/ui'
 import { isReservedSchemaKey, PUBLIC_PAGE_ROUTE_PREFIX } from '~~/shared/public-routing'
+import {
+  defaultSearchModeForFieldKind,
+  FILTERABLE_FIELD_KINDS,
+  FULL_TEXT_FIELD_KINDS,
+  SEARCH_MODES_BY_FIELD_KIND,
+  SORTABLE_FIELD_KINDS
+} from '~~/shared/search-field-capabilities'
 
 definePageMeta({
   layout: 'desk'
@@ -301,6 +308,8 @@ const isDirty = computed(() => currentAstJson.value !== lastSavedAstJson.value)
 const canSaveDraft = computed(() => !!state.schemaKey && isDirty.value && !saving.value)
 const canPublish = computed(() => !!state.schemaKey && (isDirty.value || hasUnpublishedDraft.value) && !publishing.value)
 
+useUnsavedNavigationGuard(isDirty, 'You have unsaved Schema changes. Leave and discard them?')
+
 const lastSort = ref<{ oldIndex: number | null; newIndex: number | null } | null>(null)
 
 function moveField(from: number, to: number) {
@@ -379,14 +388,15 @@ watch(
       descriptionFieldKey: nextListing?.descriptionFieldKey,
       imageFieldKey: nextListing?.imageFieldKey
     })
-    delete state.presentation.layoutId
-    Object.assign(state.presentation, next.ast?.presentation ?? {
+    const nextPresentation = deepClone(next.ast?.presentation ?? {
       contractVersion: 1,
       preset: 'generic',
       collectionTemplate: 'list',
       detailTemplate: 'document',
       slots: {}
     })
+    for (const key of Object.keys(state.presentation)) delete (state.presentation as Record<string, unknown>)[key]
+    Object.assign(state.presentation, nextPresentation)
     lastSavedAstJson.value = stableStringify(buildAstFromState())
   },
   { immediate: true }
@@ -527,60 +537,23 @@ function getFieldKindIcon(kind: string) {
   return fieldKindIcon[kind] ?? 'i-lucide-square-library'
 }
 
-const searchModeOptionsByKind: Record<string, Array<{ label: string; value: string }>> = {
-  string: [
-    { label: 'Off', value: 'off' },
-    { label: 'Exact', value: 'exact' },
-    { label: 'Exact set', value: 'exact_set' }
-  ],
-  text: [
-    { label: 'Off', value: 'off' },
-    { label: 'Exact', value: 'exact' },
-    { label: 'Exact set', value: 'exact_set' }
-  ],
-  richtext: [
-    { label: 'Off', value: 'off' }
-  ],
-  url: [
-    { label: 'Off', value: 'off' },
-    { label: 'Exact', value: 'exact' },
-    { label: 'Exact set', value: 'exact_set' }
-  ],
-  enum: [
-    { label: 'Off', value: 'off' },
-    { label: 'Exact', value: 'exact' },
-    { label: 'Exact set', value: 'exact_set' }
-  ],
-  boolean: [
-    { label: 'Off', value: 'off' },
-    { label: 'Exact', value: 'exact' },
-    { label: 'Exact set', value: 'exact_set' }
-  ],
-  number: [
-    { label: 'Off', value: 'off' },
-    { label: 'Exact', value: 'exact' },
-    { label: 'Range', value: 'range' }
-  ],
-  integer: [
-    { label: 'Off', value: 'off' },
-    { label: 'Exact', value: 'exact' },
-    { label: 'Range', value: 'range' }
-  ],
-  date: [
-    { label: 'Off', value: 'off' },
-    { label: 'Exact', value: 'exact' },
-    { label: 'Range', value: 'range' }
-  ],
-  datetime: [
-    { label: 'Off', value: 'off' },
-    { label: 'Exact', value: 'exact' },
-    { label: 'Range', value: 'range' }
-  ]
+const searchModeLabel = {
+  off: 'Off',
+  exact: 'Exact',
+  exact_set: 'Exact set',
+  range: 'Range'
 }
 
-const filterableKinds = new Set(['string', 'text', 'url', 'enum', 'boolean', 'number', 'integer', 'date', 'datetime'])
-const sortableKinds = new Set(['string', 'url', 'enum', 'boolean', 'number', 'integer', 'date', 'datetime'])
-const fullTextKinds = new Set(['string', 'text', 'richtext'])
+const searchModeOptionsByKind = Object.fromEntries(
+  Object.entries(SEARCH_MODES_BY_FIELD_KIND).map(([kind, modes]) => [
+    kind,
+    modes.map(value => ({ label: searchModeLabel[value], value }))
+  ])
+)
+
+const filterableKinds = FILTERABLE_FIELD_KINDS
+const sortableKinds = SORTABLE_FIELD_KINDS
+const fullTextKinds = FULL_TEXT_FIELD_KINDS
 
 function fieldOptionsByKind(kinds: FieldKind[]) {
   return state.fields
@@ -620,11 +593,6 @@ const listingPreviewFields = computed(() => ({
 
 function getSearchModeOptions(kind: string) {
   return searchModeOptionsByKind[kind] ?? [{ label: 'Off', value: 'off' }]
-}
-
-function defaultSearchMode(kind: string) {
-  if (kind === 'number' || kind === 'integer' || kind === 'date' || kind === 'datetime') return 'range'
-  return 'exact'
 }
 
 function normalizeSearchDraft(draft: any) {
@@ -849,22 +817,22 @@ watch(() => editDraft.search?.mode, (mode) => {
 
 watch(() => fieldDraft.search?.filterable, (val) => {
   if (!fieldDraft.search) return
-  if (val && fieldDraft.search.mode === 'off') fieldDraft.search.mode = defaultSearchMode(fieldDraft.kind)
+  if (val && fieldDraft.search.mode === 'off') fieldDraft.search.mode = defaultSearchModeForFieldKind(fieldDraft.kind)
 })
 
 watch(() => fieldDraft.search?.sortable, (val) => {
   if (!fieldDraft.search) return
-  if (val && fieldDraft.search.mode === 'off') fieldDraft.search.mode = defaultSearchMode(fieldDraft.kind)
+  if (val && fieldDraft.search.mode === 'off') fieldDraft.search.mode = defaultSearchModeForFieldKind(fieldDraft.kind)
 })
 
 watch(() => editDraft.search?.filterable, (val) => {
   if (!editDraft.search) return
-  if (val && editDraft.search.mode === 'off') editDraft.search.mode = defaultSearchMode(editDraft.kind)
+  if (val && editDraft.search.mode === 'off') editDraft.search.mode = defaultSearchModeForFieldKind(editDraft.kind)
 })
 
 watch(() => editDraft.search?.sortable, (val) => {
   if (!editDraft.search) return
-  if (val && editDraft.search.mode === 'off') editDraft.search.mode = defaultSearchMode(editDraft.kind)
+  if (val && editDraft.search.mode === 'off') editDraft.search.mode = defaultSearchModeForFieldKind(editDraft.kind)
 })
 
 async function addField() {
@@ -1068,14 +1036,14 @@ async function confirmPublish() {
         v-if="active?.status === 'inactive'"
         class="mb-6"
         title="This schema is inactive"
-        description="Its versions and content are preserved, but content creation and delivery stay blocked until an administrator reactivates it in Settings."
+        description="Its versions and content are preserved, but content creation and delivery stay blocked until an administrator reactivates it from the Schema inventory."
         icon="i-lucide-circle-pause"
         color="warning"
         variant="subtle"
       >
         <template #actions>
-          <UButton :to="`/_desk/schemas/${routeKey}/settings`" color="warning" variant="soft">
-            Open lifecycle settings
+          <UButton to="/_desk/schemas" color="warning" variant="soft">
+            Open Schema inventory
           </UButton>
         </template>
       </UAlert>
@@ -1204,12 +1172,19 @@ async function confirmPublish() {
         </UPageList>
       </section>
 
-      <CmsSchemaPresentationEditor
-        v-model="state.presentation"
-        :fields="state.fields"
-        :published-layout-id="active?.ast?.presentation?.layoutId ?? null"
-        :published-version="active?.version ?? null"
-      />
+      <UAlert
+        v-if="!isNew"
+        title="Public presentation is configured in Settings"
+        description="Choose collection and detail behavior, field roles, Layout inheritance, URLs, and discovery metadata without leaving the shared Schema draft."
+        icon="i-lucide-panels-top-left"
+        variant="subtle"
+      >
+        <template #actions>
+          <UButton :to="`/_desk/schemas/${routeKey}/settings`" color="neutral" variant="outline">
+            Open presentation Settings
+          </UButton>
+        </template>
+      </UAlert>
 
       <fieldset class="min-w-0 space-y-4">
         <legend class="text-sm font-semibold text-highlighted">

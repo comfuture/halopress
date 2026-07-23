@@ -14,7 +14,7 @@ describe('Desk product copy', () => {
     ['app/pages/_desk/users/index.vue', 'Control who can access your site and what they can do.'],
     ['app/pages/_desk/schemas/index.vue', 'Define the content types and fields your team can publish.'],
     ['app/pages/_desk/schemas/[schemaKey]/index.vue', 'Set up the fields editors will use, then publish your changes.'],
-    ['app/pages/_desk/schemas/[schemaKey]/settings.vue', 'Choose who can view, edit, and manage this content type.'],
+    ['app/pages/_desk/schemas/[schemaKey]/settings.vue', 'Configure public presentation, search behavior, and role access for this content type.'],
     ['app/pages/_desk/content/[schemaKey]/index.vue', 'Create, review, and publish entries.'],
     ['app/pages/_desk/content/[schemaKey]/new.vue', 'Add the details, then save a draft or publish.'],
     ['app/pages/_desk/assets/index.vue', 'Upload and manage files you can reuse across your site.'],

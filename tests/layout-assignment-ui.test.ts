@@ -169,29 +169,31 @@ describe('Layout assignment editor integration', () => {
   })
 
   it('includes Schema assignment changes in the versioned AST dirty snapshot and publish flow', async () => {
-    const [schema, presentation] = await Promise.all([
+    const [schema, settings, draftContext, presentation] = await Promise.all([
       source('app/pages/_desk/schemas/[schemaKey]/index.vue'),
+      source('app/pages/_desk/schemas/[schemaKey]/settings.vue'),
+      source('app/composables/useSchemaSettingsDraft.ts'),
       source('app/components/cms/SchemaPresentationEditor.vue')
     ])
 
     expect(schema).toContain('layoutId: undefined as string | undefined')
     expect(schema).toMatch(/presentation:\s*deepClone\(state\.presentation\)/)
     expect(schema).toContain('const currentAstJson = computed(() => stableStringify(buildAstFromState()))')
-    expect(schema).toContain('delete state.presentation.layoutId')
-    expect(schema).toContain('<CmsSchemaPresentationEditor')
-    expect(schema).toContain(':published-layout-id="active?.ast?.presentation?.layoutId ?? null"')
-    expect(schema).toContain(':published-version="active?.version ?? null"')
+    expect(schema).toContain('for (const key of Object.keys(state.presentation)) delete')
+    expect(schema).not.toContain('<CmsSchemaPresentationEditor')
+    expect(settings).toContain('<CmsSchemaPresentationEditor')
+    expect(settings).toContain(':published-presentation="published?.ast?.presentation ?? null"')
+    expect(settings).toContain(':published-version="published?.version ?? null"')
     const saveDraft = schema.slice(schema.indexOf('async function saveDraft()'), schema.indexOf('const publishing'))
     expect(saveDraft).toContain('const ast = buildAstFromState()')
     expect(saveDraft).toMatch(/body:\s*\{[^}]*revision:\s*currentRevision\.value[^}]*title:\s*ast\.title[^}]*\bast\b[^}]*layoutId:\s*state\.presentation\.layoutId\s*\?\?\s*null[^}]*\}/s)
+    expect(draftContext).toMatch(/body:\s*\{[^}]*revision:\s*revision\.value[^}]*title:\s*localAst\.title[^}]*ast:\s*localAst[^}]*layoutId:\s*localAst\.presentation\?\.layoutId\s*\?\?\s*null/s)
 
     expect(presentation).toContain('<LayoutAssignmentSelect')
     expect(presentation).toContain('v-model="layoutId"')
     expect(presentation).toContain('else delete next.layoutId')
-    expect(presentation).toContain('...(props.modelValue.layoutId ? { layoutId: props.modelValue.layoutId } : {})')
-    expect(presentation).toContain('Draft and published v${props.publishedVersion} assignments differ.')
-    expect(presentation).toContain('Public routes keep the published version until you publish.')
-    expect(presentation).toContain('follow the current Layout revision')
+    expect(presentation).toContain('Public routes keep their published assignment until then.')
+    expect(presentation).toContain('follows the current revision of the selected Layout')
   })
 
   it('includes Page assignments in dirty snapshots, save/publish payloads, and Inspector plumbing', async () => {
