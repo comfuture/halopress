@@ -61,8 +61,8 @@ export async function processFullTextJob(args: {
 
   try {
     if (job.operation === 'remove') {
-      await removeContentIndex(args.env.DB, job)
-      return { outcome: 'removed' as const, dispatchIds: [] as string[] }
+      const outcome = await removeContentIndex(args.env.DB, job)
+      return { outcome, dispatchIds: [] as string[] }
     }
     if (job.operation === 'schema-sync' || job.operation === 'reindex-sync') {
       const dispatchIds = await reconcileSchemaJobs(args.env.DB, job)
