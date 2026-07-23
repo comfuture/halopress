@@ -9,6 +9,7 @@ export const AUTHORED_DOCUMENT_MAX_DEPTH = 32
 export const AUTHORED_DOCUMENT_MAX_NODES = 2_000
 export const AUTHORED_DOCUMENT_MAX_MARKS = 4_096
 export const AUTHORED_DOCUMENT_MAX_OUTLINE_ENTRIES = 128
+export const AUTHORED_DOCUMENT_MAX_TEXT_LENGTH = 512 * 1024
 
 export type AuthoredOutlineEntry = {
   id: string
@@ -116,6 +117,7 @@ class AuthoredNormalizationBudgetError extends Error {}
 class AuthoredNormalizationBudget {
   nodes = 0
   marks = 0
+  textLength = 0
 
   claimNode(depth: number) {
     this.nodes += 1
@@ -127,6 +129,13 @@ class AuthoredNormalizationBudget {
   claimMark() {
     this.marks += 1
     if (this.marks > AUTHORED_DOCUMENT_MAX_MARKS) {
+      throw new AuthoredNormalizationBudgetError('Authored document normalization budget exceeded')
+    }
+  }
+
+  claimText(value: string) {
+    this.textLength += value.length
+    if (this.textLength > AUTHORED_DOCUMENT_MAX_TEXT_LENGTH) {
       throw new AuthoredNormalizationBudgetError('Authored document normalization budget exceeded')
     }
   }
@@ -341,9 +350,11 @@ function normalizeNode(
       return contextualFallbackNode(type, nodeContext)
     }
     if (type === 'text') {
+      const text = typeof node.text === 'string' ? node.text : ''
+      context.budget.claimText(text)
       return {
         type: 'text',
-        text: typeof node.text === 'string' ? node.text : '',
+        text,
         marks: nodeContext === 'code' ? [] : normalizeMarks(node.marks, context.budget)
       }
     }
@@ -451,6 +462,7 @@ export function normalizeAuthoredDocument(value: unknown, options: NormalizeOpti
   }
   try {
     if (typeof value === 'string') {
+      context.budget.claimText(value)
       return {
         type: 'doc',
         content: [{ type: 'paragraph', content: [{ type: 'text', text: value, marks: [] }] }],

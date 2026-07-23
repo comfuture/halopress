@@ -9,7 +9,10 @@ import { clonePageBlockAttrs } from '../app/editor/page/inspector-state'
 import { commitPageBlockLink, createPageBlockLinkDrafts, movePageBlockLink } from '../app/editor/page/links'
 import { pageBlockRegistry } from '../app/editor/page/registry'
 import { normalizePageContent } from '../server/cms/page-content'
-import { normalizeAuthoredDocument } from '../shared/authored-document'
+import {
+  AUTHORED_DOCUMENT_MAX_TEXT_LENGTH,
+  normalizeAuthoredDocument
+} from '../shared/authored-document'
 import { resolvePageBlock } from '../shared/page-blocks'
 
 describe('page block registry', () => {
@@ -423,6 +426,48 @@ describe('page document renderer', () => {
 
     expect(text.marks).toEqual([{ type: 'bold' }])
     await expect(renderToString(h(SiteTextNode, { node: text }))).resolves.toBe('<strong>Bounded marks</strong>')
+  })
+
+  it('falls back when one authored text node exceeds the shared rendering ceiling', () => {
+    const normalized = normalizeAuthoredDocument({
+      type: 'doc',
+      content: [{
+        type: 'paragraph',
+        content: [{ type: 'text', text: 'x'.repeat(AUTHORED_DOCUMENT_MAX_TEXT_LENGTH + 1) }]
+      }]
+    })
+
+    expect(normalized).toEqual({
+      type: 'doc',
+      content: [{
+        type: 'paragraph',
+        content: [{ type: 'text', text: 'Content exceeds rendering limits', marks: [] }]
+      }],
+      outline: [],
+      truncated: true
+    })
+  })
+
+  it('applies the same text ceiling to legacy strings without changing reasonable content', () => {
+    expect(normalizeAuthoredDocument('Reasonable legacy content')).toEqual({
+      type: 'doc',
+      content: [{
+        type: 'paragraph',
+        content: [{ type: 'text', text: 'Reasonable legacy content', marks: [] }]
+      }],
+      outline: [],
+      truncated: false
+    })
+
+    expect(normalizeAuthoredDocument('x'.repeat(AUTHORED_DOCUMENT_MAX_TEXT_LENGTH + 1))).toEqual({
+      type: 'doc',
+      content: [{
+        type: 'paragraph',
+        content: [{ type: 'text', text: 'Content exceeds rendering limits', marks: [] }]
+      }],
+      outline: [],
+      truncated: true
+    })
   })
 
   it('preserves unknown blocks at storage validation while rejecting non-documents', () => {
