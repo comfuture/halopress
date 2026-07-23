@@ -19,6 +19,11 @@ export type KeywordSearchDatabase = {
   }
 }
 
+export type KeywordSearchAccess = {
+  roleKey: string
+  admin: boolean
+}
+
 export type KeywordSearchFilter =
   | { fieldId: string, op: 'exact', value: string | number }
   | { fieldId: string, op: 'exact_set', values: Array<string | number> }
@@ -351,7 +356,7 @@ function filterSql(filters: KeywordSearchFilter[]) {
   }
 }
 
-function fingerprint(request: KeywordSearchTokenRequest) {
+function fingerprint(request: KeywordSearchTokenRequest, access: KeywordSearchAccess) {
   const value = JSON.stringify({
     rawTerms: request.rawTerms,
     morphTerms: request.morphTerms,
@@ -359,7 +364,9 @@ function fingerprint(request: KeywordSearchTokenRequest) {
     schemaKeys: request.schemaKeys,
     fieldIds: request.fieldIds,
     filters: request.filters,
-    limit: request.limit
+    limit: request.limit,
+    roleKey: access.roleKey,
+    admin: access.admin
   })
   let hash = 0x811c9dc5
   for (const byte of new TextEncoder().encode(value)) {
@@ -397,7 +404,8 @@ function decodeCursor(value: string) {
 
 export async function executeKeywordSearch(
   db: KeywordSearchDatabase,
-  request: KeywordSearchTokenRequest
+  request: KeywordSearchTokenRequest,
+  access: KeywordSearchAccess
 ): Promise<KeywordSearchResponse> {
   const control = await db.prepare(`
     SELECT tokenizer_generation, query_epoch, status
@@ -415,7 +423,7 @@ export async function executeKeywordSearch(
     throw new KeywordSearchError('generation_mismatch', 'Search index generation changed', 409, true)
   }
 
-  const requestFingerprint = fingerprint(request)
+  const requestFingerprint = fingerprint(request, access)
   let offset = 0
   if (request.cursor) {
     const cursor = decodeCursor(request.cursor)
@@ -436,6 +444,28 @@ export async function executeKeywordSearch(
   const filters = filterSql(request.filters)
   const rank = 'bm25(full_text_fts, 0, 0, 0, 0, 0, 0, 0, 8.0, 3.0)'
   const sql = `
+    WITH readable_schema AS (
+      SELECT active.schema_key
+      FROM schema_active active
+      WHERE active.status = 'active'
+        AND (
+          ? = 1
+          OR EXISTS (
+            SELECT 1
+            FROM schema_role gate
+            WHERE gate.schema_key = active.schema_key
+              AND gate.role_key = ?
+              AND (
+                gate.can_read = 1
+                OR gate.can_write = 1
+                OR gate.can_publish = 1
+                OR gate.can_archive = 1
+                OR gate.can_delete = 1
+                OR gate.can_admin = 1
+              )
+          )
+        )
+    )
     SELECT
       c.id,
       c.schema_key,
@@ -462,12 +492,8 @@ export async function executeKeywordSearch(
       ON cl.content_id = c.id
      AND cl.projection_scope = 'published'
      AND cl.status = 'published'
-    JOIN schema_active sa
-      ON sa.schema_key = c.schema_key
-    JOIN schema_role role
-      ON role.schema_key = c.schema_key
-     AND role.role_key = 'anonymous'
-     AND role.can_read = 1
+    JOIN readable_schema access
+      ON access.schema_key = c.schema_key
     JOIN search_config sc
       ON sc.schema_key = c.schema_key
      AND sc.field_id = f.field_id
@@ -493,6 +519,8 @@ export async function executeKeywordSearch(
     LIMIT ? OFFSET ?
   `
   const rows = await db.prepare(sql).bind(
+    access.admin ? 1 : 0,
+    access.roleKey,
     request.tokenizerGeneration,
     match,
     ...outerSelection.params,
