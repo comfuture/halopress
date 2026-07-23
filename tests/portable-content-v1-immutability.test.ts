@@ -74,6 +74,22 @@ describe('portable content v1 immutability', () => {
               type: 'listItem',
               content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Nested bare' }] }]
             }]
+          },
+          {
+            type: 'pageBlock',
+            attrs: {
+              component: 'pageHero',
+              props: { title: 'Tracked block' },
+              media: { url: 'https://tracker.example/block.png', alt: 'Tracker' }
+            }
+          },
+          {
+            type: 'pageBlock',
+            attrs: {
+              component: 'pageLogos',
+              props: { title: 'Logos', items: [{ name: 'Private', src: '/api/private/logo' }] },
+              media: {}
+            }
           }
         ]
       }, { origin }),
@@ -101,7 +117,7 @@ describe('portable content v1 immutability', () => {
       malformed: '36ebcfd26f0f2c14b69866dff0ecabaf1b3bea2745c8d744a3452b4b09b051e9:887',
       legacy: 'c26c9ca1a2ad7dd93e56b53937b5c40feaf5b24f0e3b840c174ac26522192378:496',
       structuralV1: '30cdc342337f85d766ffbb30e6f557655dda70b4ff8e1cccb9a773e376541bb6:441',
-      reviewBoundaries: 'bbf785ba517272d5e4dbe9a04406d877ceede4f848956a8ecfdcb356674da9c7:831',
+      reviewBoundaries: '95fa232f55ef2e43028764d7910b5f8d6e486f43efa3c3e17267c8600ba469a4:1734',
       budget: '9eab5aabe0ea978f9137823874551988a0b4a08b0b1f006377042270dddf0dfe:463',
       structured: 'cd5f4bc46eb4d3b634656aebb194e450681a0ddf05224b5c4d6e1ce5fbcf37f7:653'
     })

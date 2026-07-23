@@ -263,6 +263,62 @@ describe('page document renderer', () => {
     ])
   })
 
+  it('filters every non-canonical native Page-block image without mutating raw JSON', () => {
+    const document = {
+      type: 'doc',
+      content: [
+        {
+          type: 'pageBlock',
+          attrs: {
+            component: 'pageHero',
+            props: { title: 'Tracked media' },
+            media: { url: 'https://tracker.example/pixel.png', alt: 'Tracker' }
+          }
+        },
+        {
+          type: 'pageBlock',
+          attrs: {
+            component: 'pageLogos',
+            props: {
+              title: 'Logos',
+              items: [
+                { name: 'Private', src: '/api/private/logo', alt: 'Private logo' },
+                { name: 'Owned', src: '/assets/owned-logo/raw', alt: 'Owned logo' }
+              ]
+            },
+            media: {}
+          }
+        }
+      ]
+    }
+    const before = structuredClone(document)
+    const normalized = normalizeAuthoredDocument(document, { allowPageBlocks: true })
+
+    expect(document).toEqual(before)
+    expect(normalized.content[0]).toMatchObject({
+      type: 'pageBlock',
+      attrs: {
+        component: 'pageHero',
+        props: { title: 'Tracked media' },
+        media: { alt: 'Tracker' }
+      }
+    })
+    expect(normalized.content[1]).toMatchObject({
+      type: 'pageBlock',
+      attrs: {
+        component: 'pageLogos',
+        props: {
+          items: [
+            { name: 'Private', alt: 'Private logo' },
+            { name: 'Owned', src: '/assets/owned-logo/raw', alt: 'Owned logo' }
+          ]
+        }
+      }
+    })
+    expect(JSON.stringify(normalized)).not.toContain('tracker.example')
+    expect(JSON.stringify(normalized)).not.toContain('/api/private/logo')
+  })
+
   it('accepts listItem only as a direct child of a list', () => {
     const item = {
       type: 'listItem',
@@ -399,14 +455,17 @@ describe('page document renderer', () => {
     expect(renderer).not.toContain('ring-2')
   })
 
-  it('uses the native renderer for editor preview without an iframe or executable HTML path', async () => {
+  it('uses the native renderer for editor preview without a standalone compatibility mode', async () => {
     const root = resolve(import.meta.dirname, '..')
     const renderer = await readFile(resolve(root, 'app/components/PageDocumentRenderer.vue'), 'utf8')
+    const editor = await readFile(resolve(root, 'app/components/PageEditor.vue'), 'utf8')
 
-    expect(renderer).toContain('data-site-document-isolated')
+    expect(renderer).not.toContain('isolated')
     expect(renderer).not.toContain('<iframe')
     expect(renderer).not.toContain('srcdoc')
     expect(renderer).not.toContain('v-html')
+    expect(editor).toContain('<PageDocumentRenderer')
+    expect(editor).not.toMatch(/<PageDocumentRenderer[\s\S]{0,200}\sisolated(?:\s|>)/)
   })
 
   it('maps rich atomic blocks to code-owned renderers and visible media placeholders', async () => {

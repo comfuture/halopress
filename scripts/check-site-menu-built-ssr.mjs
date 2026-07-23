@@ -304,6 +304,22 @@ function seedSql() {
       {
         type: 'listItem',
         content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Bare list item must fall back' }] }]
+      },
+      {
+        type: 'pageBlock',
+        attrs: {
+          component: 'pageHero',
+          props: { title: 'Built tracked block' },
+          media: { url: 'https://tracker.example/block.png', alt: 'Blocked block media' }
+        }
+      },
+      {
+        type: 'pageBlock',
+        attrs: {
+          component: 'pageLogos',
+          props: { title: 'Built private logos', items: [{ name: 'Private logo', src: '/api/private/logo' }] },
+          media: {}
+        }
       }
     ]
   })
@@ -763,11 +779,47 @@ async function assertThemeDelivery(origin, stateDirectory, stateArgs) {
   assert.ok(!page.rendering.html.includes('data-halo-color-mode'))
   assert.ok(!page.rendering.html.includes('tracker.example'))
   assert.ok(!page.rendering.html.includes('/api/private/image'))
-  assert.ok(!page.rendering.html.includes('<li'), 'Standalone v2 must not emit a bare list item')
+  assert.ok(!page.rendering.html.includes('/api/private/logo'))
+  assert.ok(
+    !/<li(?:\s|>)[\s\S]*Bare list item must fall back/.test(page.rendering.html),
+    'Standalone v2 must not emit the rejected bare list item'
+  )
   assert.ok(!page.rendering.html.includes('Bare list item must fall back'))
   assert.equal(page.content.content[1].content[0].text, 'Built standalone delivery')
   assert.equal(page.content.content[2].type, 'pageHero')
+  assert.equal(page.content.content[6].attrs.media.url, 'https://tracker.example/block.png')
+  assert.equal(page.content.content[7].attrs.props.items[0].src, '/api/private/logo')
   return manifest
+}
+
+async function assertThemeArtifactPreview(origin, themeManifest) {
+  const cookie = await authenticatedCookie('127.0.0.1')
+  const anonymous = await fetch(`${origin}/api/preview/site-theme-artifact`)
+  assert.ok([401, 403].includes(anonymous.status), 'Anonymous Theme artifact preview must not resolve')
+
+  const response = await fetch(`${origin}/api/preview/site-theme-artifact`, {
+    headers: { Cookie: cookie, Accept: 'text/html' }
+  })
+  const html = await response.text()
+  assert.equal(response.status, 200, 'Expected authenticated published Theme artifact preview')
+  assert.match(response.headers.get('content-type') ?? '', /^text\/html/)
+  assert.equal(response.headers.get('cache-control'), 'private, no-store')
+  assert.match(response.headers.get('vary') ?? '', /Cookie/i)
+  assert.match(response.headers.get('x-robots-tag') ?? '', /noindex/i)
+  assert.match(response.headers.get('content-security-policy') ?? '', /frame-ancestors 'self'/)
+  assert.ok(html.startsWith('<!doctype html>'))
+  assert.ok(html.includes('data-halo-contract-version="1"'))
+  assert.ok(html.includes('data-halo-color-mode="dark"'))
+  assert.ok(html.includes('/_halo/content/v1/'))
+  assert.ok(html.includes(new URL(themeManifest.stylesheetUrl).pathname))
+  assert.ok(html.includes('A portable HaloPress page'))
+  assert.ok(!html.includes('<script'))
+
+  const themesResponse = await fetch(`${origin}/_desk/site/themes`, { headers: { Cookie: cookie } })
+  const themesHtml = await themesResponse.text()
+  assert.equal(themesResponse.status, 200, 'Expected authenticated Themes editor SSR')
+  assert.ok(themesHtml.includes('src="/api/preview/site-theme-artifact"'))
+  assert.ok(themesHtml.includes('data-site-theme-artifact-preview'))
 }
 
 async function setPersistedThemeMode(stateDirectory, stateArgs, colorMode) {
@@ -787,8 +839,12 @@ async function assertBuiltPageMode(origin, expectedMode) {
   assert.ok(html.includes('Built standalone delivery'), 'Expected the native Site renderer to render raw Page JSON')
   assert.ok(!/<img[^>]+src="https:\/\/tracker\.example\/pixel\.png"/.test(html), 'Native Site SSR must reject external authored image sources')
   assert.ok(!/<img[^>]+src="\/api\/private\/image"/.test(html), 'Native Site SSR must reject non-asset authored image paths')
+  assert.ok(!/<img[^>]+src="\/api\/private\/logo"/.test(html), 'Native Site SSR must reject non-asset Page-block logos')
+  assert.ok(!/<img[^>]+src="https:\/\/tracker\.example\/block\.png"/.test(html), 'Native Site SSR must reject external Page-block media')
   assert.ok(html.includes('[Unsupported content: listItem]'), 'Native Site SSR must replace a bare list item')
   assert.ok(!/<li[\s\S]{0,300}Bare list item must fall back/.test(html), 'Native Site SSR must not emit a rejected list item')
+  assert.ok(html.includes('Built tracked block'), 'Native Site SSR must preserve the safe Page-block content')
+  assert.ok(html.includes('Private logo'), 'Native Site SSR must preserve the safe Page-block logo label')
   assert.ok(!html.includes('data-halo-contract-version="2"'), 'Site SSR must not inject the standalone HTML artifact')
   const modeAttribute = `data-halo-color-mode="${expectedMode}"`
   assert.match(
@@ -985,7 +1041,7 @@ async function assertPersistedLayoutSurfaces(origin) {
   assert.ok(editorHtml.includes('HaloPress Desk'), 'Expected the internal Page editor to retain the Desk shell')
   assert.ok(!editorHtml.includes('data-layout-renderer'), 'Internal Page editor must remain persisted-Layout-free')
   assert.ok(!editorHtml.includes('data-layout-canvas'), 'Page editor preview must not link the Layout editor canvas')
-  assert.ok(editorHtml.includes('data-site-document-isolated="true"'), 'Expected the Page editor preview to use the isolated native renderer')
+  assert.ok(editorHtml.includes('data-site-document-renderer'), 'Expected the Page editor preview to use the native renderer')
   assert.ok(editorHtml.includes('Working Page marker'), 'Expected the native editor preview to render working Page content')
   assert.ok(!editorHtml.includes('<iframe'), 'Page editor preview must not inject a serialized standalone document')
 
@@ -1242,6 +1298,7 @@ async function main() {
     await waitForWorker(worker, logs)
 
     const themeManifest = await assertThemeDelivery(origin, stateDirectory, stateArgs)
+    await assertThemeArtifactPreview(origin, themeManifest)
 
     const response = await fetch(`${origin}/`)
     const html = await response.text()

@@ -147,10 +147,12 @@ describe('Site Theme app and mode boundaries', () => {
   })
 
   it('keeps Site document renderers independent from standalone artifacts and Theme fetches', async () => {
-    const [pageRenderer, fieldRenderer, schemaIndex] = await Promise.all([
+    const [pageRenderer, fieldRenderer, schemaIndex, artifactPreview, artifactPreviewRoute] = await Promise.all([
       readFile(resolve(root, 'app/components/PageDocumentRenderer.vue'), 'utf8'),
       readFile(resolve(root, 'app/components/public/FieldRenderer.vue'), 'utf8'),
-      readFile(resolve(root, 'app/pages/[schema]/index.vue'), 'utf8')
+      readFile(resolve(root, 'app/pages/[schema]/index.vue'), 'utf8'),
+      readFile(resolve(root, 'app/components/SiteThemeArtifactPreview.vue'), 'utf8'),
+      readFile(resolve(root, 'server/api/preview/site-theme-artifact.get.ts'), 'utf8')
     ])
     for (const renderer of [pageRenderer, fieldRenderer]) {
       expect(renderer).not.toContain('useSiteTheme()')
@@ -163,6 +165,15 @@ describe('Site Theme app and mode boundaries', () => {
     }
     expect(schemaIndex).toContain('{ query: { rendering: \'0\' } }')
     expect(schemaIndex).not.toContain(':rendering="standalonePage.rendering"')
+    expect(artifactPreview).toContain('<iframe')
+    expect(artifactPreview).toContain('src="/api/preview/site-theme-artifact"')
+    expect(artifactPreview).toContain('sandbox="allow-same-origin"')
+    expect(artifactPreview).not.toContain('PageDocumentRenderer')
+    expect(artifactPreviewRoute).toContain('await requireAdmin(event)')
+    expect(artifactPreviewRoute).toContain('createPortablePageRendering')
+    expect(artifactPreviewRoute).toContain('createPortableStandaloneDocument')
+    expect(artifactPreviewRoute).toContain('getPublicSiteThemeManifest(event)')
+    expect(artifactPreviewRoute).toContain('frame-ancestors')
   })
 
   it('exposes an accessible single active editor with live draft status and numeric controls', async () => {
