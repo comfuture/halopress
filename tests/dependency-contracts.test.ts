@@ -7,8 +7,9 @@ import { describe, expect, it } from 'vitest'
 const projectRoot = resolve(import.meta.dirname, '..')
 
 async function readProjectFiles() {
-  const [packageText, lockfile, authPatch, nuxtConfig] = await Promise.all([
+  const [packageText, searchPackageText, lockfile, authPatch, nuxtConfig] = await Promise.all([
     readFile(resolve(projectRoot, 'package.json'), 'utf8'),
+    readFile(resolve(projectRoot, 'workers/search/package.json'), 'utf8'),
     readFile(resolve(projectRoot, 'pnpm-lock.yaml'), 'utf8'),
     readFile(resolve(projectRoot, 'patches/next-auth@4.24.14.patch'), 'utf8'),
     readFile(resolve(projectRoot, 'nuxt.config.ts'), 'utf8')
@@ -16,6 +17,7 @@ async function readProjectFiles() {
 
   return {
     packageJson: JSON.parse(packageText),
+    searchPackageJson: JSON.parse(searchPackageText),
     lockfile,
     authPatch,
     nuxtConfig
@@ -23,6 +25,19 @@ async function readProjectFiles() {
 }
 
 describe('dependency security contracts', () => {
+  it('runs analyzer asset preparation through a Node 22-compatible TypeScript loader', async () => {
+    const { searchPackageJson, lockfile } = await readProjectFiles()
+
+    expect(searchPackageJson.scripts).toMatchObject({
+      build: 'tsx scripts/prepare-assets.mjs',
+      test: 'tsx scripts/prepare-assets.mjs && vitest run',
+      typecheck: 'tsx scripts/prepare-assets.mjs && tsc --noEmit -p tsconfig.json'
+    })
+    expect(searchPackageJson.devDependencies.tsx).toBe('^4.23.1')
+    expect(lockfile).toContain('workers/search:\n')
+    expect(lockfile).toContain('      tsx:\n        specifier: ^4.23.1\n        version: 4.23.1')
+  })
+
   it('keeps the patched Sidebase Auth.js bridge exact and removes the Next.js peer tree', async () => {
     const { packageJson, lockfile, authPatch } = await readProjectFiles()
 

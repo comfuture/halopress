@@ -210,6 +210,9 @@ importers:
         specifier: 0.9.11
         version: 0.9.11(patch_hash=cb6e2f579010643bcbf0bff60c4e5206cf512b5ab9d50a0162fe16060e7e2d25)
     devDependencies:
+      tsx:
+        specifier: ^4.23.1
+        version: 4.23.1
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
