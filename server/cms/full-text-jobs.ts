@@ -8,7 +8,7 @@ import { newId } from '../utils/ids'
 import { normalizeSearchConfig } from './search-helpers'
 import type { SchemaRegistry } from './types'
 
-type FullTextOperation = 'index' | 'remove' | 'schema-sync' | 'reindex'
+type FullTextOperation = 'index' | 'remove' | 'schema-sync' | 'reindex' | 'reindex-sync'
 
 function jobValues(args: {
   operation: FullTextOperation
@@ -147,6 +147,26 @@ export async function enqueueSchemaFullTextSync(args: {
       'schema-sync',
       args.schemaKey,
       args.schemaVersion,
+      KOREAN_SEARCH_TOKENIZER_GENERATION
+    ].join(':'),
+    now: args.now
+  }))
+}
+
+export async function enqueueSchemaFullTextReindex(args: {
+  db: Db
+  schemaKey: string
+  requestId: string
+  now: Date
+}) {
+  await insertJob(args.db, undefined, jobValues({
+    operation: 'reindex-sync',
+    documentId: args.schemaKey,
+    schemaKey: args.schemaKey,
+    identityKey: [
+      'reindex-sync',
+      args.schemaKey,
+      args.requestId,
       KOREAN_SEARCH_TOKENIZER_GENERATION
     ].join(':'),
     now: args.now

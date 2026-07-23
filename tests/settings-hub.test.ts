@@ -15,14 +15,15 @@ const source = (path: string) => readFile(resolve(root, path), 'utf8')
 
 describe('Settings navigation and ownership', () => {
   it('registers only actionable Desk-owned destinations and marks deep routes', () => {
-    expect(SETTINGS_SECTIONS.map(section => section.id)).toEqual(['preferences', 'access'])
+    expect(SETTINGS_SECTIONS.map(section => section.id)).toEqual(['preferences', 'access', 'operations'])
     expect(SETTINGS_SECTIONS.map(section => section.to)).toEqual([
       '/_desk/settings/preferences',
-      '/_desk/settings/access'
+      '/_desk/settings/access',
+      '/_desk/settings/operations'
     ])
     expect(new Set(SETTINGS_SECTIONS.map(section => section.to)).size).toBe(SETTINGS_SECTIONS.length)
     expect(SETTINGS_SECTIONS.map(section => section.label).join(' ')).not.toMatch(
-      /Overview|Site|Appearance|Navigation|Footer|Publishing|Integrations|Operations/
+      /Overview|Site|Appearance|Navigation|Footer|Publishing|Integrations/
     )
 
     const access = findSettingsSection('access')
@@ -35,18 +36,20 @@ describe('Settings navigation and ownership', () => {
       active: true,
       children: [
         { label: 'Desk preferences', active: false },
-        { label: 'Authentication & membership', active: true }
+        { label: 'Authentication & membership', active: true },
+        { label: 'Operations', active: false }
       ]
     })
   })
 
   it('uses the main responsive Desk sidebar as the only Settings navigation surface', async () => {
-    const [desk, shell, index, preferences, access] = await Promise.all([
+    const [desk, shell, index, preferences, access, operations] = await Promise.all([
       source('app/layouts/desk.vue'),
       source('app/components/SettingsShell.vue'),
       source('app/pages/_desk/settings/index.vue'),
       source('app/pages/_desk/settings/preferences.vue'),
-      source('app/pages/_desk/settings/access.vue')
+      source('app/pages/_desk/settings/access.vue'),
+      source('app/pages/_desk/settings/operations.vue')
     ])
 
     expect(desk).toContain('buildSettingsNavigation(route.path)')
@@ -62,6 +65,8 @@ describe('Settings navigation and ownership', () => {
     expect(access).toContain('section="access"')
     expect(access).toContain('<SettingsAuthenticationPanel')
     expect(access).toContain('<SettingsMembershipPanel')
+    expect(operations).toContain('section="operations"')
+    expect(operations).toContain('<SettingsSearchIndexingPanel')
   })
 
   it('keeps authentication and membership APIs independent inside one workflow', async () => {
