@@ -15,6 +15,11 @@ import { deleteContentProjections, syncContentProjections } from './content-proj
 import { mutateWithDocumentRevision } from './document-revisions'
 import { getPublicationRevision, publicationMetadata, publicationRevisionValues } from './publication'
 import { assertEditorialTransition } from './publication-transitions'
+import {
+  bumpFullTextQueryEpoch,
+  enqueueContentFullTextRemoval,
+  enqueuePublishedContentFullText
+} from './full-text-jobs'
 import { contentCanonicalPath, getCanonicalPublicRoute, publishCanonicalRoute } from './public-routes'
 import { getSchemaVersion } from './repo'
 import type { SchemaRegistry } from './types'
@@ -220,6 +225,17 @@ export async function publishContentWorking(args: {
         seo: args.seo ?? null,
         now
       })
+      await enqueuePublishedContentFullText({
+        db: tx,
+        statements,
+        documentId: args.existing.id,
+        schemaKey: args.schemaKey,
+        schemaVersion: args.active.version,
+        revisionId,
+        registry: args.active.registry,
+        now
+      })
+      await bumpFullTextQueryEpoch({ db: tx, statements, now })
     }
   })
   return mutationMetadata(args.existing, args.expectedRevision, {
@@ -373,6 +389,16 @@ export async function unpublishContent(args: {
         projectionScope: 'published',
         statements
       })
+      await enqueueContentFullTextRemoval({
+        db: tx,
+        statements,
+        documentId: args.existing.id,
+        schemaKey: args.existing.schemaKey,
+        sourceRevision: nextRevision,
+        targetRevisionId: args.existing.publishedRevisionId,
+        now
+      })
+      await bumpFullTextQueryEpoch({ db: tx, statements, now })
     }
   })
   return mutationMetadata(args.existing, args.expectedRevision, {
@@ -431,6 +457,16 @@ export async function deleteContent(args: {
         eq(contentListingTable.projectionScope, 'working')
       )), statements)
       await deleteContentProjections({ db: tx, contentId: args.existing.id, projectionScope: 'published', statements })
+      await enqueueContentFullTextRemoval({
+        db: tx,
+        statements,
+        documentId: args.existing.id,
+        schemaKey: args.existing.schemaKey,
+        sourceRevision: nextRevision,
+        targetRevisionId: args.existing.publishedRevisionId,
+        now
+      })
+      await bumpFullTextQueryEpoch({ db: tx, statements, now })
     }
   })
   return mutationMetadata(args.existing, args.expectedRevision, {

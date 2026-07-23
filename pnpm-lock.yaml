@@ -42,6 +42,9 @@ importers:
 
   .:
     dependencies:
+      '@halopress/korean-search-tokenizer':
+        specifier: workspace:*
+        version: link:packages/korean-search-tokenizer
       '@iconify-json/lucide':
         specifier: ^1.2.117
         version: 1.2.117

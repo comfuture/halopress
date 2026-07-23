@@ -56,7 +56,12 @@ function fieldToJsonSchema(field: SchemaAst['fields'][number]) {
         'x-search': field.search
       }
     case 'richtext':
-      return { ...base, type: ['object', 'array', 'string', 'null'], 'x-ui': { ...field.ui, widget: widget ?? 'u-editor' } }
+      return {
+        ...base,
+        type: ['object', 'array', 'string', 'null'],
+        'x-ui': { ...field.ui, widget: widget ?? 'u-editor' },
+        'x-search': field.search
+      }
     case 'asset':
       return {
         ...base,

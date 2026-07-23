@@ -373,7 +373,8 @@ export const searchConfig = sqliteTable('search_config', {
   kind: text('kind').notNull(),
   searchMode: text('search_mode').notNull().default('off'),
   filterable: integer('filterable', { mode: 'boolean' }).notNull().default(false),
-  sortable: integer('sortable', { mode: 'boolean' }).notNull().default(false)
+  sortable: integer('sortable', { mode: 'boolean' }).notNull().default(false),
+  fullText: integer('full_text', { mode: 'boolean' }).notNull().default(false)
 }, t => ({
   pk: primaryKey({ columns: [t.schemaKey, t.fieldId] }),
   bySchema: index('idx_search_config_schema').on(t.schemaKey),
@@ -392,6 +393,105 @@ export const contentSearchData = sqliteTable('content_search_data', {
   idxFilterText: index('idx_filter_content_search_text').on(t.projectionScope, t.fieldId, t.dataType, t.text, t.contentId),
   idxFilterValue: index('idx_filter_content_search_value').on(t.projectionScope, t.fieldId, t.dataType, t.value, t.contentId)
 }))
+
+// Durable outbox and retry state for the separately deployed search Worker.
+// Queue delivery is only a wake-up mechanism; this row remains authoritative.
+export const fullTextJob = sqliteTable('full_text_job', {
+  id: text('id').notNull(),
+  identityKey: text('identity_key').notNull(),
+  operation: text('operation').notNull(), // index|remove|schema-sync|reindex
+  documentKind: text('document_kind').notNull().default('content'),
+  documentId: text('document_id').notNull(),
+  schemaKey: text('schema_key'),
+  schemaVersion: integer('schema_version'),
+  fieldId: text('field_id').notNull().default('*'),
+  targetRevisionId: text('target_revision_id'),
+  tokenizerGeneration: text('tokenizer_generation').notNull(),
+  indexGeneration: text('index_generation').notNull(),
+  status: text('status').notNull().default('pending'),
+  checkpoint: integer('checkpoint').notNull().default(0),
+  totalChunks: integer('total_chunks'),
+  attemptCount: integer('attempt_count').notNull().default(0),
+  availableAt: integer('available_at', { mode: 'timestamp' }).notNull(),
+  leaseExpiresAt: integer('lease_expires_at', { mode: 'timestamp' }),
+  lastError: text('last_error'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+  completedAt: integer('completed_at', { mode: 'timestamp' })
+}, t => ({
+  pk: primaryKey({ columns: [t.id] }),
+  identityUnique: uniqueIndex('idx_full_text_job_identity').on(t.identityKey),
+  byDispatch: index('idx_full_text_job_dispatch').on(t.status, t.availableAt, t.leaseExpiresAt),
+  byDocument: index('idx_full_text_job_document').on(t.documentKind, t.documentId, t.createdAt),
+  bySchema: index('idx_full_text_job_schema').on(t.schemaKey, t.status, t.createdAt)
+}))
+
+// One active complete generation per content field. Staging chunks stay
+// invisible until the indexer updates this pointer after a revision recheck.
+export const fullTextIndexState = sqliteTable('full_text_index_state', {
+  contentId: text('content_id').notNull(),
+  schemaKey: text('schema_key').notNull(),
+  schemaVersion: integer('schema_version').notNull(),
+  fieldId: text('field_id').notNull(),
+  publishedRevisionId: text('published_revision_id').notNull(),
+  tokenizerGeneration: text('tokenizer_generation').notNull(),
+  activeIndexGeneration: text('active_index_generation'),
+  buildingIndexGeneration: text('building_index_generation'),
+  status: text('status').notNull().default('pending'),
+  indexedChunks: integer('indexed_chunks').notNull().default(0),
+  totalChunks: integer('total_chunks'),
+  attemptCount: integer('attempt_count').notNull().default(0),
+  lastError: text('last_error'),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+  activatedAt: integer('activated_at', { mode: 'timestamp' })
+}, t => ({
+  pk: primaryKey({ columns: [t.contentId, t.fieldId] }),
+  bySchemaStatus: index('idx_full_text_state_schema_status').on(t.schemaKey, t.status, t.updatedAt),
+  byRevision: index('idx_full_text_state_revision').on(t.publishedRevisionId, t.tokenizerGeneration)
+}))
+
+// Tokenized chunks are ordinary derived rows so incomplete work cannot affect
+// FTS5 document frequencies or ranking. Activation copies one complete
+// generation into the virtual table and flips the state pointer in one batch.
+export const fullTextChunk = sqliteTable('full_text_chunk', {
+  indexGeneration: text('index_generation').notNull(),
+  contentId: text('content_id').notNull(),
+  schemaKey: text('schema_key').notNull(),
+  schemaVersion: integer('schema_version').notNull(),
+  fieldId: text('field_id').notNull(),
+  publishedRevisionId: text('published_revision_id').notNull(),
+  chunkIndex: integer('chunk_index').notNull(),
+  rawText: text('raw_text').notNull(),
+  morphText: text('morph_text').notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull()
+}, t => ({
+  pk: primaryKey({ columns: [t.indexGeneration, t.chunkIndex] }),
+  byContent: index('idx_full_text_chunk_content').on(t.contentId, t.fieldId, t.indexGeneration)
+}))
+
+export const fullTextControl = sqliteTable('full_text_control', {
+  key: text('key').notNull().default('singleton'),
+  tokenizerGeneration: text('tokenizer_generation').notNull(),
+  queryEpoch: integer('query_epoch').notNull().default(1),
+  status: text('status').notNull().default('available'),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull()
+}, t => ({
+  pk: primaryKey({ columns: [t.key] })
+}))
+
+// Drizzle describes the query surface while migration 0011 creates the actual
+// FTS5 virtual table with these columns and unicode61 over pre-tokenized text.
+export const fullTextFts = sqliteTable('full_text_fts', {
+  indexGeneration: text('index_generation').notNull(),
+  contentId: text('content_id').notNull(),
+  schemaKey: text('schema_key').notNull(),
+  schemaVersion: integer('schema_version').notNull(),
+  fieldId: text('field_id').notNull(),
+  publishedRevisionId: text('published_revision_id').notNull(),
+  chunkIndex: integer('chunk_index').notNull(),
+  rawText: text('raw_text').notNull(),
+  morphText: text('morph_text').notNull()
+})
 
 export const contentRef = sqliteTable('content_ref', {
   contentId: text('content_id').notNull(),

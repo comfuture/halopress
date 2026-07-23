@@ -15,6 +15,7 @@ export type NormalizedSearchConfig = {
   mode: SearchMode
   filterable: boolean
   sortable: boolean
+  fullText: boolean
 }
 
 export const SEARCH_MODES_BY_KIND: Record<FieldKind, SearchMode[]> = {
@@ -54,6 +55,12 @@ export const SORTABLE_KINDS = new Set<FieldKind>([
   'integer',
   'date',
   'datetime'
+])
+
+export const FULL_TEXT_KINDS = new Set<FieldKind>([
+  'string',
+  'text',
+  'richtext'
 ])
 
 const ServerImageUpload = Node.create({
@@ -100,7 +107,8 @@ export function normalizeSearchConfig(field: SchemaRegistry['fields'][number]): 
   const mode = normalizeSearchMode(field.kind, field.search?.mode)
   const filterable = FILTERABLE_KINDS.has(field.kind) && !!field.search?.filterable && mode !== 'off'
   const sortable = SORTABLE_KINDS.has(field.kind) && !!field.search?.sortable && mode !== 'off'
-  return { mode, filterable, sortable }
+  const fullText = FULL_TEXT_KINDS.has(field.kind) && !!field.search?.fullText
+  return { mode, filterable, sortable, fullText }
 }
 
 export function isSearchEnabled(config: NormalizedSearchConfig) {

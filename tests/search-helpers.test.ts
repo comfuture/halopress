@@ -35,7 +35,8 @@ describe('normalizeSearchConfig', () => {
     })).toEqual({
       mode: 'range',
       filterable: true,
-      sortable: true
+      sortable: true,
+      fullText: false
     })
 
     expect(normalizeSearchConfig({
@@ -46,7 +47,20 @@ describe('normalizeSearchConfig', () => {
     })).toEqual({
       mode: 'off',
       filterable: false,
-      sortable: false
+      sortable: false,
+      fullText: false
+    })
+
+    expect(normalizeSearchConfig({
+      fieldId: '3',
+      key: 'body',
+      kind: 'richtext',
+      search: { mode: 'off', fullText: true }
+    })).toEqual({
+      mode: 'off',
+      filterable: false,
+      sortable: false,
+      fullText: true
     })
   })
 })
