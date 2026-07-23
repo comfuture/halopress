@@ -11,7 +11,7 @@ import { EncryptJWT } from 'jose'
 
 const projectRoot = resolve(import.meta.dirname, '..')
 const wranglerConfig = join(projectRoot, 'wrangler.jsonc')
-const workerEntry = join(projectRoot, '.output/server/index.mjs')
+const workerEntry = join(projectRoot, 'workers/search/src/main-entry.ts')
 const publicAssets = join(projectRoot, '.output/public')
 const packageManager = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm'
 const readyTimeoutMs = 30_000
