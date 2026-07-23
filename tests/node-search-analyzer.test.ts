@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
+import { Worker } from 'node:worker_threads'
 
 import {
   KOREAN_SEARCH_TOKENIZER_GENERATION
@@ -7,6 +8,9 @@ import {
 import {
   NodeSearchAnalyzerExecutor
 } from '../server/search/node-analyzer-executor'
+import {
+  NODE_ANALYZER_WORKER_SOURCE
+} from '../server/search/node-analyzer-worker-source'
 import {
   SEARCH_ANALYZER_ARTIFACT_VERSION_ID
 } from '../shared/search-analyzer-artifact'
@@ -113,5 +117,27 @@ describe('Node Worker Thread search analyzer', () => {
     await expect(executor.compatibility()).resolves.toMatchObject({
       artifactVersionId: SEARCH_ANALYZER_ARTIFACT_VERSION_ID
     })
+  })
+
+  it('exits instead of retaining a message listener after initialization fails', async () => {
+    const worker = new Worker(NODE_ANALYZER_WORKER_SOURCE, {
+      eval: true,
+      workerData: {
+        garuModule: 'file:///halopress-missing-garu-module.mjs'
+      }
+    })
+    const exited = new Promise<number>((resolve) => {
+      worker.once('exit', resolve)
+    })
+    try {
+      await expect(new Promise((resolve) => {
+        worker.once('message', resolve)
+      })).resolves.toMatchObject({
+        kind: 'initialization-error'
+      })
+      await expect(exited).resolves.toBe(0)
+    } finally {
+      await worker.terminate()
+    }
   })
 })

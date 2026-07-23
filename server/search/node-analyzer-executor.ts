@@ -139,6 +139,7 @@ export class NodeSearchAnalyzerExecutor implements SearchAnalyzer {
         this.worker = worker
         worker.unref()
         let settled = false
+        let restartAfterExit = true
         worker.on('message', (message: any) => {
           if (message?.kind === 'ready') {
             settled = true
@@ -149,8 +150,10 @@ export class NodeSearchAnalyzerExecutor implements SearchAnalyzer {
           }
           if (message?.kind === 'initialization-error') {
             const error = retryableError(message.error || 'Node analyzer initialization failed')
+            settled = true
+            restartAfterExit = false
             this.handleWorkerFailure(error)
-            if (!settled) reject(error)
+            reject(error)
             return
           }
           const call = this.pending.get(message?.id)
@@ -172,6 +175,7 @@ export class NodeSearchAnalyzerExecutor implements SearchAnalyzer {
         })
         worker.on('exit', (code: number) => {
           if (this.closed) return
+          if (!restartAfterExit) return
           const error = retryableError(`Node search analyzer exited with code ${code}`)
           this.handleWorkerFailure(error)
           if (!settled) reject(error)
