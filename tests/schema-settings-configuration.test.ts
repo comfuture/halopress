@@ -15,6 +15,7 @@ import {
 } from '../app/utils/schema-search-configuration'
 import {
   buildSchemaPresentationPreset,
+  schemaPresentationFromEditor,
   schemaPresentationForEditor,
   schemaPresentationPresetReplacements
 } from '../app/utils/schema-presentation-settings'
@@ -169,6 +170,41 @@ describe('Schema Settings configuration contracts', () => {
       slots: {}
     })
     expect(legacy).not.toHaveProperty('slots')
+  })
+
+  it('drops only synthetic empty slots when legacy presentation edits return to stored values', () => {
+    const legacy = {
+      contractVersion: 1 as const,
+      preset: 'generic' as const,
+      collectionTemplate: 'list' as const,
+      detailTemplate: 'document' as const,
+      extensionContract: { retained: true }
+    }
+    const changed = schemaPresentationFromEditor({
+      ...schemaPresentationForEditor(legacy),
+      collectionTemplate: 'cards'
+    }, legacy)
+    expect(changed).toEqual({
+      ...legacy,
+      collectionTemplate: 'cards'
+    })
+
+    const reverted = schemaPresentationFromEditor({
+      ...schemaPresentationForEditor(changed),
+      collectionTemplate: 'list'
+    }, changed)
+    expect(reverted).toEqual(legacy)
+
+    const explicitlyEmpty = { ...legacy, slots: {} }
+    expect(schemaPresentationFromEditor(
+      schemaPresentationForEditor(explicitlyEmpty),
+      explicitlyEmpty
+    )).toBe(explicitlyEmpty)
+
+    const mapped = { ...legacy, slots: { title: 'title-id' } }
+    const cleared = { ...mapped, slots: {} }
+    expect(schemaPresentationFromEditor(cleared, mapped)).toBe(cleared)
+    expect(cleared).toHaveProperty('slots', {})
   })
 
   it('uses one revision-aware AST for presentation and search while keeping Permissions immediate', async () => {

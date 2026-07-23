@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { BreadcrumbItem, NavigationMenuItem } from '@nuxt/ui'
 import {
+  schemaPresentationFromEditor,
   schemaPresentationForEditor,
   type SchemaPresentation
 } from '~/utils/schema-presentation-settings'
@@ -78,7 +79,9 @@ const fields = computed<SchemaSearchField[]>({
 const presentation = computed<SchemaPresentation>({
   get: () => schemaPresentationForEditor(ast.value?.presentation),
   set: value => {
-    if (ast.value) ast.value.presentation = value
+    if (ast.value) {
+      ast.value.presentation = schemaPresentationFromEditor(value, ast.value.presentation)
+    }
   }
 })
 
