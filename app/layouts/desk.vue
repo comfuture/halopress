@@ -2,6 +2,7 @@
 import type { NavigationMenuItem } from '@nuxt/ui'
 import { buildSettingsNavigation } from '~~/shared/settings-sections'
 import { buildSiteAdminNavigation } from '~~/shared/site-admin-sections'
+import { buildDeskNavigationGroups } from '~/utils/desk-navigation'
 
 const route = useRoute()
 useDeskColorMode()
@@ -54,52 +55,19 @@ const contentChildren = computed(() => {
 const siteNavigation = computed(() => buildSiteAdminNavigation(route.path, siteModeEnabled.value))
 const settingsNavigation = computed(() => buildSettingsNavigation(route.path))
 
-const navItems = computed<NavigationMenuItem[]>(() => ([
-  {
-    label: 'Dashboard',
-    to: '/_desk',
-    icon: 'i-lucide-home'
-  },
-  {
-    label: 'Users',
-    to: '/_desk/users',
-    icon: 'i-lucide-users',
-    active: isUsersRoute.value
-  },
-  {
-    label: 'Schemas',
-    to: '/_desk/schemas',
-    icon: 'i-lucide-braces',
-    active: isSchemasRoute.value
-  },
-  {
-    label: 'Content',
-    value: 'content',
-    icon: 'i-lucide-files',
-    defaultOpen: true,
-    active: isContentRoute.value,
-    children: contentChildren.value
-  },
-  {
-    label: 'Assets',
-    to: '/_desk/assets',
-    icon: 'i-lucide-image',
-    active: isAssetsRoute.value
-  },
-  {
-    label: 'Pages',
-    to: '/_desk/pages',
-    icon: 'i-lucide-panels-top-left',
-    active: isPagesRoute.value
-  },
-  siteNavigation.value,
-  settingsNavigation.value,
-  {
-    label: 'Viewer',
-    to: '/',
-    icon: 'i-lucide-external-link'
+const navItems = computed<NavigationMenuItem[][]>(() => buildDeskNavigationGroups({
+  contentChildren: contentChildren.value,
+  siteNavigation: siteNavigation.value,
+  settingsNavigation: settingsNavigation.value,
+  siteModeEnabled: siteModeEnabled.value,
+  active: {
+    schemas: isSchemasRoute.value,
+    users: isUsersRoute.value,
+    content: isContentRoute.value,
+    pages: isPagesRoute.value,
+    assets: isAssetsRoute.value
   }
-]))
+}))
 
 async function logout() {
   await signOut({ callbackUrl: '/_desk/login' })
@@ -122,6 +90,7 @@ async function logout() {
         <UNavigationMenu
           v-model="openNavItems"
           :items="navItems"
+          aria-label="Desk navigation"
           orientation="vertical"
           :collapsed="collapsed"
           :tooltip="collapsed"
