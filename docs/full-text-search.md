@@ -117,10 +117,12 @@ content. Use the Operations reindex action to recover derived data.
 - `browser` mode lazy-loads the shared browser tokenizer and sends bounded
   `rawTerms` and `morphTerms` to `POST /api/keyword-search`. The main Worker only
   validates tokens, builds a quoted FTS expression, and reads D1.
-- `server` mode sends bounded raw text directly to
-  `https://<search-worker>/v1/search`. Morphology and D1 execution stay in the
-  auxiliary Worker. Configure its CORS allowlist with
-  `SEARCH_ALLOWED_ORIGINS`; `*` is the public-search default.
+- `server` mode sends bounded raw text to `POST /api/keyword-search`. The main
+  Worker resolves the authenticated session role, asks the auxiliary Worker
+  `/v1/analyze` route for morphology, and runs the permission-gated D1 query
+  itself. The auxiliary `/v1/search` route remains an anonymous-only headless
+  surface and never accepts a client-supplied role. Configure its CORS allowlist
+  with `SEARCH_ALLOWED_ORIGINS`; `*` is the public-search default.
 
 Configure Nuxt public runtime values through normal `NUXT_PUBLIC_*` overrides:
 
@@ -136,28 +138,45 @@ optional schema/stable-field scopes, up to four validated scalar filters, a
 limit of 1–50, and an opaque cursor. No endpoint accepts raw MATCH grammar.
 Raw terms receive BM25 weight 8 and morphology terms weight 3. Results sort by
 rank and content ID. The cursor binds query fingerprint, tokenizer generation,
-and the D1 query epoch; any publication/index change rejects stale traversal
-with a retryable `409`.
+the D1 query epoch, and the server-resolved role; any publication/index or role
+change rejects stale traversal with a retryable `409`.
 
 Every candidate rechecks the complete active index generation, current
-`published_revision_id`, published listing, active Schema, anonymous `can_read`,
-enabled full-text field, and canonical content route. Responses contain only
-safe listing metadata and canonical `to`; morphology streams and job errors are
-never returned. The first backend contract intentionally omits snippets.
+`published_revision_id`, published listing, active Schema, the current role's
+effective read permission, enabled full-text field, and canonical content route.
+The readable Schema set is established before ranked candidates are returned.
+Responses contain only safe listing metadata and canonical `to`; morphology
+streams and job errors are never returned. The first backend contract
+intentionally omits snippets.
 
-Public search requests are size- and count-bounded and return short public cache
-directives. Operators expecting hostile or high-volume traffic should attach a
-Cloudflare Rate Limiting rule to `/api/keyword-search` and the auxiliary
-`/v1/search` route. Rate limiting is deployment policy rather than hidden
-application state, so local and browser-only deployments retain the same API.
+Anonymous search requests are size- and count-bounded and return short public
+cache directives. Authenticated responses are `private, no-store`; both
+capability and result responses vary on the session cookie. Operators expecting
+hostile or high-volume traffic should attach a Cloudflare Rate Limiting rule to
+`/api/keyword-search` and the auxiliary `/v1/search` and `/v1/analyze` routes.
+Rate limiting is deployment policy rather than hidden application state, so
+local and browser-only deployments retain the same API.
 
 ## Public and headless clients
 
-`/search` is a code-owned public route and is always `noindex, follow` with a
-queryless canonical URL. The `q`, `schema`, `field`, and `operator` query
-parameters are shareable UI state; search results themselves are not included
-in the sitemap. `search` is also a reserved first path segment for new Schemas,
-Pages, and aliases.
+`/search` is a code-owned global route and is always `noindex, follow` with a
+queryless canonical URL. Its `q` and `operator` query parameters are shareable
+UI state, and it searches every active Schema that the server-resolved role can
+read. Search results themselves are not included in the sitemap. `search` is
+also a reserved first path segment for new Schemas, Pages, and aliases.
+
+Schema-scoped keyword search lives on the collection route:
+
+```text
+/<collection_name>/?q=<keyword>
+/<collection_name>/?q=<keyword>&category=news&year=2024..2026
+```
+
+Only fields marked `filterable` in the active published Schema registry are
+recognized. URL field names are mapped to stable field IDs before the request;
+unknown or non-filterable parameters are ignored and the D1 query revalidates
+the field capability. Exact-set values may be comma-separated. Range fields
+accept `min..max`, `min..`, `..max`, or one value for an exact bound.
 
 Upgrades do not rewrite existing persisted routes. If an older installation
 already has a canonical Page or Schema route rooted at `/search`, the code-owned

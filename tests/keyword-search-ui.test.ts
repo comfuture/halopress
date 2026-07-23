@@ -10,7 +10,24 @@ const composable = readFileSync(
   new URL('../app/composables/useKeywordSearch.ts', import.meta.url),
   'utf8'
 )
+const nuxtConfig = readFileSync(new URL('../nuxt.config.ts', import.meta.url), 'utf8')
 const sitemap = readFileSync(new URL('../server/routes/sitemap.xml.get.ts', import.meta.url), 'utf8')
+const collectionPage = readFileSync(
+  new URL('../app/pages/[schema]/index.vue', import.meta.url),
+  'utf8'
+)
+const endpoint = readFileSync(
+  new URL('../server/api/keyword-search.post.ts', import.meta.url),
+  'utf8'
+)
+const searchContract = readFileSync(
+  new URL('../shared/keyword-search.ts', import.meta.url),
+  'utf8'
+)
+const searchWorker = readFileSync(
+  new URL('../workers/search/src/index.ts', import.meta.url),
+  'utf8'
+)
 
 describe('public keyword search surface', () => {
   it('keeps query state shareable while canonicalizing and excluding result URLs', () => {
@@ -18,10 +35,32 @@ describe('public keyword search surface', () => {
     expect(page).toContain('robots: \'noindex, follow\'')
     expect(page).toContain('rel: \'canonical\', href: canonicalUrl')
     expect(page).toContain('nextQuery.q = query')
-    expect(page).toContain('nextQuery.schema = schemaKeys.value.join(\',\')')
-    expect(page).toContain('nextQuery.field = fieldIds.value.join(\',\')')
+    expect(page).not.toContain('route.query.schema')
+    expect(page).not.toContain('route.query.field')
+    expect(page).toContain('navigateTo({ path: \'/search\', query: nextQuery })')
+    expect(page).not.toContain('{ replace: true }')
     expect(sitemap).toContain('listCanonicalPublicRoutes')
     expect(sitemap).not.toContain('/search')
+  })
+
+  it('keeps collection-scoped search and filter fields on the collection URL', () => {
+    expect(collectionPage).toContain('collectionKeywordFilters')
+    expect(collectionPage).toContain(':schema-keys="[schemaKey]"')
+    expect(collectionPage).toContain(':filters="keywordFilters"')
+    expect(collectionPage).toContain('path: route.path')
+    expect(collectionPage).toContain('q: query || undefined')
+    expect(collectionPage).not.toContain('path: \'/search\'')
+  })
+
+  it('resolves role access on the main Worker before returning ranked results', () => {
+    expect(endpoint).toContain('const roleKey = await getSchemaRoleKey(event)')
+    expect(endpoint).toContain('admin: roleKey === \'admin\'')
+    expect(endpoint).toContain('\'Vary\', \'Cookie\'')
+    expect(searchContract).toContain('WITH readable_schema AS')
+    expect(searchContract).toContain('gate.role_key = ?')
+    expect(searchContract).toContain('JOIN readable_schema access')
+    expect(searchWorker).toContain('url.pathname === \'/v1/analyze\'')
+    expect(searchWorker).toContain('roleKey: \'anonymous\'')
   })
 
   it('exposes explicit loading, unavailable, partial, fallback, empty, retry, and pagination states', () => {
@@ -43,5 +82,6 @@ describe('public keyword search surface', () => {
     expect(composable).toContain('state: readonly(state)')
     expect(composable).not.toContain('export async function useKeywordSearch')
     expect(composable).not.toContain('...client')
+    expect(nuxtConfig).toContain('exclude: [\'garu-ko/browser\']')
   })
 })
