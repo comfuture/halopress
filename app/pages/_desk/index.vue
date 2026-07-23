@@ -30,6 +30,25 @@ async function bootstrap() {
     </template>
 
     <template #body>
+      <section class="relative mb-6 min-h-44 overflow-hidden rounded-xl border border-default">
+        <AppBrandArtwork class="absolute inset-0 size-full" />
+        <div class="absolute inset-0 bg-default/70 backdrop-blur-[1px]" />
+        <div class="relative flex min-h-44 flex-col justify-end gap-4 p-5 sm:flex-row sm:items-end sm:justify-between sm:p-6">
+          <div class="max-w-xl rounded-lg bg-default/85 p-4 backdrop-blur-sm">
+            <AppLogo class="mb-3 h-7 w-auto" />
+            <h2 class="text-xl font-semibold text-highlighted">
+              Welcome to HaloPress Desk
+            </h2>
+            <p class="mt-1 text-sm text-muted">
+              Shape structured content, guide it through review, and publish with confidence.
+            </p>
+          </div>
+          <UButton class="self-start sm:self-auto" to="/" color="neutral" variant="soft" trailing-icon="i-lucide-arrow-up-right">
+            View site
+          </UButton>
+        </div>
+      </section>
+
       <UPageGrid class="mb-6 items-start gap-4 sm:gap-6">
         <OnboardingWidget class="sm:col-span-2 lg:col-span-1" />
 

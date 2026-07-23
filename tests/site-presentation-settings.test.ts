@@ -135,7 +135,7 @@ describe('site presentation settings', () => {
     expect(projected.general).toMatchObject({
       logoUrl: null,
       faviconUrl: '/assets/favicon/raw',
-      socialImageUrl: '/branding/halopress-mark-3d-final-dark.png'
+      socialImageUrl: '/branding/halopress-social-card.png'
     })
     expect(JSON.stringify(projected)).not.toContain('AssetId')
     expect(JSON.stringify(projected)).not.toContain('updatedBy')

@@ -45,6 +45,7 @@ async function submit() {
     <UCard class="w-full max-w-md" variant="subtle">
       <template #header>
         <div class="space-y-1">
+          <AppLogo class="mb-4 h-8 w-auto" />
           <h1 class="text-xl font-semibold text-highlighted">Sign in</h1>
           <p class="text-sm text-muted">Use your HaloPress account to continue.</p>
         </div>

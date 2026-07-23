@@ -6,6 +6,10 @@ import { buildDeskNavigationGroups } from '~/utils/desk-navigation'
 
 const route = useRoute()
 useDeskColorMode()
+useHaloPressBrandHead()
+useHead({
+  titleTemplate: title => title ? `${title} · HaloPress Desk` : 'HaloPress Desk'
+})
 
 const { data, signOut } = useAuth()
 const { enabled: siteModeEnabled } = useSiteMode()
