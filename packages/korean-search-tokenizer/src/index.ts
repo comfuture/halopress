@@ -82,6 +82,7 @@ const SEARCHABLE_POS = new Set([
 ])
 
 const RAW_TERM_PATTERN = /[\p{L}\p{N}]+(?:[._:/@+-][\p{L}\p{N}]+)*/gu
+const SAFE_SEARCH_TERM_PATTERN = /^[\p{L}\p{N}]+(?:[._:/@+-][\p{L}\p{N}]+)*$/u
 
 function utf8Bytes(value: string) {
   return new TextEncoder().encode(value).byteLength
@@ -112,7 +113,9 @@ export function validateSearchTerms(terms: unknown, options: { maxTerms?: number
   return terms.map((term) => {
     if (typeof term !== 'string') throw new TypeError('Search terms must be strings')
     const normalized = normalizedToken(term)
-    if (!normalized || normalized !== term || /\s/u.test(normalized)) {
+    if (!normalized
+      || normalized !== term
+      || !SAFE_SEARCH_TERM_PATTERN.test(normalized)) {
       throw new TypeError('Search terms must be non-empty normalized tokens')
     }
     if (utf8Bytes(normalized) > MAX_TERM_BYTES) {

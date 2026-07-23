@@ -109,3 +109,44 @@ pnpm wrangler d1 execute DB --remote --command \
 
 Never edit `full_text_fts`, `full_text_chunk`, or index-state rows as source
 content. Use the Operations reindex action to recover derived data.
+
+## Query deployment modes
+
+`GET /api/keyword-search/capabilities` advertises one rendering-neutral contract:
+
+- `browser` mode lazy-loads the shared browser tokenizer and sends bounded
+  `rawTerms` and `morphTerms` to `POST /api/keyword-search`. The main Worker only
+  validates tokens, builds a quoted FTS expression, and reads D1.
+- `server` mode sends bounded raw text directly to
+  `https://<search-worker>/v1/search`. Morphology and D1 execution stay in the
+  auxiliary Worker. Configure its CORS allowlist with
+  `SEARCH_ALLOWED_ORIGINS`; `*` is the public-search default.
+
+Configure Nuxt public runtime values through normal `NUXT_PUBLIC_*` overrides:
+
+```bash
+NUXT_PUBLIC_KEYWORD_SEARCH_MODE=server
+NUXT_PUBLIC_KEYWORD_SEARCH_WORKER_URL=https://halopress-search.example.workers.dev
+NUXT_PUBLIC_KEYWORD_SEARCH_BROWSER_FALLBACK=true
+```
+
+The browser-token request uses contract version `1`, the advertised tokenizer
+generation, at most 64 combined normalized tokens, `all` or `any` semantics,
+optional schema/stable-field scopes, up to four validated scalar filters, a
+limit of 1–50, and an opaque cursor. No endpoint accepts raw MATCH grammar.
+Raw terms receive BM25 weight 8 and morphology terms weight 3. Results sort by
+rank and content ID. The cursor binds query fingerprint, tokenizer generation,
+and the D1 query epoch; any publication/index change rejects stale traversal
+with a retryable `409`.
+
+Every candidate rechecks the complete active index generation, current
+`published_revision_id`, published listing, active Schema, anonymous `can_read`,
+enabled full-text field, and canonical content route. Responses contain only
+safe listing metadata and canonical `to`; morphology streams and job errors are
+never returned. The first backend contract intentionally omits snippets.
+
+Public search requests are size- and count-bounded and return short public cache
+directives. Operators expecting hostile or high-volume traffic should attach a
+Cloudflare Rate Limiting rule to `/api/keyword-search` and the auxiliary
+`/v1/search` route. Rate limiting is deployment policy rather than hidden
+application state, so local and browser-only deployments retain the same API.

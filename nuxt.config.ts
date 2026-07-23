@@ -105,7 +105,12 @@ export default defineNuxtConfig({
     oauthCredentialsEnabled: '',
     oauthGoogleEnabled: '',
     oauthGoogleClientId: '',
-    oauthGoogleClientSecret: ''
+    oauthGoogleClientSecret: '',
+    public: {
+      keywordSearchMode: 'browser',
+      keywordSearchWorkerUrl: '',
+      keywordSearchBrowserFallback: true
+    }
   },
 
   auth: {
