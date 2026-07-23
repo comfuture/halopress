@@ -3,12 +3,12 @@ import { setHeader } from 'h3'
 import { KOREAN_SEARCH_TOKENIZER_GENERATION } from '@halopress/korean-search-tokenizer'
 
 import { getRawDb } from '../../db/db'
+import { hasServerSearchAnalyzer } from '../../utils/search-analyzer'
 import { getSchemaRoleKey } from '../../utils/schema-permission'
 
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig(event)
   const mode = config.public.keywordSearchMode === 'server' ? 'server' : 'browser'
-  const workerUrl = String(config.public.keywordSearchWorkerUrl || '').replace(/\/+$/u, '')
   const roleKey = await getSchemaRoleKey(event)
   const db = await getRawDb(event)
   const [control, fields] = await Promise.all([
@@ -64,7 +64,11 @@ export default defineEventHandler(async (event) => {
     queryEpoch: control?.query_epoch ?? null,
     indexAvailable,
     available: indexAvailable
-      && (mode === 'browser' || Boolean(workerUrl) || Boolean(config.public.keywordSearchBrowserFallback)),
+      && (
+        mode === 'browser'
+        || hasServerSearchAnalyzer(event)
+        || Boolean(config.public.keywordSearchBrowserFallback)
+      ),
     enabledFields: Number(fields?.count ?? 0)
   }
 })

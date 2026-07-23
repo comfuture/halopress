@@ -1,14 +1,19 @@
 import {
   splitTokenizerChunks,
-  type KoreanSearchTokenizer
+  type KoreanSearchTerms
 } from '@halopress/korean-search-tokenizer'
 import { extractSearchPlainText } from '@halopress/korean-search-tokenizer/plain-text'
+import type {
+  SearchAnalyzerBatchRequest,
+  SearchAnalyzerBatchResponse
+} from '../../../shared/search-analyzer'
 
 import {
   activateIndexGeneration,
   claimFullTextJob,
   initializeIndexBuild,
   loadIndexTarget,
+  markJobFailed,
   markJobRetry,
   markJobStale,
   reconcileSchemaJobs,
@@ -17,6 +22,22 @@ import {
   targetStillEligible
 } from './repository'
 import type { SearchWorkerEnv } from './types'
+
+const ANALYZER_BATCH_SIZE = 4
+
+class AnalyzerItemError extends Error {
+  constructor(
+    message: string,
+    readonly retryable: boolean
+  ) {
+    super(message)
+  }
+}
+
+export type DocumentAnalyzer = {
+  analyzeDocument?(input: string): KoreanSearchTerms | Promise<KoreanSearchTerms>
+  analyzeBatch?(request: SearchAnalyzerBatchRequest): Promise<SearchAnalyzerBatchResponse>
+}
 
 function parseRecord(value: string) {
   try {
@@ -54,7 +75,7 @@ function sourceText(args: {
 export async function processFullTextJob(args: {
   env: SearchWorkerEnv
   jobId: string
-  tokenizer: () => Promise<KoreanSearchTokenizer>
+  tokenizer: () => Promise<DocumentAnalyzer>
 }) {
   const job = await claimFullTextJob(args.env.DB, args.jobId)
   if (!job) return { outcome: 'not-claimed' as const, dispatchIds: [] as string[] }
@@ -94,17 +115,59 @@ export async function processFullTextJob(args: {
     const chunks = splitTokenizerChunks(text)
     await initializeIndexBuild(args.env.DB, job, target, chunks.length)
     const analyzer = await args.tokenizer()
-    for (let index = job.checkpoint; index < chunks.length; index += 1) {
-      const terms = analyzer.analyzeDocument(chunks[index]!)
-      await storeAnalyzedChunk({
-        db: args.env.DB,
-        job,
-        target,
-        chunkIndex: index,
-        totalChunks: chunks.length,
-        rawText: terms.rawTerms.join(' '),
-        morphText: terms.morphTerms.join(' ')
-      })
+    for (let index = job.checkpoint; index < chunks.length; index += ANALYZER_BATCH_SIZE) {
+      const batch = chunks.slice(index, index + ANALYZER_BATCH_SIZE)
+      const batchId = `${job.id}:${index}`
+      const requestedItems = batch.map((input, offset) => ({
+        id: `${job.id}:${index + offset}`,
+        input
+      }))
+      let analyzed: SearchAnalyzerBatchResponse
+      if (typeof analyzer.analyzeBatch === 'function') {
+        analyzed = await analyzer.analyzeBatch({ batchId, items: requestedItems })
+      } else if (typeof analyzer.analyzeDocument === 'function') {
+        analyzed = {
+          batchId,
+          tokenizerGeneration: job.tokenizer_generation,
+          items: await Promise.all(batch.map(async (input, offset) => ({
+            id: requestedItems[offset]!.id,
+            ok: true as const,
+            terms: await analyzer.analyzeDocument!(input)
+          })))
+        }
+      } else {
+        throw new TypeError('Analyzer does not implement batch or document analysis')
+      }
+      if (analyzed.batchId !== batchId
+        || analyzed.tokenizerGeneration !== job.tokenizer_generation
+        || analyzed.items.length !== requestedItems.length) {
+        throw new Error('Analyzer batch response does not match the indexing job')
+      }
+      for (let offset = 0; offset < analyzed.items.length; offset += 1) {
+        const result = analyzed.items[offset]!
+        if (result.id !== requestedItems[offset]!.id) {
+          throw new Error('Analyzer batch item identity or order changed')
+        }
+        if (!result.ok) {
+          throw new AnalyzerItemError(
+            `Analyzer item ${result.id} failed (${result.error.code}): ${result.error.message}`,
+            result.error.retryable
+          )
+        }
+        const terms = result.terms
+        if (terms.tokenizerGeneration !== job.tokenizer_generation) {
+          throw new Error('Analyzer item tokenizer generation changed')
+        }
+        await storeAnalyzedChunk({
+          db: args.env.DB,
+          job,
+          target,
+          chunkIndex: index + offset,
+          totalChunks: chunks.length,
+          rawText: terms.rawTerms.join(' '),
+          morphText: terms.morphTerms.join(' ')
+        })
+      }
     }
 
     if (!await targetStillEligible(args.env.DB, job)) {
@@ -114,6 +177,13 @@ export async function processFullTextJob(args: {
     await activateIndexGeneration(args.env.DB, job, target, chunks.length)
     return { outcome: 'ready' as const, dispatchIds: [] as string[] }
   } catch (error) {
+    if (error instanceof AnalyzerItemError && !error.retryable) {
+      await markJobFailed(args.env.DB, job, error)
+      return {
+        outcome: 'failed' as const,
+        dispatchIds: [] as string[]
+      }
+    }
     const retry = await markJobRetry(args.env.DB, job, error)
     return {
       outcome: retry.terminal ? 'failed' as const : 'retry' as const,

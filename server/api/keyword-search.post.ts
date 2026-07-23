@@ -8,58 +8,12 @@ import {
   parseKeywordTokenRequest
 } from '../../shared/keyword-search'
 import { getRawDb } from '../db/db'
+import { analyzeKeywordSearchRequest } from '../utils/search-analyzer'
 import { getSchemaRoleKey } from '../utils/schema-permission'
-
-type AnalyzerResponse = {
-  tokenizerGeneration?: unknown
-  rawTerms?: unknown
-  morphTerms?: unknown
-}
 
 async function analyzeRawRequest(event: H3Event, body: unknown) {
   const raw = parseKeywordRawRequest(body)
-  const workerUrl = String(useRuntimeConfig(event).public.keywordSearchWorkerUrl || '').replace(/\/+$/u, '')
-  if (!workerUrl) {
-    throw new KeywordSearchError(
-      'analyzer_unavailable',
-      'Search analyzer is unavailable',
-      503,
-      true
-    )
-  }
-
-  let response: Response
-  try {
-    response = await fetch(`${workerUrl}/v1/analyze`, {
-      method: 'POST',
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        contractVersion: raw.contractVersion,
-        mode: 'raw',
-        query: raw.query
-      })
-    })
-  } catch {
-    throw new KeywordSearchError(
-      'analyzer_unavailable',
-      'Search analyzer is unavailable',
-      503,
-      true
-    )
-  }
-
-  const analyzed = await response.json().catch(() => null) as AnalyzerResponse | null
-  if (!response.ok || !analyzed) {
-    throw new KeywordSearchError(
-      'analyzer_unavailable',
-      'Search analyzer is unavailable',
-      response.status >= 400 ? response.status : 503,
-      true
-    )
-  }
+  const analyzed = await analyzeKeywordSearchRequest(event, raw)
   return parseKeywordTokenRequest({
     ...raw,
     mode: 'tokens',

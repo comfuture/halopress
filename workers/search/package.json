@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node scripts/prepare-assets.mjs && wrangler deploy --dry-run --config wrangler.jsonc --outdir dist",
-    "test": "vitest run",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "build": "node scripts/prepare-assets.mjs",
+    "test": "node scripts/prepare-assets.mjs && vitest run",
+    "typecheck": "node scripts/prepare-assets.mjs && tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
     "@halopress/korean-search-tokenizer": "workspace:*",

@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest'
 const projectRoot = resolve(import.meta.dirname, '..')
 const prepareScript = join(projectRoot, 'scripts/prepare-cloudflare-d1.mjs')
 const deployScript = join(projectRoot, 'scripts/deploy-cloudflare.sh')
+const topologyScript = join(projectRoot, 'scripts/prepare-cloudflare-search-topology.mjs')
 
 type RunResult = { code: number, stdout: string, stderr: string }
 
@@ -34,28 +35,14 @@ async function run(command: string, args: string[], options: { cwd: string, env?
 async function createFixture(config: Record<string, unknown>) {
   const directory = await mkdtemp(join(tmpdir(), 'halopress-cloudflare-deploy-'))
   const configPath = join(directory, 'wrangler.jsonc')
-  const searchDirectory = join(directory, 'workers/search')
-  const searchConfigPath = join(searchDirectory, 'wrangler.jsonc')
+  const binDirectory = join(directory, 'bin')
   const logPath = join(directory, 'wrangler-calls.jsonl')
   const listCountPath = join(directory, 'list-count')
   const secretMetaPath = join(directory, 'secret-meta.json')
   const mockPath = join(directory, 'wrangler-mock.mjs')
+  const curlPath = join(binDirectory, 'curl')
   await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`)
-  await mkdir(searchDirectory, { recursive: true })
-  await writeFile(searchConfigPath, `${JSON.stringify({
-    name: 'halopress-test-search',
-    main: 'src/index.ts',
-    compatibility_date: '2026-05-18',
-    d1_databases: [{
-      binding: 'DB',
-      database_name: 'placeholder',
-      migrations_dir: '../../server/db/migrations'
-    }],
-    queues: {
-      producers: [{ binding: 'SEARCH_INDEX_QUEUE', queue: 'halopress-test-search-index' }],
-      consumers: [{ queue: 'halopress-test-search-index' }]
-    }
-  }, null, 2)}\n`)
+  await mkdir(binDirectory, { recursive: true })
   await writeFile(mockPath, `#!/usr/bin/env node
 import { appendFileSync, existsSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 
@@ -134,16 +121,26 @@ if (args[0] === 'queues' && args[1] === 'create') {
   process.exit(0)
 }
 
-if (args[0] === 'deploy') {
-  const configIndex = args.indexOf('--config')
-  const isSearchDeploy = configIndex >= 0 && args[configIndex + 1] === process.env.MOCK_SEARCH_CONFIG
-  const nameIndex = args.indexOf('--name')
-  if (isSearchDeploy && !args[nameIndex + 1]) {
-    console.error('search Worker name was not pinned')
+if (args[0] === 'queues' && args[1] === 'consumer' && args[2] === 'remove') {
+  if (process.env.MOCK_CONSUMER_REMOVE_FAIL === args[4]) {
+    console.error('mock consumer removal failure')
     process.exit(1)
   }
-  if (isSearchDeploy && process.env.MOCK_SEARCH_DEPLOY_FAIL === '1') {
-    console.error('mock search deploy failure')
+  console.log('Queue consumer removed')
+  process.exit(0)
+}
+
+if (args[0] === 'deploy') {
+  const configIndex = args.indexOf('--config')
+  const isProbeDeploy = configIndex >= 0
+    && args[configIndex + 1].endsWith('wrangler.durable-probe.jsonc')
+  const nameIndex = args.indexOf('--name')
+  if (isProbeDeploy && !args[nameIndex + 1]) {
+    console.error('Durable Object probe name was not pinned')
+    process.exit(1)
+  }
+  if (isProbeDeploy && process.env.MOCK_DURABLE_DEPLOY_FAIL === '1') {
+    console.error('mock Durable Object probe deploy failure')
     process.exit(1)
   }
   const separatedIndex = args.indexOf('--secrets-file')
@@ -165,23 +162,90 @@ if (args[0] === 'deploy') {
       authSecretLength: typeof authSecret === 'string' ? authSecret.length : 0
     }))
   }
-  if (!isSearchDeploy && process.env.MOCK_DEPLOY_FAIL === '1') {
+  if (!isProbeDeploy && process.env.MOCK_DEPLOY_FAIL === '1') {
     console.error('mock deploy failure')
     process.exit(1)
   }
-  console.log('Worker deployed')
+  console.log(isProbeDeploy
+    ? 'https://' + args[nameIndex + 1] + '.example.workers.dev'
+    : (process.env.MOCK_MAIN_URL || 'https://halopress-test.example.workers.dev'))
+  process.exit(0)
+}
+
+if (args[0] === 'delete') {
+  if (process.env.MOCK_DELETE_FAIL === args[1]) {
+    console.error('mock delete failure')
+    process.exit(1)
+  }
+  console.log('Worker deleted')
   process.exit(0)
 }
 
 console.error('Unexpected Wrangler arguments: ' + args.join(' '))
 process.exit(2)
 `)
-  await chmod(mockPath, 0o755)
+  await writeFile(curlPath, `#!/usr/bin/env node
+import { readFileSync, writeFileSync } from 'node:fs'
+
+const args = process.argv.slice(2)
+const outputIndex = args.indexOf('--output')
+const descriptor = JSON.parse(readFileSync(process.env.MOCK_DESCRIPTOR_PATH, 'utf8'))
+const url = args.at(-1)
+if (url.includes('/__halopress/search/analyzer-health')) {
+  writeFileSync(args[outputIndex + 1], JSON.stringify({
+    ok: process.env.MOCK_ACTIVATION_INVALID !== '1',
+    topology: 'durable-object',
+    compatibility: {
+      analyzerContractVersion: 1,
+      artifactVersionId: descriptor.artifactVersionId,
+      objectName: descriptor.objectName,
+      tokenizer: { tokenizerGeneration: descriptor.tokenizerGeneration },
+      wasmModuleTag: '[object WebAssembly.Module]',
+      modelByteLength: descriptor.modelBytes
+    },
+    query: {
+      tokenizerGeneration: descriptor.tokenizerGeneration,
+      rawTerms: ['방에', '들어가'],
+      morphTerms: ['방', '들어가']
+    }
+  }))
+  process.stdout.write(process.env.MOCK_ACTIVATION_HTTP_STATUS || '200')
+  process.exit(0)
+}
+const fixtures = [
+  '아버지가 방에 들어가신다.',
+  '어머니가 방에 들어가신다.',
+  '방에 들어가'
+].map((input, index) => ({
+  input,
+  id: 'fixture-' + index,
+  ok: true,
+  rawTerms: [input],
+  morphTerms: [input]
+}))
+writeFileSync(args[outputIndex + 1], JSON.stringify({
+  ok: true,
+  topology: 'durable-object',
+  descriptor,
+  fixtures,
+  compatibility: {
+    analyzerContractVersion: 1,
+    artifactVersionId: descriptor.artifactVersionId,
+    objectName: descriptor.objectName,
+    tokenizer: { tokenizerGeneration: descriptor.tokenizerGeneration },
+    wasmModuleTag: '[object WebAssembly.Module]',
+    modelByteLength: descriptor.modelBytes
+  },
+  repeatedParity: true,
+  timings: { coldAndFixturesMs: 12, warmFixturesMs: 3 }
+}))
+process.stdout.write(process.env.MOCK_PROBE_HTTP_STATUS || '200')
+`)
+  await Promise.all([chmod(mockPath, 0o755), chmod(curlPath, 0o755)])
 
   return {
     directory,
     configPath,
-    searchConfigPath,
     logPath,
     secretMetaPath,
     env: {
@@ -189,8 +253,11 @@ process.exit(2)
       MOCK_LOG: logPath,
       MOCK_LIST_COUNT: listCountPath,
       MOCK_SECRET_META: secretMetaPath,
-      MOCK_SEARCH_CONFIG: searchConfigPath,
-      HALOPRESS_SEARCH_WRANGLER_CONFIG: searchConfigPath
+      MOCK_DESCRIPTOR_PATH: join(
+        projectRoot,
+        'workers/search/src/generated-analyzer/descriptor.json'
+      ),
+      PATH: `${binDirectory}:${process.env.PATH}`
     }
   }
 }
@@ -210,6 +277,40 @@ function baseConfig(database: Record<string, unknown>) {
 }
 
 describe('Cloudflare deployment preparation', () => {
+  it('prints the complete DO resource plan without mutating config', async () => {
+    const fixture = await createFixture({
+      ...baseConfig({ database_id: 'existing-id' }),
+      services: [{ binding: 'SEARCH_WORKER', service: 'legacy-search' }],
+      worker_loaders: [{ binding: 'LOADER' }]
+    })
+    const before = await readFile(fixture.configPath, 'utf8')
+    const result = await run(process.execPath, [
+      topologyScript,
+      '--config', fixture.configPath,
+      '--plan'
+    ], {
+      cwd: projectRoot,
+      env: fixture.env
+    })
+
+    expect(result).toMatchObject({ code: 0 })
+    const output = JSON.parse(result.stdout)
+    expect(output.plan).toMatchObject({
+      topology: 'durable-object',
+      namedWorkers: ['halopress-test'],
+      legacyCleanup: { worker: 'halopress-test-search' },
+      pipelines: expect.stringContaining('Not provisioned')
+    })
+    expect(output.plan.analyzerModules.wasm.wranglerRule).toBe('CompiledWasm')
+    expect(output.plan.estimatedBillableDimensions).toHaveLength(4)
+    expect(output.plan.deploymentOrder).toEqual(expect.arrayContaining([
+      expect.stringContaining('detach the legacy halopress-test-search Queue consumer'),
+      expect.stringContaining('delete the legacy halopress-test-search Worker')
+    ]))
+    expect(await readFile(fixture.configPath, 'utf8')).toBe(before)
+    expect(await readCalls(fixture.logPath)).toEqual([])
+  })
+
   it('rejects TOML configuration before making remote changes', async () => {
     const fixture = await createFixture(baseConfig({}))
     const tomlPath = join(fixture.directory, 'wrangler.toml')
@@ -245,8 +346,8 @@ migrations_dir = "migrations"
     expect(await readCalls(fixture.logPath)).toEqual([
       ['d1', 'migrations', 'apply', 'DB', '--remote', '--config', fixture.configPath]
     ])
-    const searchConfig = JSON.parse(await readFile(fixture.searchConfigPath, 'utf8'))
-    expect(searchConfig.d1_databases[0]).toMatchObject({
+    const mainConfig = JSON.parse(await readFile(fixture.configPath, 'utf8'))
+    expect(mainConfig.d1_databases[0]).toMatchObject({
       binding: 'DB',
       database_name: 'halopress-test',
       database_id: 'existing-id'
@@ -395,7 +496,7 @@ migrations_dir = "migrations"
     ])
   })
 
-  it('creates a missing Queue before deploying the search Worker and main Worker', async () => {
+  it('creates a missing Queue, validates an isolated DO, deploys main, then deletes the legacy Worker', async () => {
     const fixture = await createFixture(baseConfig({ database_id: 'existing-id' }))
     const result = await run('bash', [deployScript, '--config', fixture.configPath], {
       cwd: projectRoot,
@@ -404,15 +505,33 @@ migrations_dir = "migrations"
 
     expect(result).toMatchObject({ code: 0 })
     const calls = await readCalls(fixture.logPath)
-    expect(calls.slice(2)).toEqual([
-      ['queues', 'info', 'halopress-test-search-index', '--config', fixture.searchConfigPath],
-      ['queues', 'create', 'halopress-test-search-index', '--config', fixture.searchConfigPath],
-      ['deploy', '--config', fixture.searchConfigPath, '--name', 'halopress-test-search'],
-      ['deploy', '--config', fixture.configPath]
+    expect(calls.slice(2, 4)).toEqual([
+      ['queues', 'info', 'halopress-test-search-index', '--config', fixture.configPath],
+      ['queues', 'create', 'halopress-test-search-index', '--config', fixture.configPath]
     ])
+    const probeDeploy = calls.findIndex(call =>
+      call[0] === 'deploy' && call.some(value => value.endsWith('wrangler.durable-probe.jsonc')))
+    const probeDelete = calls.findIndex(call =>
+      call[0] === 'delete' && call.some(value => value.endsWith('wrangler.durable-probe.jsonc')))
+    const mainDeploy = calls.findIndex(call =>
+      call[0] === 'deploy' && call.includes(fixture.configPath))
+    const legacyConsumerRemove = calls.findIndex(call =>
+      call[0] === 'queues'
+      && call[1] === 'consumer'
+      && call[2] === 'remove'
+      && call[4] === 'halopress-test-search')
+    const legacyDelete = calls.findIndex(call =>
+      call[0] === 'delete' && call[1] === 'halopress-test-search')
+    expect(probeDeploy).toBeGreaterThan(3)
+    expect(probeDelete).toBeGreaterThan(probeDeploy)
+    expect(mainDeploy).toBeGreaterThan(probeDelete)
+    expect(legacyConsumerRemove).toBeGreaterThan(mainDeploy)
+    expect(legacyDelete).toBeGreaterThan(legacyConsumerRemove)
+    expect(result.stdout).toContain('"topology": "durable-object"')
+    expect(result.stdout).toContain('"cleanupVerified":true')
   })
 
-  it('scopes automatic search resources to the configured Worker name', async () => {
+  it('converges the config on one same-script Durable Object topology', async () => {
     const fixture = await createFixture(baseConfig({ database_id: 'existing-id' }))
     const result = await run('bash', [deployScript, '--config', fixture.configPath], {
       cwd: projectRoot,
@@ -423,36 +542,31 @@ migrations_dir = "migrations"
     })
 
     expect(result).toMatchObject({ code: 0 })
-    const calls = await readCalls(fixture.logPath)
-    expect(calls.slice(-3)).toEqual([
-      ['queues', 'info', 'halopress-test-search-index', '--config', fixture.searchConfigPath],
-      [
-        'deploy',
-        '--config',
-        fixture.searchConfigPath,
-        '--name',
-        'halopress-test-search'
-      ],
-      ['deploy', '--config', fixture.configPath]
-    ])
-
     const mainConfig = JSON.parse(await readFile(fixture.configPath, 'utf8'))
-    const searchConfig = JSON.parse(await readFile(fixture.searchConfigPath, 'utf8'))
     expect(mainConfig.name).toBe('halopress-test')
+    expect(mainConfig.main).toMatch(/workers\/search\/src\/main-entry\.ts$/)
+    expect(mainConfig.minify).toBe(true)
     expect(mainConfig.queues.producers).toContainEqual({
       binding: 'SEARCH_INDEX_QUEUE',
       queue: 'halopress-test-search-index'
     })
-    expect(mainConfig.services).toContainEqual({
-      binding: 'SEARCH_WORKER',
-      service: 'halopress-test-search'
+    expect(mainConfig.queues.consumers).toContainEqual(expect.objectContaining({
+      queue: 'halopress-test-search-index'
+    }))
+    expect(mainConfig.durable_objects.bindings).toContainEqual({
+      name: 'SEARCH_ANALYZER_DO',
+      class_name: 'AnalyzerDurableObject'
     })
-    expect(searchConfig.name).toBe('halopress-test-search')
-    expect(searchConfig.queues.producers[0].queue).toBe('halopress-test-search-index')
-    expect(searchConfig.queues.consumers[0].queue).toBe('halopress-test-search-index')
+    expect(mainConfig.migrations).toContainEqual({
+      tag: 'search-analyzer-v1',
+      new_sqlite_classes: ['AnalyzerDurableObject']
+    })
+    expect(mainConfig.services).toBeUndefined()
+    expect(mainConfig.worker_loaders).toBeUndefined()
+    expect(mainConfig.vars.HALOPRESS_SEARCH_TOPOLOGY).toBeUndefined()
   })
 
-  it('respects explicit search resource overrides independently', async () => {
+  it('respects explicit Queue and legacy-cleanup names independently', async () => {
     const fixture = await createFixture(baseConfig({ database_id: 'existing-id' }))
     const result = await run('bash', [
       deployScript,
@@ -462,33 +576,31 @@ migrations_dir = "migrations"
       cwd: projectRoot,
       env: {
         ...fixture.env,
-        HALOPRESS_SEARCH_WORKER_NAME: 'shared-search-service',
+        HALOPRESS_LEGACY_SEARCH_WORKER_NAME: 'shared-search-service',
         HALOPRESS_SEARCH_QUEUE_NAME: 'newsroom-index-jobs'
       }
     })
 
     expect(result).toMatchObject({ code: 0 })
     const calls = await readCalls(fixture.logPath)
-    expect(calls.slice(-3)).toEqual([
-      ['queues', 'info', 'newsroom-index-jobs', '--config', fixture.searchConfigPath],
-      [
-        'deploy',
-        '--config',
-        fixture.searchConfigPath,
-        '--name',
-        'shared-search-service'
-      ],
-      ['deploy', '--config', fixture.configPath, '--name', 'newsroom-main']
-    ])
-
     const mainConfig = JSON.parse(await readFile(fixture.configPath, 'utf8'))
-    const searchConfig = JSON.parse(await readFile(fixture.searchConfigPath, 'utf8'))
     expect(mainConfig.name).toBe('newsroom-main')
     expect(mainConfig.queues.producers[0].queue).toBe('newsroom-index-jobs')
-    expect(mainConfig.services[0].service).toBe('shared-search-service')
-    expect(searchConfig.name).toBe('shared-search-service')
-    expect(searchConfig.queues.producers[0].queue).toBe('newsroom-index-jobs')
-    expect(searchConfig.queues.consumers[0].queue).toBe('newsroom-index-jobs')
+    expect(calls).toContainEqual([
+      'queues', 'info', 'newsroom-index-jobs', '--config', fixture.configPath
+    ])
+    expect(calls).toContainEqual([
+      'queues',
+      'consumer',
+      'remove',
+      'newsroom-index-jobs',
+      'shared-search-service',
+      '--config',
+      fixture.configPath
+    ])
+    expect(calls).toContainEqual([
+      'delete', 'shared-search-service', '--config', fixture.configPath, '--force'
+    ])
   })
 
   it('keeps derived search resource names within Cloudflare limits', async () => {
@@ -504,27 +616,90 @@ migrations_dir = "migrations"
     })
 
     expect(result).toMatchObject({ code: 0 })
-    const searchConfig = JSON.parse(await readFile(fixture.searchConfigPath, 'utf8'))
-    const queueName = searchConfig.queues.producers[0].queue as string
-    expect(searchConfig.name).toHaveLength(63)
-    expect(searchConfig.name).toMatch(/-[a-f0-9]{8}-search$/)
+    const mainConfig = JSON.parse(await readFile(fixture.configPath, 'utf8'))
+    const queueName = mainConfig.queues.producers[0].queue as string
+    const legacyDelete = (await readCalls(fixture.logPath))
+      .find(call => call[0] === 'delete' && call[2] === '--config'
+        && call[3] === fixture.configPath)
+    expect(legacyDelete?.[1]).toHaveLength(63)
+    expect(legacyDelete?.[1]).toMatch(/-[a-f0-9]{8}-search$/)
     expect(queueName).toHaveLength(63)
     expect(queueName).toMatch(/-[a-f0-9]{8}-search-index$/)
   })
 
-  it('does not deploy the main Worker when the search Worker deployment fails', async () => {
+  it('does not deploy main when the isolated Durable Object gate fails', async () => {
     const fixture = await createFixture(baseConfig({ database_id: 'existing-id' }))
     const result = await run('bash', [deployScript, '--config', fixture.configPath], {
       cwd: projectRoot,
-      env: { ...fixture.env, MOCK_SEARCH_DEPLOY_FAIL: '1' }
+      env: { ...fixture.env, MOCK_DURABLE_DEPLOY_FAIL: '1' }
+    })
+
+    expect(result.code).not.toBe(0)
+    expect(result.stderr).toContain('mock Durable Object probe deploy failure')
+    const calls = await readCalls(fixture.logPath)
+    expect(calls.at(-1)?.[0]).toBe('deploy')
+    expect(calls.at(-1)?.some(value =>
+      /wrangler\.durable-probe\.jsonc$/.test(value))).toBe(true)
+    expect(calls).not.toContainEqual(['deploy', '--config', fixture.configPath])
+  })
+
+  it('reports a legacy deletion failure only after main is active', async () => {
+    const fixture = await createFixture(baseConfig({ database_id: 'existing-id' }))
+    const result = await run('bash', [deployScript, '--config', fixture.configPath], {
+      cwd: projectRoot,
+      env: { ...fixture.env, MOCK_DELETE_FAIL: 'halopress-test-search' }
     })
 
     expect(result.code).not.toBe(0)
     const calls = await readCalls(fixture.logPath)
-    expect(calls.at(-1)).toEqual([
-      'deploy', '--config', fixture.searchConfigPath, '--name', 'halopress-test-search'
+    const mainDeploy = calls.findIndex(call =>
+      call[0] === 'deploy' && call.includes(fixture.configPath))
+    const legacyDelete = calls.findIndex(call =>
+      call[0] === 'delete' && call[1] === 'halopress-test-search')
+    expect(mainDeploy).toBeGreaterThan(-1)
+    expect(legacyDelete).toBeGreaterThan(mainDeploy)
+    expect(result.stderr).toContain('mock delete failure')
+  })
+
+  it('does not delete the legacy Worker when its Queue consumer cannot be detached', async () => {
+    const fixture = await createFixture(baseConfig({ database_id: 'existing-id' }))
+    const result = await run('bash', [deployScript, '--config', fixture.configPath], {
+      cwd: projectRoot,
+      env: {
+        ...fixture.env,
+        MOCK_CONSUMER_REMOVE_FAIL: 'halopress-test-search'
+      }
+    })
+
+    expect(result.code).not.toBe(0)
+    const calls = await readCalls(fixture.logPath)
+    const mainDeploy = calls.findIndex(call =>
+      call[0] === 'deploy' && call.includes(fixture.configPath))
+    const consumerRemove = calls.findIndex(call =>
+      call[0] === 'queues'
+      && call[1] === 'consumer'
+      && call[2] === 'remove'
+      && call[4] === 'halopress-test-search')
+    expect(consumerRemove).toBeGreaterThan(mainDeploy)
+    expect(calls).not.toContainEqual([
+      'delete', 'halopress-test-search', '--config', fixture.configPath, '--force'
     ])
-    expect(calls).not.toContainEqual(['deploy', '--config', fixture.configPath])
+    expect(result.stderr).toContain('mock consumer removal failure')
+  })
+
+  it('keeps the legacy Worker when the deployed main activation response is invalid', async () => {
+    const fixture = await createFixture(baseConfig({ database_id: 'existing-id' }))
+    const result = await run('bash', [deployScript, '--config', fixture.configPath], {
+      cwd: projectRoot,
+      env: { ...fixture.env, MOCK_ACTIVATION_INVALID: '1' }
+    })
+
+    expect(result.code).not.toBe(0)
+    const calls = await readCalls(fixture.logPath)
+    expect(calls).toContainEqual(['deploy', '--config', fixture.configPath])
+    expect(calls).not.toContainEqual([
+      'delete', 'halopress-test-search', '--config', fixture.configPath, '--force'
+    ])
   })
 
   it('preserves an existing auth secret without passing a secrets file', async () => {
@@ -535,13 +710,13 @@ migrations_dir = "migrations"
     })
     expect(result).toMatchObject({ code: 0 })
     expect(result.stdout).not.toContain('Generated NUXT_AUTH_SECRET')
-    expect(await readCalls(fixture.logPath)).toEqual([
+    const calls = await readCalls(fixture.logPath)
+    expect(calls.slice(0, 3)).toEqual([
       ['secret', 'list', '--format', 'json', '--config', fixture.configPath],
       ['d1', 'migrations', 'apply', 'DB', '--remote', '--config', fixture.configPath],
-      ['queues', 'info', 'halopress-test-search-index', '--config', fixture.searchConfigPath],
-      ['deploy', '--config', fixture.searchConfigPath, '--name', 'halopress-test-search'],
-      ['deploy', '--config', fixture.configPath]
+      ['queues', 'info', 'halopress-test-search-index', '--config', fixture.configPath]
     ])
+    expect(calls).toContainEqual(['deploy', '--config', fixture.configPath])
     await expect(readFile(fixture.secretMetaPath)).rejects.toThrow()
   })
 
@@ -557,18 +732,14 @@ migrations_dir = "migrations"
     expect(`${result.stdout}\n${result.stderr}`).not.toMatch(/NUXT_AUTH_SECRET=[0-9a-f]{64}/)
 
     const calls = await readCalls(fixture.logPath)
-    expect(calls.slice(0, 2)).toEqual([
+    expect(calls.slice(0, 3)).toEqual([
       ['secret', 'list', '--format', 'json', '--config', fixture.configPath],
-      ['d1', 'migrations', 'apply', 'DB', '--remote', '--config', fixture.configPath]
+      ['d1', 'migrations', 'apply', 'DB', '--remote', '--config', fixture.configPath],
+      ['queues', 'info', 'halopress-test-search-index', '--config', fixture.configPath]
     ])
-    expect(calls[2]).toEqual([
-      'queues', 'info', 'halopress-test-search-index', '--config', fixture.searchConfigPath
-    ])
-    expect(calls[3]).toEqual([
-      'deploy', '--config', fixture.searchConfigPath, '--name', 'halopress-test-search'
-    ])
-    expect(calls[4]?.slice(0, 3)).toEqual(['deploy', '--config', fixture.configPath])
-    expect(calls[4]?.filter(argument => argument === '--secrets-file')).toHaveLength(1)
+    const deployCall = calls.find(call =>
+      call[0] === 'deploy' && call.includes(fixture.configPath))
+    expect(deployCall?.filter(argument => argument === '--secrets-file')).toHaveLength(1)
 
     const secretMeta = JSON.parse(await readFile(fixture.secretMetaPath, 'utf8'))
     expect(secretMeta).toMatchObject({ mode: 0o600, authSecretCount: 1, authSecretLength: 64 })
@@ -601,6 +772,7 @@ migrations_dir = "migrations"
     })
 
     expect(result.code).not.toBe(0)
+    expect(result.stdout).toContain('mock deploy failure')
     const secretMeta = JSON.parse(await readFile(fixture.secretMetaPath, 'utf8'))
     expect(secretMeta).toMatchObject({ mode: 0o600, authSecretCount: 1, authSecretLength: 64 })
     await expect(readFile(secretMeta.path)).rejects.toThrow()
@@ -622,7 +794,8 @@ migrations_dir = "migrations"
 
     expect(result).toMatchObject({ code: 0 })
     expect(`${result.stdout}\n${result.stderr}`).not.toContain(providedSecret)
-    const deployCall = (await readCalls(fixture.logPath)).at(-1)
+    const deployCall = (await readCalls(fixture.logPath)).find(call =>
+      call[0] === 'deploy' && call.includes(fixture.configPath))
     expect(deployCall?.filter(argument => argument === '--secrets-file')).toHaveLength(1)
     expect(deployCall).toContain(userSecretsPath)
     const secretMeta = JSON.parse(await readFile(fixture.secretMetaPath, 'utf8'))
@@ -672,12 +845,11 @@ migrations_dir = "migrations"
   it('keeps dry-run free of remote provisioning and migration changes', async () => {
     const fixture = await createFixture(baseConfig({}))
     const originalMainConfig = await readFile(fixture.configPath, 'utf8')
-    const originalSearchConfig = await readFile(fixture.searchConfigPath, 'utf8')
     const result = await run('bash', [deployScript, '--config', fixture.configPath, '--dry-run'], {
       cwd: projectRoot,
       env: {
         ...fixture.env,
-        HALOPRESS_SEARCH_WORKER_NAME: 'temporary-dry-run-search',
+        HALOPRESS_LEGACY_SEARCH_WORKER_NAME: 'temporary-dry-run-search',
         HALOPRESS_SEARCH_QUEUE_NAME: 'temporary-dry-run-queue'
       }
     })
@@ -685,17 +857,14 @@ migrations_dir = "migrations"
     expect(result).toMatchObject({ code: 0 })
     expect(result.stdout).toContain('[dry-run]')
     expect(await readCalls(fixture.logPath)).toEqual([
-      ['deploy', '--config', fixture.searchConfigPath, '--name', 'temporary-dry-run-search', '--dry-run'],
       ['deploy', '--config', fixture.configPath, '--dry-run']
     ])
     expect(await readFile(fixture.configPath, 'utf8')).toBe(originalMainConfig)
-    expect(await readFile(fixture.searchConfigPath, 'utf8')).toBe(originalSearchConfig)
   })
 
-  it('restores both Wrangler files when a dry-run deployment fails', async () => {
+  it('restores the Wrangler file when a dry-run deployment fails', async () => {
     const fixture = await createFixture(baseConfig({}))
     const originalMainConfig = await readFile(fixture.configPath, 'utf8')
-    const originalSearchConfig = await readFile(fixture.searchConfigPath, 'utf8')
     const result = await run('bash', [
       deployScript,
       '--config', fixture.configPath,
@@ -705,13 +874,12 @@ migrations_dir = "migrations"
       cwd: projectRoot,
       env: {
         ...fixture.env,
-        MOCK_SEARCH_DEPLOY_FAIL: '1'
+        MOCK_DEPLOY_FAIL: '1'
       }
     })
 
     expect(result.code).not.toBe(0)
     expect(await readFile(fixture.configPath, 'utf8')).toBe(originalMainConfig)
-    expect(await readFile(fixture.searchConfigPath, 'utf8')).toBe(originalSearchConfig)
   })
 
   it('derives an environment-scoped topology without a name override', async () => {
@@ -741,7 +909,8 @@ migrations_dir = "migrations"
 
     expect(result).toMatchObject({ code: 0 })
     const common = ['--config', fixture.configPath, '--env', 'staging']
-    expect(await readCalls(fixture.logPath)).toEqual([
+    const calls = await readCalls(fixture.logPath)
+    expect(calls.slice(0, 3)).toEqual([
       ['secret', 'list', '--format', 'json', ...common],
       ['d1', 'migrations', 'apply', 'DB', '--remote', ...common],
       [
@@ -749,23 +918,26 @@ migrations_dir = "migrations"
         'info',
         'halopress-test-staging-search-index',
         '--config',
-        fixture.searchConfigPath
-      ],
-      [
-        'deploy',
-        '--config',
-        fixture.searchConfigPath,
-        '--name',
-        'halopress-test-staging-search'
-      ],
-      ['deploy', ...common]
+        fixture.configPath,
+        '--env',
+        'staging'
+      ]
+    ])
+    expect(calls).toContainEqual(['deploy', ...common])
+    expect(calls).toContainEqual([
+      'delete',
+      'halopress-test-staging-search',
+      '--config',
+      fixture.configPath,
+      '--force'
     ])
     const patched = JSON.parse(await readFile(fixture.configPath, 'utf8'))
     expect(patched.env.staging.name).toBe('halopress-test-staging')
     expect(patched.env.staging.queues.producers[0].queue)
       .toBe('halopress-test-staging-search-index')
-    expect(patched.env.staging.services[0].service)
-      .toBe('halopress-test-staging-search')
+    expect(patched.env.staging.services).toBeUndefined()
+    expect(patched.env.staging.durable_objects.bindings[0].class_name)
+      .toBe('AnalyzerDurableObject')
   })
 
   it('uses environment bindings and forwards config/env/name to the applicable commands', async () => {
@@ -798,19 +970,30 @@ migrations_dir = "migrations"
 
     expect(result).toMatchObject({ code: 0 })
     const common = ['--config', fixture.configPath, '--env', 'staging']
-    expect(await readCalls(fixture.logPath)).toEqual([
+    const calls = await readCalls(fixture.logPath)
+    expect(calls.slice(0, 4)).toEqual([
       ['secret', 'list', '--format', 'json', ...common, '--name', 'halopress-staging-worker'],
       ['d1', 'list', '--json', ...common],
       ['d1', 'migrations', 'apply', 'DB', '--remote', ...common],
-      ['queues', 'info', 'halopress-staging-worker-search-index', '--config', fixture.searchConfigPath],
       [
-        'deploy',
+        'queues',
+        'info',
+        'halopress-staging-worker-search-index',
         '--config',
-        fixture.searchConfigPath,
-        '--name',
-        'halopress-staging-worker-search'
-      ],
-      ['deploy', ...common, '--name', 'halopress-staging-worker']
+        fixture.configPath,
+        '--env',
+        'staging'
+      ]
+    ])
+    expect(calls).toContainEqual([
+      'deploy', ...common, '--name', 'halopress-staging-worker'
+    ])
+    expect(calls).toContainEqual([
+      'delete',
+      'halopress-staging-worker-search',
+      '--config',
+      fixture.configPath,
+      '--force'
     ])
     const patched = JSON.parse(await readFile(fixture.configPath, 'utf8'))
     expect(patched.env.staging.d1_databases[0].database_id).toBe('staging-id')
@@ -818,9 +1001,10 @@ migrations_dir = "migrations"
       binding: 'SEARCH_INDEX_QUEUE',
       queue: 'halopress-staging-worker-search-index'
     })
-    expect(patched.env.staging.services).toContainEqual({
-      binding: 'SEARCH_WORKER',
-      service: 'halopress-staging-worker-search'
+    expect(patched.env.staging.services).toBeUndefined()
+    expect(patched.env.staging.durable_objects.bindings).toContainEqual({
+      name: 'SEARCH_ANALYZER_DO',
+      class_name: 'AnalyzerDurableObject'
     })
   })
 

@@ -426,6 +426,26 @@ export async function markJobRetry(db: D1Database, job: FullTextJobRow, error: u
   return { terminal, delay }
 }
 
+export async function markJobFailed(db: D1Database, job: FullTextJobRow, error: unknown) {
+  const now = epochSeconds()
+  const message = error instanceof Error
+    ? error.message.slice(0, 2000)
+    : String(error).slice(0, 2000)
+  await db.batch([
+    db.prepare(`
+      UPDATE full_text_job
+      SET status = 'failed', lease_expires_at = NULL,
+          last_error = ?, updated_at = ?, completed_at = ?
+      WHERE id = ?
+    `).bind(message, now, now, job.id),
+    db.prepare(`
+      UPDATE full_text_index_state
+      SET status = 'failed', last_error = ?, updated_at = ?
+      WHERE content_id = ? AND field_id = ? AND building_index_generation = ?
+    `).bind(message, now, job.document_id, job.field_id, job.index_generation)
+  ])
+}
+
 export async function pendingJobIds(db: D1Database, limit = 50) {
   const now = epochSeconds()
   const rows = await db.prepare(`

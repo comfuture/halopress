@@ -9,7 +9,6 @@ D1_DATABASE="${HALOPRESS_D1_DATABASE:-DB}"
 PREPARE_ARGS=()
 SECRET_SCOPE_ARGS=()
 DEPLOY_ARGS=()
-SEARCH_DEPLOY_ARGS=()
 DRY_RUN=0
 MAIN_CONFIG_PATH=""
 MAIN_WORKER_NAME_OVERRIDE=""
@@ -20,12 +19,11 @@ GENERATED_SECRETS_FILE=""
 SECRET_LIST_STDERR_FILE=""
 TOPOLOGY_BACKUP_DIR=""
 TOPOLOGY_MAIN_CONFIG_PATH=""
-TOPOLOGY_SEARCH_CONFIG_PATH=""
+ACTIVATION_RESPONSE_FILE=""
 
 cleanup_generated_secrets() {
   if [ -n "$TOPOLOGY_BACKUP_DIR" ]; then
     cp "$TOPOLOGY_BACKUP_DIR/main.jsonc" "$TOPOLOGY_MAIN_CONFIG_PATH"
-    cp "$TOPOLOGY_BACKUP_DIR/search.jsonc" "$TOPOLOGY_SEARCH_CONFIG_PATH"
     rm -rf -- "$TOPOLOGY_BACKUP_DIR"
   fi
   if [ -n "$GENERATED_SECRETS_DIR" ]; then
@@ -33,6 +31,9 @@ cleanup_generated_secrets() {
   fi
   if [ -n "$SECRET_LIST_STDERR_FILE" ]; then
     rm -f -- "$SECRET_LIST_STDERR_FILE"
+  fi
+  if [ -n "$ACTIVATION_RESPONSE_FILE" ]; then
+    rm -f -- "$ACTIVATION_RESPONSE_FILE"
   fi
 }
 
@@ -133,8 +134,11 @@ while [ "$#" -gt 0 ]; do
       DRY_RUN=1
       PREPARE_ARGS+=("$1")
       DEPLOY_ARGS+=("$1")
-      SEARCH_DEPLOY_ARGS+=("$1")
       shift
+      ;;
+    --topology|--topology=*)
+      echo 'Search topology selection was removed; HaloPress now deploys the Durable Object topology only.' >&2
+      exit 1
       ;;
     --env|-e|--config|-c)
       flag="$1"
@@ -233,49 +237,59 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-if [ -n "${HALOPRESS_SEARCH_WRANGLER_CONFIG:-}" ]; then
-  SEARCH_CONFIG_PATH="$HALOPRESS_SEARCH_WRANGLER_CONFIG"
-elif [ -n "$MAIN_CONFIG_PATH" ]; then
-  SEARCH_CONFIG_PATH="$(cd "$(dirname "$MAIN_CONFIG_PATH")" && pwd)/workers/search/wrangler.jsonc"
-else
-  SEARCH_CONFIG_PATH="$ROOT_DIR/workers/search/wrangler.jsonc"
-fi
 if [ -z "$MAIN_CONFIG_PATH" ]; then
   MAIN_CONFIG_PATH="$ROOT_DIR/wrangler.jsonc"
 fi
-if [ ! -f "$SEARCH_CONFIG_PATH" ]; then
-  echo "Missing required search Worker configuration: $SEARCH_CONFIG_PATH" >&2
-  echo 'Set HALOPRESS_SEARCH_WRANGLER_CONFIG when using a custom main Wrangler configuration.' >&2
-  exit 1
+
+DEPLOY_HAS_CONFIG=0
+for argument in "${DEPLOY_ARGS[@]}"; do
+  case "$argument" in
+    --config|-c|--config=*|-c=*)
+      DEPLOY_HAS_CONFIG=1
+      break
+      ;;
+  esac
+done
+if [ "$DEPLOY_HAS_CONFIG" -eq 0 ]; then
+  DEPLOY_ARGS=(--config "$MAIN_CONFIG_PATH" "${DEPLOY_ARGS[@]}")
 fi
 
 if [ "$DRY_RUN" -eq 1 ]; then
   topology_backup_dir="$(mktemp -d "${TMPDIR:-/tmp}/halopress-topology.XXXXXX")"
   cp "$MAIN_CONFIG_PATH" "$topology_backup_dir/main.jsonc"
-  cp "$SEARCH_CONFIG_PATH" "$topology_backup_dir/search.jsonc"
   TOPOLOGY_MAIN_CONFIG_PATH="$MAIN_CONFIG_PATH"
-  TOPOLOGY_SEARCH_CONFIG_PATH="$SEARCH_CONFIG_PATH"
   TOPOLOGY_BACKUP_DIR="$topology_backup_dir"
 fi
 
-TOPOLOGY_ARGS=(--config "$MAIN_CONFIG_PATH" --search-config "$SEARCH_CONFIG_PATH")
+TOPOLOGY_ARGS=(--config "$MAIN_CONFIG_PATH")
 if [ -n "$WRANGLER_ENV" ]; then
   TOPOLOGY_ARGS+=(--env "$WRANGLER_ENV")
 fi
 if [ -n "$MAIN_WORKER_NAME_OVERRIDE" ]; then
   TOPOLOGY_ARGS+=(--main-name "$MAIN_WORKER_NAME_OVERRIDE")
 fi
-if [ -n "${HALOPRESS_SEARCH_WORKER_NAME:-}" ]; then
-  TOPOLOGY_ARGS+=(--search-worker-name "$HALOPRESS_SEARCH_WORKER_NAME")
+if [ -n "${HALOPRESS_LEGACY_SEARCH_WORKER_NAME:-}" ]; then
+  TOPOLOGY_ARGS+=(--legacy-search-worker-name "$HALOPRESS_LEGACY_SEARCH_WORKER_NAME")
 fi
 if [ -n "${HALOPRESS_SEARCH_QUEUE_NAME:-}" ]; then
   TOPOLOGY_ARGS+=(--search-queue-name "$HALOPRESS_SEARCH_QUEUE_NAME")
 fi
+TOPOLOGY_PLAN_JSON="$(node scripts/prepare-cloudflare-search-topology.mjs "${TOPOLOGY_ARGS[@]}" --plan)"
+node -e '
+const result = JSON.parse(process.argv[1])
+console.log("Cloudflare search resource plan:")
+console.log(JSON.stringify(result.plan, null, 2))
+' "$TOPOLOGY_PLAN_JSON"
 TOPOLOGY_JSON="$(node scripts/prepare-cloudflare-search-topology.mjs "${TOPOLOGY_ARGS[@]}")"
-SEARCH_WORKER_NAME="$(node -e '
+MAIN_WORKER_NAME="$(node -e '
 const topology = JSON.parse(process.argv[1])
-if (!topology.searchWorkerName) process.exit(1)
-process.stdout.write(topology.searchWorkerName)
+if (!topology.mainName) process.exit(1)
+process.stdout.write(topology.mainName)
+' "$TOPOLOGY_JSON")"
+LEGACY_SEARCH_WORKER_NAME="$(node -e '
+const topology = JSON.parse(process.argv[1])
+if (!topology.legacySearchWorkerName) process.exit(1)
+process.stdout.write(topology.legacySearchWorkerName)
 ' "$TOPOLOGY_JSON")"
 SEARCH_QUEUE_NAME="$(node -e '
 const topology = JSON.parse(process.argv[1])
@@ -337,7 +351,6 @@ fi
 
 node scripts/prepare-cloudflare-d1.mjs \
   "$D1_DATABASE" \
-  --search-config "$SEARCH_CONFIG_PATH" \
   "${PREPARE_ARGS[@]}"
 
 if [ "$DRY_RUN" -eq 0 ] && [ "$SECRET_STATUS" = "missing" ] && [ -z "$USER_SECRETS_FILE" ]; then
@@ -347,19 +360,136 @@ if [ "$DRY_RUN" -eq 0 ] && [ "$SECRET_STATUS" = "missing" ] && [ -z "$USER_SECRE
 fi
 
 if [ "$DRY_RUN" -eq 0 ]; then
-  if ! run_wrangler queues info "$SEARCH_QUEUE_NAME" --config "$SEARCH_CONFIG_PATH"; then
+  QUEUE_SCOPE_ARGS=(--config "$MAIN_CONFIG_PATH")
+  if [ -n "$WRANGLER_ENV" ]; then
+    QUEUE_SCOPE_ARGS+=(--env "$WRANGLER_ENV")
+  fi
+  if ! run_wrangler queues info "$SEARCH_QUEUE_NAME" "${QUEUE_SCOPE_ARGS[@]}"; then
     echo "Creating Cloudflare Queue ${SEARCH_QUEUE_NAME}..."
-    run_wrangler queues create "$SEARCH_QUEUE_NAME" --config "$SEARCH_CONFIG_PATH"
+    run_wrangler queues create "$SEARCH_QUEUE_NAME" "${QUEUE_SCOPE_ARGS[@]}"
   fi
 fi
 
 node workers/search/scripts/prepare-assets.mjs
-echo 'Deploying search Worker...'
-if [ "${#SEARCH_DEPLOY_ARGS[@]}" -gt 0 ]; then
-  run_wrangler deploy --config "$SEARCH_CONFIG_PATH" --name "$SEARCH_WORKER_NAME" "${SEARCH_DEPLOY_ARGS[@]}"
+if [ "$DRY_RUN" -eq 0 ]; then
+  echo 'Running deployed real-Garu Durable Object compatibility gate...'
+  DURABLE_COMPATIBILITY_JSON="$(bash scripts/preflight-cloudflare-durable-search.sh "$MAIN_WORKER_NAME")"
+  node -e '
+const result = JSON.parse(process.argv[1])
+console.log(JSON.stringify({
+  event: "halopress.search.durable_compatibility",
+  artifactVersionId: result.descriptor?.artifactVersionId,
+  wasmModuleTag: result.compatibility?.wasmModuleTag,
+  coldAndFixturesMs: result.timings?.coldAndFixturesMs,
+  warmFixturesMs: result.timings?.warmFixturesMs,
+  cleanupVerified: result.cleanupVerified
+}))
+' "$DURABLE_COMPATIBILITY_JSON"
 else
-  run_wrangler deploy --config "$SEARCH_CONFIG_PATH" --name "$SEARCH_WORKER_NAME"
+  echo '[dry-run] Skipping the remote Durable Object compatibility deployment.'
 fi
 
-echo 'Deploying main Cloudflare Worker...'
-run_wrangler deploy "${DEPLOY_ARGS[@]}"
+echo 'Deploying main Cloudflare Worker with Durable Object search orchestration...'
+set +e
+MAIN_DEPLOY_OUTPUT="$(run_wrangler deploy "${DEPLOY_ARGS[@]}" 2>&1)"
+MAIN_DEPLOY_EXIT=$?
+set -e
+printf '%s\n' "$MAIN_DEPLOY_OUTPUT"
+if [ "$MAIN_DEPLOY_EXIT" -ne 0 ]; then
+  exit "$MAIN_DEPLOY_EXIT"
+fi
+
+if [ "$DRY_RUN" -eq 0 ]; then
+  MAIN_ACTIVATION_URL="${HALOPRESS_ACTIVATION_URL:-}"
+  if [ -z "$MAIN_ACTIVATION_URL" ]; then
+    MAIN_ACTIVATION_URL="$(printf '%s' "$MAIN_DEPLOY_OUTPUT" | node -e '
+let input = ""
+process.stdin.setEncoding("utf8")
+process.stdin.on("data", chunk => { input += chunk })
+process.stdin.on("end", () => {
+  const matches = input.match(/https:\/\/[a-z0-9.-]+(?:\/[^\s]*)?/giu) || []
+  const url = matches.at(-1)
+  if (!url) process.exit(1)
+  process.stdout.write(url.replace(/\/+$/, ""))
+})
+')"
+  fi
+  ACTIVATION_RESPONSE_FILE="$(mktemp "${TMPDIR:-/tmp}/halopress-do-activation.XXXXXX")"
+  ACTIVATION_STATUS=""
+  for attempt in 1 2 3 4 5 6 7 8 9 10; do
+    ACTIVATION_STATUS="$(curl --silent --show-error \
+      --output "$ACTIVATION_RESPONSE_FILE" \
+      --write-out '%{http_code}' \
+      "${MAIN_ACTIVATION_URL}/__halopress/search/analyzer-health" || true)"
+    if [ "$ACTIVATION_STATUS" = "200" ]; then
+      break
+    fi
+    if [ "$attempt" -lt 10 ]; then
+      sleep 3
+    fi
+  done
+  if [ "$ACTIVATION_STATUS" != "200" ]; then
+    echo "Main Worker Durable Object activation gate returned HTTP ${ACTIVATION_STATUS}; the legacy Worker was not deleted." >&2
+    sed -n '1,120p' "$ACTIVATION_RESPONSE_FILE" >&2
+    rm -f -- "$ACTIVATION_RESPONSE_FILE"
+    exit 1
+  fi
+  node - "$ACTIVATION_RESPONSE_FILE" \
+    "$ROOT_DIR/workers/search/src/generated-analyzer/descriptor.json" <<'NODE'
+const { readFileSync } = require('node:fs')
+const response = JSON.parse(readFileSync(process.argv[2], 'utf8'))
+const descriptor = JSON.parse(readFileSync(process.argv[3], 'utf8'))
+if (!response.ok
+  || response.topology !== 'durable-object'
+  || response.compatibility?.artifactVersionId !== descriptor.artifactVersionId
+  || response.compatibility?.objectName !== descriptor.objectName
+  || response.compatibility?.wasmModuleTag !== '[object WebAssembly.Module]'
+  || response.query?.tokenizerGeneration !== descriptor.tokenizerGeneration
+  || !Array.isArray(response.query?.morphTerms)) {
+  throw new Error('Main Worker Durable Object activation result did not satisfy the analyzer contract')
+}
+NODE
+  rm -f -- "$ACTIVATION_RESPONSE_FILE"
+  ACTIVATION_RESPONSE_FILE=""
+  echo "Main Worker Durable Object activation gate passed at ${MAIN_ACTIVATION_URL}."
+
+  set +e
+  CONSUMER_REMOVE_OUTPUT="$(run_wrangler queues consumer remove \
+    "$SEARCH_QUEUE_NAME" \
+    "$LEGACY_SEARCH_WORKER_NAME" \
+    --config "$MAIN_CONFIG_PATH" 2>&1)"
+  CONSUMER_REMOVE_EXIT=$?
+  set -e
+  if [ "$CONSUMER_REMOVE_EXIT" -ne 0 ] \
+    && [[ "$CONSUMER_REMOVE_OUTPUT" != *'not found'* ]] \
+    && [[ "$CONSUMER_REMOVE_OUTPUT" != *'does not exist'* ]] \
+    && [[ "$CONSUMER_REMOVE_OUTPUT" != *'not a consumer'* ]] \
+    && [[ "$CONSUMER_REMOVE_OUTPUT" != *'No consumer'* ]]; then
+    printf '%s\n' "$CONSUMER_REMOVE_OUTPUT" >&2
+    exit "$CONSUMER_REMOVE_EXIT"
+  fi
+  if [ "$CONSUMER_REMOVE_EXIT" -eq 0 ]; then
+    echo "Detached legacy search Worker ${LEGACY_SEARCH_WORKER_NAME} from Queue ${SEARCH_QUEUE_NAME}."
+  else
+    echo "Legacy search Worker ${LEGACY_SEARCH_WORKER_NAME} was not a consumer of Queue ${SEARCH_QUEUE_NAME}."
+  fi
+
+  set +e
+  DELETE_OUTPUT="$(run_wrangler delete \
+    "$LEGACY_SEARCH_WORKER_NAME" \
+    --config "$MAIN_CONFIG_PATH" \
+    --force 2>&1)"
+  DELETE_EXIT=$?
+  set -e
+  if [ "$DELETE_EXIT" -ne 0 ] \
+    && [[ "$DELETE_OUTPUT" != *'not found'* ]] \
+    && [[ "$DELETE_OUTPUT" != *'does not exist'* ]]; then
+    printf '%s\n' "$DELETE_OUTPUT" >&2
+    exit "$DELETE_EXIT"
+  fi
+  if [ "$DELETE_EXIT" -eq 0 ]; then
+    echo "Deleted legacy search Worker ${LEGACY_SEARCH_WORKER_NAME}; D1 and Queue were preserved."
+  else
+    echo "Legacy search Worker ${LEGACY_SEARCH_WORKER_NAME} was not present; no deletion was needed."
+  fi
+fi

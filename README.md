@@ -208,18 +208,18 @@ HaloPress runs as a Cloudflare Worker with:
 - D1 binding: `DB`
 - R2 binding: `CONTENT_ASSETS`
 - Queue producer: `SEARCH_INDEX_QUEUE`
-- Auxiliary Worker service: `SEARCH_WORKER`
+- Queue consumer and five-minute scheduled reconciler
+- SQLite-backed Durable Object: `SEARCH_ANALYZER_DO`
 - Static assets: `.output/public`
-- Worker entry: `.output/server/index.mjs`
+- Code-owned Worker entry composing Nitro `fetch`, `queue`, and `scheduled`
 - Automatically managed Worker secret: `NUXT_AUTH_SECRET`
 
-Korean full-text indexing and raw-query tokenization run in a separately
-deployed search Worker. Its name and Queue default to `<main-worker>-search` and
-`<main-worker>-search-index`, so separate HaloPress deployments in one account do
-not collide. It shares D1 with the main Worker but does not receive the main
-authentication secret. See the
-[full-text search operations guide](docs/full-text-search.md) for topology,
-recovery, quotas, and D1 smoke tests.
+Korean full-text indexing and raw-query tokenization run in a same-script
+`AnalyzerDurableObject`. The model and compiled Wasm are immutable deploy-time
+modules; D1 remains authoritative for outbox jobs, leases, checkpoints,
+generations, and the search index. See the [full-text search operations
+guide](docs/full-text-search.md) for topology, recovery, quotas, costs, and D1
+smoke tests.
 
 Local development uses Nuxt Image's `ipx` provider and proxies dynamic
 `/assets` URLs through the local application. Workers Builds automatically use
@@ -238,10 +238,10 @@ same publishing guarantee:
 
 1. resolve or create the configured D1 database;
 2. apply all remote D1 migrations;
-3. create or reuse the search Queue and publish the auxiliary search Worker;
-4. publish the main Worker only after the database and search topology are ready,
-   reusing or building the Nuxt output as needed and provisioning or attaching
-   the R2 bucket.
+3. create or reuse the search Queue;
+4. deploy, invoke, and delete an isolated real-Garu Durable Object probe;
+5. publish the main Worker and pass its same-script analyzer activation gate;
+6. remove the historical auxiliary search Worker after activation succeeds.
 
 The first public Worker version therefore never runs against an unmigrated
 database.
@@ -262,12 +262,11 @@ email/password enabled and create the password administrator first; Google OAuth
 can be added afterward.
 
 The defaults are `halopress` for D1 and `halopress-content-assets` for R2. The
-deployment wrapper derives the auxiliary Worker and Queue names from the effective
-main Worker name selected in the generated Wrangler configuration, by `--name`,
-or by `--env`. Long derived names are shortened deterministically to Cloudflare's
-63-character resource-name limit. Give D1 and R2 site-specific names when one
-account will host multiple HaloPress installations; the wrapper keeps the search
-service and Queue bindings aligned automatically.
+deployment wrapper derives the Queue name from the effective main Worker name
+selected in the generated Wrangler configuration, by `--name`, or by `--env`.
+Long derived names are shortened deterministically to Cloudflare's 63-character
+resource-name limit. Give D1 and R2 site-specific names when one account hosts
+multiple HaloPress installations.
 
 ### Deploy from a terminal
 
@@ -300,12 +299,11 @@ D1 preparation and Worker deployment:
 pnpm deploy:cf -- --env staging --config wrangler.staging.jsonc
 ```
 
-An explicit `--name` is authoritative for the main Worker. To pin legacy or
-shared search resource names instead of deriving them, set
-`HALOPRESS_SEARCH_WORKER_NAME` and/or `HALOPRESS_SEARCH_QUEUE_NAME`. Ordinary
-build environment variables do not override the main Worker identity; automatic
-Workers Builds and one-click deployments use the `name` written into their
-Wrangler configuration.
+An explicit `--name` is authoritative for the main Worker. Set
+`HALOPRESS_SEARCH_QUEUE_NAME` only to adopt an existing Queue. During the
+one-time migration, `HALOPRESS_LEGACY_SEARCH_WORKER_NAME` identifies a
+historically customized Worker to delete after activation. Ordinary build
+environment variables do not override the main Worker identity.
 
 Custom Wrangler configuration files passed to `deploy:cf` must use JSON or JSONC.
 TOML cannot be safely normalized by the deployment preparation step; convert an
@@ -320,7 +318,7 @@ migrations:
 pnpm deploy:cf -- --dry-run
 ```
 
-Dry-run topology changes are temporary: both Wrangler files are restored
+Dry-run topology changes are temporary: the Wrangler file is restored
 byte-for-byte when the command exits, including after a failed dry-run.
 
 Run the preparation step independently for diagnostics:
