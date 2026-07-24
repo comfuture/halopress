@@ -38,6 +38,7 @@ async function createFixture(config: Record<string, unknown>) {
   const binDirectory = join(directory, 'bin')
   const logPath = join(directory, 'wrangler-calls.jsonl')
   const listCountPath = join(directory, 'list-count')
+  const activationCountPath = join(directory, 'activation-count')
   const secretMetaPath = join(directory, 'secret-meta.json')
   const mockPath = join(directory, 'wrangler-mock.mjs')
   const curlPath = join(binDirectory, 'curl')
@@ -198,15 +199,21 @@ console.error('Unexpected Wrangler arguments: ' + args.join(' '))
 process.exit(2)
 `)
   await writeFile(curlPath, `#!/usr/bin/env node
-import { readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 
 const args = process.argv.slice(2)
 const outputIndex = args.indexOf('--output')
 const descriptor = JSON.parse(readFileSync(process.env.MOCK_DESCRIPTOR_PATH, 'utf8'))
 const url = args.at(-1)
 if (url.includes('/__halopress/search/analyzer-health')) {
+  const countPath = process.env.MOCK_ACTIVATION_COUNT
+  const attempt = countPath && existsSync(countPath)
+    ? Number(readFileSync(countPath, 'utf8'))
+    : 0
+  if (countPath) writeFileSync(countPath, String(attempt + 1))
+  const invalidAttempts = Number(process.env.MOCK_ACTIVATION_INVALID_ATTEMPTS || 0)
   writeFileSync(args[outputIndex + 1], JSON.stringify({
-    ok: process.env.MOCK_ACTIVATION_INVALID !== '1',
+    ok: process.env.MOCK_ACTIVATION_INVALID !== '1' && attempt >= invalidAttempts,
     topology: 'durable-object',
     compatibility: {
       analyzerContractVersion: 1,
@@ -260,16 +267,19 @@ process.stdout.write(process.env.MOCK_PROBE_HTTP_STATUS || '200')
     directory,
     configPath,
     logPath,
+    activationCountPath,
     secretMetaPath,
     env: {
       HALOPRESS_WRANGLER_BIN: mockPath,
       MOCK_LOG: logPath,
       MOCK_LIST_COUNT: listCountPath,
+      MOCK_ACTIVATION_COUNT: activationCountPath,
       MOCK_SECRET_META: secretMetaPath,
       MOCK_DESCRIPTOR_PATH: join(
         projectRoot,
         'workers/search/src/generated-analyzer/descriptor.json'
       ),
+      HALOPRESS_ACTIVATION_RETRY_SECONDS: '0',
       PATH: `${binDirectory}:${process.env.PATH}`
     }
   }
@@ -774,6 +784,21 @@ migrations_dir = "migrations"
     ])
   })
 
+  it('retries a transient HTTP-200 activation response until the analyzer contract is ready', async () => {
+    const fixture = await createFixture(baseConfig({ database_id: 'existing-id' }))
+    const result = await run('bash', [deployScript, '--config', fixture.configPath], {
+      cwd: projectRoot,
+      env: { ...fixture.env, MOCK_ACTIVATION_INVALID_ATTEMPTS: '1' }
+    })
+
+    expect(result).toMatchObject({ code: 0 })
+    expect(result.stdout).toContain('Main Worker Durable Object activation gate passed')
+    expect(await readFile(fixture.activationCountPath, 'utf8')).toBe('2')
+    expect(await readCalls(fixture.logPath)).toContainEqual([
+      'delete', 'halopress-test-search', '--config', fixture.configPath, '--force'
+    ])
+  })
+
   it('preserves an existing auth secret without passing a secrets file', async () => {
     const fixture = await createFixture(baseConfig({ database_id: 'existing-id' }))
     const result = await run('bash', [deployScript, '--config', fixture.configPath], {
@@ -790,6 +815,24 @@ migrations_dir = "migrations"
     ])
     expect(calls).toContainEqual(['deploy', '--config', fixture.configPath])
     await expect(readFile(fixture.secretMetaPath)).rejects.toThrow()
+  })
+
+  it('ignores a leading pnpm engine warning when parsing the Wrangler secret list', async () => {
+    const fixture = await createFixture(baseConfig({ database_id: 'existing-id' }))
+    const result = await run('bash', [deployScript, '--config', fixture.configPath], {
+      cwd: projectRoot,
+      env: {
+        ...fixture.env,
+        MOCK_SECRET_LIST_JSON: '\u2009WARN\u2009 Unsupported engine: wanted Node >=22.17.0\n'
+          + JSON.stringify([{ name: 'NUXT_AUTH_SECRET', type: 'secret_text' }])
+      }
+    })
+
+    expect(result).toMatchObject({ code: 0 })
+    expect(result.stderr).not.toContain('Could not parse the Wrangler secret list response')
+    expect(await readCalls(fixture.logPath)).toContainEqual([
+      'deploy', '--config', fixture.configPath
+    ])
   })
 
   it('generates one mode-0600 auth secret for a new Worker without logging its value', async () => {

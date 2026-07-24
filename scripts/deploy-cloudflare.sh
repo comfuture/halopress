@@ -50,7 +50,7 @@ run_wrangler() {
   if [ -n "${HALOPRESS_WRANGLER_BIN:-}" ]; then
     "${HALOPRESS_WRANGLER_BIN}" "$@"
   else
-    pnpm wrangler "$@"
+    pnpm --silent wrangler "$@"
   fi
 }
 
@@ -110,7 +110,11 @@ process.stdin.setEncoding("utf8")
 process.stdin.on("data", chunk => { input += chunk })
 process.stdin.on("end", () => {
   try {
-    const secrets = JSON.parse(input)
+    const normalized = input.replace(
+      /^(?:[^\S\r\n]*WARN[^\S\r\n]+Unsupported engine:[^\r\n]*(?:\r?\n|$))+/,
+      ""
+    )
+    const secrets = JSON.parse(normalized)
     if (!Array.isArray(secrets)) throw new Error("expected an array")
     const present = secrets.some(secret => secret && secret.name === process.argv[1])
     process.stdout.write(present ? "present" : "missing")
@@ -119,6 +123,31 @@ process.stdin.on("end", () => {
   }
 })
 ' "$AUTH_SECRET_NAME"
+}
+
+activation_response_satisfies_contract() {
+  local response_file="$1"
+
+  node - "$response_file" \
+    "$ROOT_DIR/workers/search/src/generated-analyzer/descriptor.json" <<'NODE'
+const { readFileSync } = require('node:fs')
+
+try {
+  const response = JSON.parse(readFileSync(process.argv[2], 'utf8'))
+  const descriptor = JSON.parse(readFileSync(process.argv[3], 'utf8'))
+  if (!response.ok
+    || response.topology !== 'durable-object'
+    || response.compatibility?.artifactVersionId !== descriptor.artifactVersionId
+    || response.compatibility?.objectName !== descriptor.objectName
+    || response.compatibility?.wasmModuleTag !== '[object WebAssembly.Module]'
+    || response.query?.tokenizerGeneration !== descriptor.tokenizerGeneration
+    || !Array.isArray(response.query?.morphTerms)) {
+    process.exitCode = 1
+  }
+} catch {
+  process.exitCode = 1
+}
+NODE
 }
 
 inspect_user_secrets_file() {
@@ -493,39 +522,27 @@ process.stdin.on("end", () => {
   fi
   ACTIVATION_RESPONSE_FILE="$(mktemp "${TMPDIR:-/tmp}/halopress-do-activation.XXXXXX")"
   ACTIVATION_STATUS=""
+  ACTIVATION_CONTRACT_VALID=0
   for attempt in 1 2 3 4 5 6 7 8 9 10; do
     ACTIVATION_STATUS="$(curl --silent --show-error \
       --output "$ACTIVATION_RESPONSE_FILE" \
       --write-out '%{http_code}' \
       "${MAIN_ACTIVATION_URL}/__halopress/search/analyzer-health" || true)"
-    if [ "$ACTIVATION_STATUS" = "200" ]; then
+    if [ "$ACTIVATION_STATUS" = "200" ] \
+      && activation_response_satisfies_contract "$ACTIVATION_RESPONSE_FILE"; then
+      ACTIVATION_CONTRACT_VALID=1
       break
     fi
     if [ "$attempt" -lt 10 ]; then
-      sleep 3
+      sleep "${HALOPRESS_ACTIVATION_RETRY_SECONDS:-3}"
     fi
   done
-  if [ "$ACTIVATION_STATUS" != "200" ]; then
-    echo "Main Worker Durable Object activation gate returned HTTP ${ACTIVATION_STATUS}; the legacy Worker was not deleted." >&2
+  if [ "$ACTIVATION_CONTRACT_VALID" -ne 1 ]; then
+    echo "Main Worker Durable Object activation gate returned HTTP ${ACTIVATION_STATUS} without satisfying the analyzer contract; the legacy Worker was not deleted." >&2
     sed -n '1,120p' "$ACTIVATION_RESPONSE_FILE" >&2
     rm -f -- "$ACTIVATION_RESPONSE_FILE"
     exit 1
   fi
-  node - "$ACTIVATION_RESPONSE_FILE" \
-    "$ROOT_DIR/workers/search/src/generated-analyzer/descriptor.json" <<'NODE'
-const { readFileSync } = require('node:fs')
-const response = JSON.parse(readFileSync(process.argv[2], 'utf8'))
-const descriptor = JSON.parse(readFileSync(process.argv[3], 'utf8'))
-if (!response.ok
-  || response.topology !== 'durable-object'
-  || response.compatibility?.artifactVersionId !== descriptor.artifactVersionId
-  || response.compatibility?.objectName !== descriptor.objectName
-  || response.compatibility?.wasmModuleTag !== '[object WebAssembly.Module]'
-  || response.query?.tokenizerGeneration !== descriptor.tokenizerGeneration
-  || !Array.isArray(response.query?.morphTerms)) {
-  throw new Error('Main Worker Durable Object activation result did not satisfy the analyzer contract')
-}
-NODE
   rm -f -- "$ACTIVATION_RESPONSE_FILE"
   ACTIVATION_RESPONSE_FILE=""
   LEGACY_CONSUMER_DETACHED=0
